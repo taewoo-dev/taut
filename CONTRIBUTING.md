@@ -1,17 +1,17 @@
 # Contributing to taut
 
-버그 제보와 규칙 제안은 GitHub Issue로 받는다. 규칙은 선호가 아니라 코드에서 확실히 판정할
-수 있는 조건이어야 한다.
+Bug reports and rule proposals are welcome through GitHub Issues. A rule must describe a condition
+that can be determined reliably from code, rather than a subjective preference.
 
-변경 전 전체 검사를 실행한다.
+Run the full verification suite before submitting a change:
 
 ```bash
 bash scripts/test.sh
 ```
 
-새 규칙에는 최소한 다음 테스트가 필요하다.
+A new rule needs tests that demonstrate:
 
-- 위반을 잡는 예시
-- 정상 코드를 통과시키는 예시
-- 적용하지 않는 영역을 건드리지 않는 예시
-- 설정이 잘못됐을 때 명확히 실패하는 예시
+- a violation is detected;
+- compliant code passes;
+- unrelated code zones remain unaffected; and
+- invalid configuration fails with a clear error.
