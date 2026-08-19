@@ -1,0 +1,159 @@
+[project]
+name = "taut"
+version = "0.1.0"
+description = "Deterministic architecture policy checks for Python backends"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "TaeWoo Kim", email = "173425210+taewoo-dev@users.noreply.github.com" },
+]
+keywords = ["architecture", "linter", "policy", "python", "static-analysis"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/taewoo-dev/taut#readme"
+Issues = "https://github.com/taewoo-dev/taut/issues"
+Repository = "https://github.com/taewoo-dev/taut"
+
+[project.scripts]
+taut = "taut.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.18",
+  "pytest>=8.4",
+  "pytest-cov>=6",
+  "pyright>=1.1.405",
+  "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/taut"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-q", "--tb=short", "--strict-markers", "-ra"]
+markers = [
+  "integration: checks multiple engine stages or the installed CLI",
+  "contract: checks a stable architecture or result contract",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["taut"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+explicit_package_bases = true
+mypy_path = ["src"]
+files = ["src", "tests", "scripts"]
+exclude = ["^tests/fixtures/"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+extraPaths = ["."]
+exclude = ["tests/fixtures"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.taut]
+strict = true
+include = ["src/*.py", "src/**/*.py"]
+source_roots = ["src"]
+
+[tool.taut.roles]
+domain = ["src/taut/domain/*.py", "src/taut/domain/**/*.py"]
+analysis = ["src/taut/analysis/*.py", "src/taut/analysis/**/*.py"]
+configuration = [
+  "src/taut/configuration/*.py",
+  "src/taut/configuration/**/*.py",
+]
+policy = ["src/taut/policy/*.py", "src/taut/policy/**/*.py"]
+finding_processing = [
+  "src/taut/finding_processing/*.py",
+  "src/taut/finding_processing/**/*.py",
+]
+incremental = ["src/taut/incremental/*.py", "src/taut/incremental/**/*.py"]
+loading = ["src/taut/loading/*.py", "src/taut/loading/**/*.py"]
+reporting = ["src/taut/reporting/*.py", "src/taut/reporting/**/*.py"]
+composition = ["src/taut/__init__.py", "src/taut/cli.py"]
+
+[tool.taut.allow]
+domain = ["domain"]
+analysis = ["domain", "analysis"]
+configuration = ["domain", "configuration"]
+policy = ["domain", "analysis", "configuration", "policy"]
+finding_processing = ["domain", "configuration", "finding_processing"]
+incremental = ["domain", "analysis", "policy", "incremental"]
+loading = ["domain", "analysis", "configuration", "loading"]
+reporting = ["domain", "reporting"]
+composition = [
+  "domain",
+  "analysis",
+  "configuration",
+  "policy",
+  "finding_processing",
+  "incremental",
+  "loading",
+  "reporting",
+  "composition",
+]
+
+[tool.taut.layers]
+service = ["policy"]
+contract = ["domain"]
+
+[tool.taut.external]
+logged_calls = ["httpx.AsyncClient", "httpx.Client"]
+wrappers = ["taut.external_call"]
+
+[tool.taut.enum]
+shared_modules = [
+  "taut.configuration.catalog",
+  "taut.domain.diagnostics",
+  "taut.domain.evaluations",
+  "taut.domain.facts",
+  "taut.domain.findings",
+  "taut.domain.issues",
+]
+uppercase_value_exceptions = ["taut.configuration.catalog.Effect"]
