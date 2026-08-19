@@ -1,5 +1,5 @@
 [project]
-name = "taut"
+name = "pytaut"
 version = "0.1.0"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
