@@ -1,6 +1,6 @@
 # Security Policy
 
-보안 문제는 공개 Issue에 적지 말고 GitHub의 비공개 보안 제보 기능으로 알려 달라. 재현 방법과
-영향 범위를 함께 적으면 확인이 빨라진다.
+Do not report vulnerabilities through a public Issue. Use GitHub private vulnerability reporting
+and include reproduction steps and the expected impact.
 
-현재는 최신 공개 버전만 보안 수정 대상이다.
+Only the latest published version is currently supported with security fixes.
