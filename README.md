@@ -7,14 +7,14 @@ not hard-code the names or directory layout of any company or service.
 The first PyPI release is being prepared. Until it is published, install directly from GitHub:
 
 ```bash
-uv add --dev "taut @ git+https://github.com/taewoo-dev/taut.git"
+uv add --dev "pytaut @ git+https://github.com/taewoo-dev/taut.git"
 uv run taut check .
 ```
 
 After the PyPI release, installation becomes:
 
 ```bash
-uv add --dev taut
+uv add --dev pytaut
 ```
 
 ## Configuration
