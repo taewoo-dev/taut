@@ -20,6 +20,25 @@ from taut.domain.facts import (
 from taut.domain.ids import ModuleId, SymbolId
 
 
+def test_function_local_assignment_shadows_module_binding() -> None:
+    source = make_source(
+        "app/shadow.py",
+        """
+value = external.value
+
+def run() -> None:
+    print(value)
+    value = 1
+""".strip(),
+    )
+
+    module = analyze(source).modules[ModuleId("app.shadow")]
+    value_ref = next(
+        reference for reference in module.references if reference.ref.written_name == "value"
+    )
+    assert value_ref.ref.state is ResolutionState.UNRESOLVED
+
+
 def test_python_adapter_resolves_aliases_annotations_and_decorators() -> None:
     source = make_source(
         "app/service.py",

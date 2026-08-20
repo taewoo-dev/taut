@@ -67,6 +67,7 @@ class PythonSymbolResolver:
         self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None)}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
+        self.local_names: dict[SymbolId, set[str]] = defaultdict(set)
         self._locations: dict[ast.AST, SourceRange] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
@@ -78,6 +79,20 @@ class PythonSymbolResolver:
                 symbol = self._child_symbol(scope, statement.name)
                 self.bindings[scope][statement.name] = symbol
                 self.scopes[symbol] = _Scope(symbol, scope)
+                if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    self.local_names[symbol].update(self._assigned_names(statement.body))
+                    self.local_names[symbol].update(
+                        argument.arg
+                        for argument in (
+                            *statement.args.posonlyargs,
+                            *statement.args.args,
+                            *statement.args.kwonlyargs,
+                        )
+                    )
+                    if statement.args.vararg is not None:
+                        self.local_names[symbol].add(statement.args.vararg.arg)
+                    if statement.args.kwarg is not None:
+                        self.local_names[symbol].add(statement.args.kwarg.arg)
                 self._prime_statements(statement.body, symbol)
             elif isinstance(statement, ast.Import):
                 for alias in statement.names:
@@ -93,6 +108,16 @@ class PythonSymbolResolver:
                         )
             else:
                 self._prime_nested_nodes(statement, scope)
+
+    def _assigned_names(self, statements: list[ast.stmt]) -> set[str]:
+        names: set[str] = set()
+        for statement in statements:
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                    names.add(node.id)
+                elif isinstance(node, (ast.Global, ast.Nonlocal)):
+                    names.difference_update(node.names)
+        return names
 
     def _prime_nested_nodes(self, node: ast.AST, scope: SymbolId | None) -> None:
         for child in ast.iter_child_nodes(node):
@@ -143,6 +168,8 @@ class PythonSymbolResolver:
 
     def _lookup(self, name: str, *, type_only: bool = False) -> SymbolId | None:
         table = self.types if type_only else self.bindings
+        if self.current_scope in self.local_names and name in self.local_names[self.current_scope]:
+            return table[self.current_scope].get(name)
         for scope in self._scope_chain():
             if (value := table[scope].get(name)) is not None:
                 return value
