@@ -242,3 +242,10 @@ class PythonSymbolResolver:
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None:
         ref = self._resolve(node) if node is not None else None
         return ref.symbol if ref and ref.state is ResolutionState.RESOLVED else None
+
+    def _conditional_ref(self, ref: SymbolRef, conditional: bool) -> SymbolRef:
+        if conditional and ref.state is ResolutionState.RESOLVED and ref.symbol is not None:
+            return SymbolRef(
+                ref.written_name, ResolutionState.CONDITIONAL, None, (ref.symbol,), ref.provenance
+            )
+        return ref

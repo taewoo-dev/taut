@@ -89,19 +89,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         return False
 
     def _contextual_ref(self, ref: SymbolRef) -> SymbolRef:
-        if (
-            ref.state is ResolutionState.RESOLVED
-            and ref.symbol is not None
-            and self._syntax_context().guard is GuardKind.CONDITIONAL
-        ):
-            return SymbolRef(
-                ref.written_name,
-                ResolutionState.CONDITIONAL,
-                None,
-                (ref.symbol,),
-                ref.provenance,
-            )
-        return ref
+        return self._conditional_ref(ref, self._syntax_context().guard is GuardKind.CONDITIONAL)
 
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
