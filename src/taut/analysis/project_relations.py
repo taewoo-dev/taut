@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+from dataclasses import replace
+
 from taut.domain.facts import (
     ImportFact,
     ModuleFacts,
     ProjectIndex,
     ResolutionState,
     SymbolRef,
+    ScopeKind,
     SyntaxPosition,
 )
 from taut.domain.frozen import FrozenMap
@@ -133,6 +137,33 @@ def _module_bindings(facts: ModuleFacts) -> tuple[Binding, ...]:
                 context=field.context,
             )
         )
+    for function in facts.functions:
+        for parameter in function.parameters:
+            symbol = SymbolId(f"{function.symbol_id.value}.{parameter.name}")
+            raw = f"{facts.module.id.value}:parameter:{symbol.value}"
+            values.append(
+                Binding(
+                    id=FactId(hashlib.sha256(raw.encode()).hexdigest()),
+                    module_id=facts.module.id,
+                    local_name=parameter.name,
+                    kind=BindingKind.PARAMETER,
+                    lexical_owner=function.symbol_id,
+                    target=SymbolRef(
+                        symbol.value,
+                        ResolutionState.RESOLVED,
+                        symbol,
+                        (),
+                        function.provenance,
+                    ),
+                    defining_fact_id=None,
+                    location=function.location,
+                    context=replace(
+                        function.context,
+                        lexical_owner=function.symbol_id,
+                        scope_kind=ScopeKind.FUNCTION,
+                    ),
+                )
+            )
     return tuple(values)
 
 
