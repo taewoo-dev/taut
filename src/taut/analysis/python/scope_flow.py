@@ -163,6 +163,9 @@ class PythonScopeFlow:
                 visit(handler.type)
             if handler.name:
                 self._declare_assignment(handler.name)
+                record_exception = getattr(self, "_record_exception_binding", None)
+                if record_exception is not None:
+                    record_exception(handler)
             guarded(handler.body, GuardKind.CONDITIONAL, False)
             paths.append(self._flow_snapshot())
         self._merge_flows(paths)

@@ -9,6 +9,7 @@ from taut.analysis.contracts import (
     ResolverSettings,
     SourceInput,
 )
+from taut.analysis.python.binding_forms import PythonBindingFormsMixin
 from taut.analysis.python.control_flow import PythonControlFlowVisitor
 from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
@@ -50,7 +51,7 @@ from taut.domain.relations import BindingKind
 _ALL_FACTS = frozenset(FactKind)
 
 
-class PythonFactExtractor(PythonControlFlowVisitor):
+class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
     def __init__(self, source: SourceInput, resolver: ResolverSettings) -> None:
         PythonSymbolResolver.__init__(self, source)
         self.context_manager_providers = {
@@ -67,6 +68,7 @@ class PythonFactExtractor(PythonControlFlowVisitor):
         self.fields: list[FieldFact] = []
         self.binding_facts: list[BindingFact] = []
         self._binding_kind = BindingKind.ASSIGNMENT
+        self._binding_targets: dict[ast.AST, BindingKind] = {}
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
         self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
@@ -90,6 +92,7 @@ class PythonFactExtractor(PythonControlFlowVisitor):
 
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
+        self._index_binding_targets(tree)
         self.visit(tree)
         deferred_index = 0
         while deferred_index < len(self._deferred_bodies):
@@ -124,7 +127,12 @@ class PythonFactExtractor(PythonControlFlowVisitor):
             functions=tuple(sorted(self.functions, key=fact_sort_key)),
             classes=tuple(sorted(self.classes, key=fact_sort_key)),
             fields=tuple(sorted(self.fields, key=fact_sort_key)),
-            bindings=tuple(sorted(self.binding_facts, key=lambda item: (item.location.start_line, item.location.start_column, item.id.value))),
+            bindings=tuple(sorted(
+                self.binding_facts,
+                key=lambda item: (
+                    item.location.start_line, item.location.start_column, item.id.value
+                ),
+            )),
             completeness=completeness,
         )
 
@@ -283,6 +291,15 @@ class PythonFactExtractor(PythonControlFlowVisitor):
             parameter_symbol = self._child_symbol(symbol, argument.arg)
             self.bindings[symbol][argument.arg] = parameter_symbol
             self.binding_states[symbol][argument.arg] = BindingState(frozenset({parameter_symbol}))
+            self.binding_facts.append(BindingFact(
+                id=self._fact_id(FactKind.FIELD, f"parameter:{symbol.value}:{argument.arg}"),
+                module_id=self.source.module_id, local_name=argument.arg,
+                kind=BindingKind.PARAMETER, lexical_owner=symbol, symbol_id=parameter_symbol,
+                location=self._location(argument), provenance=self._provenance(argument),
+                context=replace(
+                    self._syntax_context(), lexical_owner=symbol, scope_kind=ScopeKind.FUNCTION
+                ),
+            ))
             annotation = self._annotation_symbol(argument.annotation)
             if annotation is not None:
                 self.types[symbol][argument.arg] = annotation
@@ -363,48 +380,6 @@ class PythonFactExtractor(PythonControlFlowVisitor):
             ):
                 self.visit(keyword.value)
             position += 1
-
-    def visit_Name(self, node: ast.Name) -> None:
-        if isinstance(node.ctx, ast.Load):
-            ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
-            self.references.append(
-                ReferenceFact(
-                    id=self._fact_id(
-                        FactKind.REFERENCE,
-                        ref.symbol.value if ref.symbol else ref.written_name,
-                    ),
-                    module_id=self.source.module_id,
-                    ref=ref,
-                    enclosing_symbol=self.current_scope,
-                    location=self._location(node),
-                    provenance=self._provenance(node),
-                    context=self._syntax_context(),
-                )
-            )
-        elif isinstance(node.ctx, (ast.Store, ast.Del)):
-            self._declare_assignment(node.id)
-            scope = self._binding_scope(node.id)
-            symbol = self._child_symbol(scope, node.id)
-            self.binding_facts.append(BindingFact(
-                id=self._fact_id(FactKind.FIELD, f"binding:{self._binding_kind}:{node.id}"),
-                module_id=self.source.module_id, local_name=node.id,
-                kind=self._binding_kind, lexical_owner=scope, symbol_id=symbol,
-                location=self._location(node), provenance=self._provenance(node),
-                context=replace(self._syntax_context(), lexical_owner=scope),
-            ))
-
-    def visit_Lambda(self, node: ast.Lambda) -> None:
-        self._visit_lambda_scope(node)
-
-    def _visit_comprehension(
-        self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
-    ) -> None:
-        self._visit_comprehension_scope(node)
-
-    visit_ListComp = _visit_comprehension
-    visit_SetComp = _visit_comprehension
-    visit_DictComp = _visit_comprehension
-    visit_GeneratorExp = _visit_comprehension
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if isinstance(node.ctx, ast.Load):

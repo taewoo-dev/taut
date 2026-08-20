@@ -18,6 +18,7 @@ from taut.domain.facts import (
     SyntaxPosition,
 )
 from taut.domain.ids import ModuleId, SymbolId
+from taut.domain.relations import BindingKind
 
 
 def test_function_local_assignment_shadows_module_binding() -> None:
@@ -122,6 +123,93 @@ def test_parameters_and_lambda_parameters_are_lexical_bindings() -> None:
     )
     assert run_value.ref.symbol == SymbolId("app.parameters.run.value")
     assert run_value.ref.state is ResolutionState.RESOLVED
+
+
+def test_relations_cover_binding_forms_with_exact_kinds_and_stable_owners() -> None:
+    source = make_source(
+        "app/binding_forms.py",
+        """
+value = 0
+annotated: int = 1
+left = right = 2
+head, *tail = values
+for item in values:
+    pass
+with manager() as resource:
+    pass
+async def consume() -> None:
+    async for async_item in values:
+        pass
+    async with manager() as async_resource:
+        pass
+try:
+    pass
+except* Error as star_error:
+    pass
+match value:
+    case {"key": matched, **rest}:
+        pass
+    case [first, *remaining]:
+        pass
+    case Point(x=class_value):
+        pass
+    case (One(or_value) | Two(or_value)):
+        pass
+captured = (written := value)
+transform = lambda argument: argument
+items = [element for element in values]
+
+def outer() -> None:
+    routed = 1
+    def inner() -> None:
+        nonlocal routed
+        routed = 2
+        global exported
+        exported = routed
+""".strip(),
+    )
+    first = analyze(source).relations.bindings
+    second = analyze(source).relations.bindings
+    assert first == second
+
+    by_name = {name: [item for item in first if item.local_name == name] for name in (
+        "annotated", "left", "right", "head", "tail", "item", "resource", "async_item",
+        "async_resource", "star_error", "matched", "rest", "first", "remaining",
+        "class_value", "or_value", "written", "argument", "element", "routed", "exported",
+    )}
+    assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["annotated"])
+    assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["left"])
+    assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["right"])
+    assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["head"])
+    assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["tail"])
+    assert by_name["item"][0].kind is BindingKind.LOOP
+    assert by_name["resource"][0].kind is BindingKind.WITH_ITEM
+    assert by_name["async_item"][0].kind is BindingKind.LOOP
+    assert by_name["async_resource"][0].kind is BindingKind.WITH_ITEM
+    assert by_name["star_error"][0].kind is BindingKind.EXCEPTION
+    assert {item.kind for item in by_name["matched"]} == {BindingKind.PATTERN}
+    assert by_name["rest"][0].kind is BindingKind.PATTERN
+    assert by_name["remaining"][0].kind is BindingKind.PATTERN
+    assert by_name["class_value"][0].kind is BindingKind.PATTERN
+    assert by_name["or_value"][0].kind is BindingKind.PATTERN
+    assert by_name["written"][0].kind is BindingKind.WALRUS
+    assert by_name["argument"][0].kind is BindingKind.PARAMETER
+    assert by_name["element"][0].kind is BindingKind.COMPREHENSION
+    assert by_name["element"][0].lexical_owner is not None
+    assert by_name["routed"][0].lexical_owner == SymbolId("app.binding_forms.outer")
+    assert by_name["exported"][0].lexical_owner is None
+    assert len({item.id for item in first}) == len(first)
+    assert all(item.id.value for item in first)
+    assert all(item.defining_fact_id == item.id for item in first)
+    assert all(item.target.symbol is not None for item in first)
+    assert all(
+        item.target.symbol is not None
+        and item.target.symbol.value.rsplit(".", 1)[-1] == item.local_name
+        for item in first
+    )
+    assert all(item.context.lexical_owner == item.lexical_owner for item in first)
+    assert all(item.location.path.value == "app/binding_forms.py" for item in first)
+    assert all(item.location.start_line <= item.location.end_line for item in first)
 
 
 def test_global_and_nonlocal_route_to_declaring_scope() -> None:

@@ -19,6 +19,7 @@ class BindingKind(StrEnum):
     EXCEPTION = "exception"
     PATTERN = "pattern"
     COMPREHENSION = "comprehension"
+    WALRUS = "walrus"
 
 
 @dataclass(frozen=True, order=True)
