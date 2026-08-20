@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
 
 from taut.analysis.contracts import (
     AnalysisRequest,
@@ -11,6 +10,20 @@ from taut.analysis.contracts import (
     ProjectRoot,
     ResolverSettings,
     SourceInput,
+)
+from taut.analysis.framework.fastapi import (
+    FastAPIDependencyFact,
+    FastAPIEndpointFact,
+    FastAPIResponseModelFact,
+    FastAPIRouterFact,
+)
+from taut.analysis.framework.pydantic_facts import (
+    PydanticConfigFact,
+    PydanticFieldFact,
+    PydanticModelFact,
+    PydanticOperationFact,
+    PydanticSerializerFact,
+    PydanticValidatorFact,
 )
 from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import apply_fact_providers
@@ -96,6 +109,26 @@ RULE_IDS = tuple(
 )
 
 
+def _provider_fact_state(fact: object, state: ResolutionState) -> object:
+    if isinstance(
+        fact,
+        (
+            FastAPIDependencyFact,
+            FastAPIEndpointFact,
+            FastAPIResponseModelFact,
+            FastAPIRouterFact,
+            PydanticConfigFact,
+            PydanticFieldFact,
+            PydanticModelFact,
+            PydanticOperationFact,
+            PydanticSerializerFact,
+            PydanticValidatorFact,
+        ),
+    ):
+        return replace(fact, confidence=state)
+    return fact
+
+
 def make_source(
     path: str,
     content: str,
@@ -157,6 +190,7 @@ def make_context(
     security_policy: SecurityPolicy | None = None,
     extra_catalog_entries: tuple[CatalogEntry, ...] = (),
     provider_state: ResolutionState | None = None,
+    missing_capability: str | None = None,
 ) -> PolicyContext:
     snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
     if provider_state is not None:
@@ -165,14 +199,23 @@ def make_context(
             capabilities=FrozenMap(
                 (
                     capability,
-                    tuple(
-                        replace(cast(Any, fact), confidence=provider_state)
-                        if hasattr(fact, "confidence")
-                        else fact
-                        for fact in facts
-                    ),
+                    tuple(_provider_fact_state(fact, provider_state) for fact in facts),
                 )
                 for capability, facts in snapshot.capabilities.items()
+            ),
+        )
+    if missing_capability is not None:
+        snapshot = replace(
+            snapshot,
+            capabilities=FrozenMap(
+                (name, values)
+                for name, values in snapshot.capabilities.items()
+                if name != missing_capability
+            ),
+            capability_provenance=FrozenMap(
+                (name, provenance)
+                for name, provenance in snapshot.capability_provenance.items()
+                if name != missing_capability
             ),
         )
     location = ConfigLocation(ProjectPath("policy.toml"))

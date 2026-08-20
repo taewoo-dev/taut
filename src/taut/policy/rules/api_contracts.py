@@ -87,7 +87,7 @@ class EndpointDocumentationRule:
         if role not in context.policy.code.router_roles:
             return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = target_uncertainty(
-            ENDPOINT_RULE_ID, target, context, (FASTAPI_ENDPOINTS, FASTAPI_RESPONSE_MODELS)
+            ENDPOINT_RULE_ID, target, context, (FASTAPI_ENDPOINTS, FASTAPI_RESPONSE_MODELS), True
         )
         if uncertainty is not None:
             return uncertainty
@@ -168,7 +168,7 @@ class PublicFieldDocumentationRule:
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.schema_roles:
             return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,))
+        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,), True)
         if uncertainty is not None:
             return uncertainty
         module = context.model.module(target.module_id)
@@ -289,7 +289,7 @@ class RouterMetadataRule:
                 (),
             )
         uncertainty = target_uncertainty(
-            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,)
+            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,), True
         )
         if uncertainty is not None:
             return uncertainty
@@ -350,7 +350,9 @@ class ResponseMappingRule:
             and role not in context.policy.code.router_roles
         ):
             return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(MAPPING_RULE_ID, target, context, (PYDANTIC_OPERATIONS,))
+        uncertainty = target_uncertainty(
+            MAPPING_RULE_ID, target, context, (PYDANTIC_OPERATIONS,), True
+        )
         if uncertainty is not None:
             return uncertainty
         module = context.model.module(target.module_id)

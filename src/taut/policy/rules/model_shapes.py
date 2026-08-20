@@ -112,7 +112,12 @@ class ImmutableDtoRule:
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = rule_uncertainty(
-            DTO_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS, PYDANTIC_FIELDS)
+            DTO_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            (PYDANTIC_MODELS, PYDANTIC_FIELDS),
+            True,
         )
         if uncertainty is not None:
             return uncertainty
@@ -172,7 +177,7 @@ class DtoNameRule:
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = rule_uncertainty(
-            DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,)
+            DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
         )
         if uncertainty is not None:
             return uncertainty
@@ -262,7 +267,7 @@ class SchemaConfigRule:
         if _role(target, context) not in context.policy.code.schema_roles:
             return RuleEvaluation(SCHEMA_CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = rule_uncertainty(
-            SCHEMA_CONFIG_RULE_ID, target, context, target.module_id, (PYDANTIC_CONFIGS,)
+            SCHEMA_CONFIG_RULE_ID, target, context, target.module_id, (PYDANTIC_CONFIGS,), True
         )
         if uncertainty is not None:
             return uncertainty
@@ -310,7 +315,7 @@ class SchemaInheritanceRule:
                 SCHEMA_INHERITANCE_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ()
             )
         uncertainty = rule_uncertainty(
-            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,)
+            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
         )
         if uncertainty is not None:
             return uncertainty

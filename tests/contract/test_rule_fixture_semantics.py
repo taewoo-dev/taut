@@ -172,7 +172,10 @@ def _roles(rule_id: str, variant: str) -> dict[str, tuple[str, ...]]:
 
 
 def _run_regular_fixture(
-    rule_id: str, variant: str, provider_state: ResolutionState | None = None
+    rule_id: str,
+    variant: str,
+    provider_state: ResolutionState | None = None,
+    missing_capability: str | None = None,
 ) -> PolicyRunResult:
     definition = builtin_rule_registry().definitions[RuleId(rule_id)]
     paths = (
@@ -232,6 +235,7 @@ def _run_regular_fixture(
         security_policy=_security_policy(),
         extra_catalog_entries=(time_wrapper,),
         provider_state=provider_state,
+        missing_capability=missing_capability,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -288,7 +292,40 @@ GROUP_A_RULES = (
     "ENUM001",
     "IGNORE001",
 )
-PROVIDER_BACKED_GROUP_A_RULES = {"API001", "API002", "API003", "SCHEMA001", "SCHEMA002"}
+PROVIDER_BACKED_GROUP_A_RULES = {
+    "API001",
+    "API002",
+    "API003",
+    "DTO001",
+    "DTO002",
+    "SCHEMA001",
+    "SCHEMA002",
+    "SCHEMA003",
+}
+STATE_SENSITIVE_GROUP_A_RULES = {"API001", "API002", "API003", "SCHEMA001", "SCHEMA002"}
+PROVIDER_REQUIRED_CAPABILITIES = (
+    ("API001", "taut.fastapi.endpoints@1"),
+    ("API002", "taut.pydantic.fields@1"),
+    ("API003", "taut.fastapi.routers@1"),
+    ("DTO001", "taut.pydantic.models@1"),
+    ("DTO002", "taut.pydantic.models@1"),
+    ("SCHEMA001", "taut.pydantic.configs@1"),
+    ("SCHEMA002", "taut.pydantic.models@1"),
+    ("SCHEMA003", "taut.pydantic.operations@1"),
+)
+EXPECTED_GROUP_A_RESOLVED = {
+    "API001": "pass",
+    "API002": "pass",
+    "API003": "pass",
+    "DTO001": "pass",
+    "DTO002": "pass",
+    "SNAPSHOT001": "pass",
+    "SCHEMA001": "pass",
+    "SCHEMA002": "pass",
+    "SCHEMA003": "pass",
+    "ENUM001": "pass",
+    "IGNORE001": "not_applicable",
+}
 
 
 @pytest.mark.contract
@@ -301,12 +338,37 @@ def test_group_a_evaluators_execute_real_fixtures_for_provider_states(
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations, rule_id
     assert not result.engine_issues
-    if state is not ResolutionState.RESOLVED and rule_id in PROVIDER_BACKED_GROUP_A_RULES:
+    expected = EXPECTED_GROUP_A_RESOLVED[rule_id]
+    if state is not ResolutionState.RESOLVED and rule_id in STATE_SENSITIVE_GROUP_A_RULES:
+        expected = "indeterminate"
+    assert {item.verdict.value for item in evaluations} == {expected}
+    if expected == "indeterminate":
         assert all(item.verdict.value == "indeterminate" for item in evaluations)
         assert all(item.reason is not None for item in evaluations)
         assert {item.reason.code for item in evaluations if item.reason is not None} == {
             "uncertain_provider_fact"
         }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize(("rule_id", "capability"), PROVIDER_REQUIRED_CAPABILITIES)
+def test_provider_required_evaluator_wiring_reports_missing_capability(
+    rule_id: str, capability: str
+) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", missing_capability=capability)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert {item.verdict.value for item in evaluations} == {"indeterminate"}
+    assert {item.reason.code for item in evaluations if item.reason is not None} == {
+        "missing_capability"
+    }
+
+
+@pytest.mark.contract
+def test_provider_backed_group_a_ids_match_capability_contracts() -> None:
+    assert {
+        rule_id for rule_id, _ in PROVIDER_REQUIRED_CAPABILITIES
+    } == PROVIDER_BACKED_GROUP_A_RULES
 
 
 @pytest.mark.contract
