@@ -35,6 +35,7 @@ def failed_facts(source: SourceInput) -> ModuleFacts:
         functions=(),
         classes=(),
         fields=(),
+        bindings=(),
         completeness=ModuleCompleteness(
             state=CompletenessState.FAILED,
             stage=AnalysisStage.FAILED,

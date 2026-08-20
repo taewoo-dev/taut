@@ -82,6 +82,15 @@ def build_project_relations(
 
 def _module_bindings(facts: ModuleFacts) -> tuple[Binding, ...]:
     values: list[Binding] = []
+    values.extend(
+        Binding(
+            id=item.id, module_id=item.module_id, local_name=item.local_name,
+            kind=BindingKind(item.kind), lexical_owner=item.lexical_owner,
+            target=SymbolRef(item.symbol_id.value, ResolutionState.RESOLVED, item.symbol_id, (), item.provenance),
+            defining_fact_id=None, location=item.location, context=item.context,
+        )
+        for item in facts.bindings
+    )
     for import_fact in facts.imports:
         local_name = _import_local_name(import_fact)
         values.append(

@@ -309,6 +309,17 @@ class FieldFact:
 
 
 @dataclass(frozen=True, order=True)
+class BindingFact:
+    id: FactId
+    module_id: ModuleId
+    local_name: str
+    kind: str
+    lexical_owner: SymbolId | None
+    symbol_id: SymbolId
+    location: SourceRange
+    provenance: Provenance
+    context: SyntaxContext
+@dataclass(frozen=True, order=True)
 class IncompleteReason:
     code: str
     message: str
@@ -342,6 +353,7 @@ type LocatedFact = (
     | FunctionFact
     | ClassFact
     | FieldFact
+    | BindingFact
 )
 
 
@@ -377,6 +389,7 @@ class ModuleFacts:
     functions: tuple[FunctionFact, ...]
     classes: tuple[ClassFact, ...]
     fields: tuple[FieldFact, ...]
+    bindings: tuple[BindingFact, ...]
     completeness: ModuleCompleteness
 
     def __post_init__(self) -> None:
@@ -388,6 +401,7 @@ class ModuleFacts:
         _validate_fact_collection(self.functions, self.module.id)
         _validate_fact_collection(self.classes, self.module.id)
         _validate_fact_collection(self.fields, self.module.id)
+        _validate_fact_collection(self.bindings, self.module.id)
 
 
 @dataclass(frozen=True, order=True)

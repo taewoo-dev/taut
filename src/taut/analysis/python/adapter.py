@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 from collections import defaultdict
+from dataclasses import replace
 
 from taut.analysis.contracts import (
     ResolverSettings,
@@ -20,6 +21,7 @@ from taut.analysis.python.symbol_resolver import (
 from taut.analysis.python.syntax_context import SyntaxContextStack
 from taut.domain.facts import (
     AnalysisStage,
+    BindingFact,
     CallFact,
     ClassFact,
     CompletenessState,
@@ -43,6 +45,7 @@ from taut.domain.facts import (
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, SymbolId
+from taut.domain.relations import BindingKind
 
 _ALL_FACTS = frozenset(FactKind)
 
@@ -62,6 +65,8 @@ class PythonFactExtractor(PythonControlFlowVisitor):
         self.functions: list[FunctionFact] = []
         self.classes: list[ClassFact] = []
         self.fields: list[FieldFact] = []
+        self.binding_facts: list[BindingFact] = []
+        self._binding_kind = BindingKind.ASSIGNMENT
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
         self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
@@ -119,6 +124,7 @@ class PythonFactExtractor(PythonControlFlowVisitor):
             functions=tuple(sorted(self.functions, key=fact_sort_key)),
             classes=tuple(sorted(self.classes, key=fact_sort_key)),
             fields=tuple(sorted(self.fields, key=fact_sort_key)),
+            bindings=tuple(sorted(self.binding_facts, key=lambda item: (item.location.start_line, item.location.start_column, item.id.value))),
             completeness=completeness,
         )
 
@@ -377,6 +383,15 @@ class PythonFactExtractor(PythonControlFlowVisitor):
             )
         elif isinstance(node.ctx, (ast.Store, ast.Del)):
             self._declare_assignment(node.id)
+            scope = self._binding_scope(node.id)
+            symbol = self._child_symbol(scope, node.id)
+            self.binding_facts.append(BindingFact(
+                id=self._fact_id(FactKind.FIELD, f"binding:{self._binding_kind}:{node.id}"),
+                module_id=self.source.module_id, local_name=node.id,
+                kind=self._binding_kind, lexical_owner=scope, symbol_id=symbol,
+                location=self._location(node), provenance=self._provenance(node),
+                context=replace(self._syntax_context(), lexical_owner=scope),
+            ))
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self._visit_lambda_scope(node)
