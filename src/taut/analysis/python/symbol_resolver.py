@@ -71,6 +71,7 @@ class PythonSymbolResolver:
         self.local_names: dict[SymbolId, set[str]] = defaultdict(set)
         self.global_names: dict[SymbolId, set[str]] = defaultdict(set)
         self.nonlocal_names: dict[SymbolId, set[str]] = defaultdict(set)
+        self.flow_conditional_names: set[str] = set()
         self._locations: dict[ast.AST, SourceRange] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
@@ -208,6 +209,14 @@ class PythonSymbolResolver:
 
     def _declare(self, name: str, symbol: SymbolId) -> None:
         self.bindings[self.current_scope][name] = symbol
+
+    def _mark_conditional_branch(self, nodes: tuple[ast.stmt, ...]) -> None:
+        self.flow_conditional_names.update(
+            child.id
+            for node in nodes
+            for child in ast.walk(node)
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+        )
 
     def _resolve(self, node: ast.AST) -> SymbolRef:
         if node not in self._resolutions:

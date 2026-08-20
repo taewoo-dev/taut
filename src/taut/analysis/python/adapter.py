@@ -63,7 +63,6 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         self.fields: list[FieldFact] = []
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
-        self._flow_conditional_names: set[str] = set()
         self.enclosing_contexts: list[SymbolRef] = []
         self._syntax = SyntaxContextStack()
         self._summarizer = ExpressionSummarizer(self._resolve, self._written_name)
@@ -92,7 +91,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
     def _contextual_ref(self, ref: SymbolRef) -> SymbolRef:
         conditional = (
             self._syntax_context().guard is GuardKind.CONDITIONAL
-            or ref.written_name.split(".", 1)[0] in self._flow_conditional_names
+            or ref.written_name.split(".", 1)[0] in self.flow_conditional_names
         )
         return self._conditional_ref(ref, conditional)
 
@@ -430,23 +429,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             with self._syntax.occurrence(guard=GuardKind.CONDITIONAL):
                 for statement in node.orelse:
                     self.visit(statement)
-        self._flow_conditional_names.update(
-            name
-            for branch in (node.body, node.orelse)
-            for statement in branch
-            for name in self._stored_names(statement)
-        )
-
-    def _stored_names(self, node: ast.AST) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                {
-                    child.id
-                    for child in ast.walk(node)
-                    if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
-                }
-            )
-        )
+        self._mark_conditional_branch((*node.body, *node.orelse))
 
     def _context_manager_item_type(self, expression: ast.expr) -> SymbolId | None:
         if not isinstance(expression, ast.Call):

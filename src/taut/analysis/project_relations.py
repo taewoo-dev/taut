@@ -8,8 +8,8 @@ from taut.domain.facts import (
     ModuleFacts,
     ProjectIndex,
     ResolutionState,
-    SymbolRef,
     ScopeKind,
+    SymbolRef,
     SyntaxPosition,
 )
 from taut.domain.frozen import FrozenMap
