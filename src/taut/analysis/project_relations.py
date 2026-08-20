@@ -57,7 +57,11 @@ def build_project_relations(
             module_id=reference.module_id,
             occurrence_id=reference.id,
             ref=reference.ref,
-            binding_id=_matching_binding(reference.ref, bindings_by_module[reference.module_id]),
+            binding_id=_matching_binding(
+                reference.ref,
+                reference.enclosing_symbol,
+                bindings_by_module[reference.module_id],
+            ),
             location=reference.location,
             context=reference.context,
             purpose=_purpose(reference.context.position),
@@ -145,19 +149,25 @@ def _import_local_name(fact: ImportFact) -> str:
     return fact.imported_name.split(".", 1)[0]
 
 
-def _matching_binding(ref: SymbolRef, bindings: tuple[Binding, ...]) -> FactId | None:
-    if ref.state is not ResolutionState.RESOLVED or ref.symbol is None:
+def _matching_binding(
+    ref: SymbolRef,
+    owner: SymbolId | None,
+    bindings: tuple[Binding, ...],
+) -> FactId | None:
+    if ref.state not in (ResolutionState.RESOLVED, ResolutionState.CONDITIONAL):
         return None
-    candidates = tuple(
-        binding
-        for binding in bindings
-        if binding.target.symbol is not None
-        and (
-            ref.symbol == binding.target.symbol
-            or ref.symbol.value.startswith(binding.target.symbol.value + ".")
+    local_name = ref.written_name.split(".", 1)[0]
+    candidates = [binding for binding in bindings if binding.local_name == local_name]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda binding: (
+            0 if binding.lexical_owner == owner else 1 if binding.lexical_owner is None else 2,
+            binding.location.start_line,
+            binding.id.value,
         )
     )
-    return candidates[-1].id if candidates else None
+    return candidates[0].id
 
 
 def _purpose(position: SyntaxPosition) -> UsePurpose:
