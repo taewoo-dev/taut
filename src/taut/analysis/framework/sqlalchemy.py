@@ -108,7 +108,7 @@ class SQLAlchemyProvider:
         classes = tuple(item for module in snapshot.modules.values() for item in module.classes)
         fields = tuple(item for module in snapshot.modules.values() for item in module.fields)
         calls = tuple(item for module in snapshot.modules.values() for item in module.calls)
-        models = self._models(snapshot, classes, calls)
+        models = self._models(snapshot, classes, calls, fields)
         model_symbols = {item.symbol for item in models}
         columns, relationships = self._mapped(snapshot, fields, calls, model_symbols)
         sessions = self._sessions(fields, calls)
@@ -132,6 +132,7 @@ class SQLAlchemyProvider:
         snapshot: AnalysisSnapshot,
         classes: tuple[ClassFact, ...],
         calls: tuple[CallFact, ...],
+        fields: tuple[FieldFact, ...],
     ) -> tuple[SQLAlchemyModelFact, ...]:
         declarative_bases = {
             binding.target.symbol
@@ -149,6 +150,17 @@ class SQLAlchemyProvider:
             )
             if binding.target.symbol is not None
         }
+        declarative_bases.update(
+            field.symbol_id
+            for field in fields
+            for call in calls
+            if field.module_id == call.module_id
+            and field.value is not None
+            and _contains(field.location, call.location)
+            and call.context.parent_fact_id is None
+            and call.ref.symbol is not None
+            and call.ref.symbol.value in MODEL_BASES
+        )
         direct_bases = {SymbolId(value) for value in MODEL_BASES} | declarative_bases
         result: list[SQLAlchemyModelFact] = []
         known: set[SymbolId] = set(direct_bases)
@@ -406,7 +418,9 @@ class SQLAlchemyProvider:
                 operation = "exec_driver_sql"
             elif _sqlalchemy_name(call.ref, frozenset({"execute"})):
                 first = next((arg for arg in call.arguments if arg.position == 0), None)
-                if first is not None and first.value.literal_kind == "str":
+                if first is not None and (
+                    first.value.literal_kind == "str" or first.value.kind == "Name"
+                ):
                     operation = "execute"
             if operation is None:
                 continue
