@@ -34,6 +34,12 @@ def other_dep():
 @api_router.get('/users', response_model=UserResponse)
 def users(other: int = Depends(other_dep), limit: int = Depends(load_user)):
     return load_user()
+
+@api_router.get('/other')
+def other_users(
+    limit: int = Depends(load_user),
+):
+    return load_user()
 """,
         ),
         make_source(
@@ -52,16 +58,18 @@ def users(other: int = Depends(other_dep), limit: int = Depends(load_user)):
         tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
     )
     assert len(routers) == 1
-    assert len(endpoints) == 1
+    assert len(endpoints) == 2
     assert isinstance(endpoints[0], FastAPIEndpointFact)
     assert endpoints[0].router.value == "app.routes.router"
     assert endpoints[0].path == "'/users'"
     assert endpoints[0].response_model is not None
     assert endpoints[0].confidence is FastAPIConfidence.RESOLVED
-    assert len(dependencies) == 2
+    assert len(dependencies) == 3
     dependency = next(item for item in dependencies if item.parameter == "limit")
     assert dependency.provider is not None
     assert dependency.provider.value == "app.api.load_user"
+    assert dependency.provider_ref is not None
+    assert dependency.provider_ref.symbol == dependency.provider
     assert len(models) == 1
 
 
@@ -141,3 +149,25 @@ def unknown():
     assert len(models) == 1
     assert models[0].model is None
     assert models[0].model_ref.state is FastAPIConfidence.UNRESOLVED
+
+
+def test_unresolved_dependency_preserves_provider_ref() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import Depends
+def endpoint(
+    value: int = Depends(UnknownDependency),
+):
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    dependencies = cast(
+        tuple[FastAPIDependencyFact, ...], result.capabilities[FASTAPI_DEPENDENCIES]
+    )
+    assert len(dependencies) == 1
+    assert dependencies[0].provider is None
+    assert dependencies[0].provider_ref is not None
+    assert dependencies[0].provider_ref.state is FastAPIConfidence.UNRESOLVED

@@ -57,6 +57,7 @@ class FastAPIDependencyFact:
     module_id: ModuleId
     parameter: str
     provider: SymbolId | None
+    provider_ref: SymbolRef | None
     call: CallFact
     confidence: FastAPIConfidence
     provenance: Provenance
@@ -100,7 +101,6 @@ def _contains(outer: SourceRange, inner: SourceRange) -> bool:
 def _confidence_for_receiver(
     snapshot: AnalysisSnapshot,
     receiver_edges: tuple[UseEdge, ...],
-    router: SymbolId,
     method_state: ResolutionState,
 ) -> FastAPIConfidence:
     refs = [edge.ref for edge in receiver_edges]
@@ -295,9 +295,7 @@ class FastAPIProvider:
                         _path(decorator_as_call(decorator)),
                         decorator,
                         function,
-                        _confidence_for_receiver(
-                            snapshot, receiver_edges, router, method_ref.state
-                        ),
+                        _confidence_for_receiver(snapshot, receiver_edges, method_ref.state),
                         response_symbol,
                         response_ref,
                         _provenance(decorator),
@@ -337,31 +335,26 @@ class FastAPIProvider:
                 function, parameter_fact = match
                 owner = function.symbol_id
                 parameter = parameter_fact.name
-                provider = next(
-                    (
-                        argument.value.symbols[0]
-                        for argument in call.arguments
-                        if argument.value.symbols and argument.position == 0
-                    ),
-                    None,
-                )
                 provider_ref = next(
                     (
                         edge.ref
                         for edge in snapshot.relations.use_edges
-                        if edge.location == call.location
+                        if _contains(call.location, edge.location)
                         and edge.context.position.value == "argument"
+                        and edge.context.argument_position == 0
                     ),
-                    call.ref,
+                    None,
                 )
+                provider = provider_ref.symbol if provider_ref is not None else None
                 result.append(
                     FastAPIDependencyFact(
                         owner,
                         module.module.id,
                         parameter,
                         provider,
+                        provider_ref,
                         call,
-                        _confidence(provider_ref),
+                        _confidence(provider_ref) if provider_ref is not None else call.ref.state,
                         _provenance(call),
                     )
                 )
