@@ -1,4 +1,8 @@
 from taut.analysis.framework.fastapi import (
+    FASTAPI_DEPENDENCIES,
+    FASTAPI_ENDPOINTS,
+    FASTAPI_RESPONSE_MODELS,
+    FASTAPI_ROUTERS,
     FastAPIDependencyFact,
     FastAPIEndpointFact,
     FastAPIProvider,
@@ -6,6 +10,12 @@ from taut.analysis.framework.fastapi import (
     FastAPIRouterFact,
 )
 from taut.analysis.framework.pydantic import (
+    PYDANTIC_CONFIGS,
+    PYDANTIC_FIELDS,
+    PYDANTIC_MODELS,
+    PYDANTIC_OPERATIONS,
+    PYDANTIC_SERIALIZERS,
+    PYDANTIC_VALIDATORS,
     PydanticConfigFact,
     PydanticFieldFact,
     PydanticModelFact,
@@ -15,6 +25,13 @@ from taut.analysis.framework.pydantic import (
     PydanticValidatorFact,
 )
 from taut.analysis.framework.sqlalchemy import (
+    SQLALCHEMY_MAPPED_COLUMNS,
+    SQLALCHEMY_MODELS,
+    SQLALCHEMY_QUERIES,
+    SQLALCHEMY_RAW_SQL,
+    SQLALCHEMY_RELATIONSHIPS,
+    SQLALCHEMY_SESSIONS,
+    SQLALCHEMY_TRANSACTIONS,
     SQLAlchemyMappedColumnFact,
     SQLAlchemyModelFact,
     SQLAlchemyProvider,
@@ -30,9 +47,27 @@ from taut.analysis.providers import (
     FactProviderV1,
     ProviderDependency,
 )
-from taut.policy.packs import RulePackV1
+from taut.policy.packs import BUILTIN_BACKEND_PROVIDER_IDS, RulePackV1, builtin_backend_providers
 
 __all__ = [
+    "BUILTIN_BACKEND_PROVIDER_IDS",
+    "FASTAPI_DEPENDENCIES",
+    "FASTAPI_ENDPOINTS",
+    "FASTAPI_RESPONSE_MODELS",
+    "FASTAPI_ROUTERS",
+    "PYDANTIC_CONFIGS",
+    "PYDANTIC_FIELDS",
+    "PYDANTIC_MODELS",
+    "PYDANTIC_OPERATIONS",
+    "PYDANTIC_SERIALIZERS",
+    "PYDANTIC_VALIDATORS",
+    "SQLALCHEMY_MAPPED_COLUMNS",
+    "SQLALCHEMY_MODELS",
+    "SQLALCHEMY_QUERIES",
+    "SQLALCHEMY_RAW_SQL",
+    "SQLALCHEMY_RELATIONSHIPS",
+    "SQLALCHEMY_SESSIONS",
+    "SQLALCHEMY_TRANSACTIONS",
     "CapabilityPayload",
     "CapabilitySpec",
     "FactProviderV1",
@@ -58,4 +93,5 @@ __all__ = [
     "SQLAlchemyRelationshipFact",
     "SQLAlchemySessionFact",
     "SQLAlchemyTransactionFact",
+    "builtin_backend_providers",
 ]

@@ -6,6 +6,7 @@ from importlib.metadata import entry_points, version
 from typing import cast
 
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
+from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvider
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
 from taut.domain.frozen import FrozenMap
@@ -15,6 +16,12 @@ from taut.policy.rules import builtin_rule_registry
 
 BACKEND_PACK_ID = "taut.backend"
 PYTHON_CORE_PROVIDER_ID = "taut.python-core"
+BUILTIN_BACKEND_PROVIDER_IDS = (
+    PYTHON_CORE_PROVIDER_ID,
+    FASTAPI_PROVIDER_ID,
+    PYDANTIC_PROVIDER_ID,
+    SQLALCHEMY_PROVIDER_ID,
+)
 SYNTAX_CAPABILITY = "taut.syntax@1"
 BINDING_CAPABILITY = "taut.bindings@1"
 IMPORT_CAPABILITY = "taut.imports@1"
@@ -111,6 +118,8 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
         return FastAPIProvider()
     if provider_id == SQLALCHEMY_PROVIDER_ID:
         return SQLAlchemyProvider()
+    if provider_id == PYDANTIC_PROVIDER_ID:
+        return PydanticProvider()
     matches = tuple(
         point for point in entry_points(group="taut.fact_providers.v1") if point.name == provider_id
     )
@@ -120,3 +129,8 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
     if provider.id != provider_id:
         raise ValueError(f"invalid fact provider entry point: {provider_id}")
     return cast(FactProviderV1, provider)
+
+
+def builtin_backend_providers() -> tuple[FactProviderV1, ...]:
+    """Return the built-in backend providers in stable dependency order."""
+    return tuple(load_fact_provider(provider_id) for provider_id in BUILTIN_BACKEND_PROVIDER_IDS)
