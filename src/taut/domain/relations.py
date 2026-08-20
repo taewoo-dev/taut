@@ -89,3 +89,17 @@ class ProjectRelations:
         known_bindings = set(binding_ids)
         if any(edge.binding_id not in known_bindings for edge in self.use_edges if edge.binding_id):
             raise ValueError("use edges may only reference known bindings")
+        binding_by_id = {binding.id: binding for binding in self.bindings}
+        if any(
+            edge.binding_id is not None
+            and binding_by_id[edge.binding_id].module_id != edge.module_id
+            for edge in self.use_edges
+        ):
+            raise ValueError("use edges may only reference bindings in the same module")
+        if any(
+            edge.module_id != binding.module_id
+            for edge in self.use_edges
+            for binding in self.bindings
+            if edge.binding_id == binding.id
+        ):
+            raise ValueError("use edge module must match binding module")
