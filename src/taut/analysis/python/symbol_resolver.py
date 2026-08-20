@@ -72,11 +72,7 @@ class PythonSymbolResolver:
         self._written_names: dict[ast.AST, str] = {}
         self._resolutions: dict[ast.AST, SymbolRef] = {}
 
-    def _prime_statements(
-        self,
-        statements: list[ast.stmt],
-        scope: SymbolId | None,
-    ) -> None:
+    def _prime_statements(self, statements: list[ast.stmt], scope: SymbolId | None) -> None:
         for statement in statements:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 symbol = self._child_symbol(scope, statement.name)
@@ -85,22 +81,20 @@ class PythonSymbolResolver:
                 self._prime_statements(statement.body, symbol)
             elif isinstance(statement, ast.Import):
                 for alias in statement.names:
-                    local_name = alias.asname or alias.name.split(".")[0]
-                    target = alias.name if alias.asname else alias.name.split(".")[0]
-                    self.bindings[scope][local_name] = SymbolId(target)
+                    self.bindings[scope][alias.asname or alias.name.split(".")[0]] = SymbolId(
+                        alias.name if alias.asname else alias.name.split(".")[0]
+                    )
             elif isinstance(statement, ast.ImportFrom):
                 base = self._absolute_import_base(statement.module, statement.level)
                 for alias in statement.names:
-                    if alias.name == "*":
-                        continue
-                    local_name = alias.asname or alias.name
-                    target = f"{base}.{alias.name}" if base else alias.name
-                    self.bindings[scope][local_name] = SymbolId(target)
+                    if alias.name != "*":
+                        self.bindings[scope][alias.asname or alias.name] = SymbolId(
+                            f"{base}.{alias.name}" if base else alias.name
+                        )
             else:
                 self._prime_nested_nodes(statement, scope)
 
     def _prime_nested_nodes(self, node: ast.AST, scope: SymbolId | None) -> None:
-        """Find definitions hidden inside control-flow blocks in the same scope."""
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.stmt):
                 self._prime_statements([child], scope)
@@ -108,51 +102,35 @@ class PythonSymbolResolver:
                 self._prime_nested_nodes(child, scope)
 
     def _child_symbol(self, scope: SymbolId | None, name: str) -> SymbolId:
-        prefix = scope.value if scope else self.source.module_id.value
-        return SymbolId(f"{prefix}.{name}")
-
-    def _provenance(self, node: ast.AST) -> Provenance:
-        cached = self._provenances.get(node)
-        if cached is not None:
-            return cached
-        provenance = Provenance(
-            provider="python-ast",
-            provider_version="1",
-            source_hash=self.source.content_hash,
-            location=self._location(node),
-        )
-        self._provenances[node] = provenance
-        return provenance
+        return SymbolId(f"{scope.value if scope else self.source.module_id.value}.{name}")
 
     def _location(self, node: ast.AST) -> SourceRange:
-        cached = self._locations.get(node)
-        if cached is not None:
-            return cached
-        location = node_range(self.source, node)
-        self._locations[node] = location
-        return location
+        if node not in self._locations:
+            self._locations[node] = node_range(self.source, node)
+        return self._locations[node]
+
+    def _provenance(self, node: ast.AST) -> Provenance:
+        if node not in self._provenances:
+            self._provenances[node] = Provenance(
+                "python-ast", "1", self.source.content_hash, self._location(node)
+            )
+        return self._provenances[node]
 
     def _written_name(self, node: ast.AST) -> str:
-        cached = self._written_names.get(node)
-        if cached is not None:
-            return cached
-        value = written_name(node)
-        self._written_names[node] = value
-        return value
+        if node not in self._written_names:
+            self._written_names[node] = written_name(node)
+        return self._written_names[node]
 
     def _absolute_import_base(self, module: str | None, level: int) -> str:
         if level == 0:
             return module or ""
-        package_parts = self.source.module_id.value.split(".")
+        parts = self.source.module_id.value.split(".")
         if not self.source.is_package:
-            package_parts = package_parts[:-1]
-        up = level - 1
-        if up > len(package_parts):
-            return module or ""
-        base_parts = package_parts[: len(package_parts) - up]
+            parts = parts[:-1]
+        parts = parts[: max(0, len(parts) - level + 1)]
         if module:
-            base_parts.extend(module.split("."))
-        return ".".join(base_parts)
+            parts.extend(module.split("."))
+        return ".".join(parts)
 
     def _scope_chain(self) -> list[SymbolId | None]:
         result: list[SymbolId | None] = []
@@ -160,57 +138,59 @@ class PythonSymbolResolver:
         while True:
             result.append(scope)
             if scope is None:
-                break
+                return result
             scope = self.scopes[scope].parent
-        return result
 
     def _lookup(self, name: str, *, type_only: bool = False) -> SymbolId | None:
         table = self.types if type_only else self.bindings
         for scope in self._scope_chain():
-            value = table[scope].get(name)
-            if value is not None:
+            if (value := table[scope].get(name)) is not None:
                 return value
         return None
 
     def _resolve(self, node: ast.AST) -> SymbolRef:
-        cached = self._resolutions.get(node)
-        if cached is not None:
-            return cached
-        resolved = self._resolve_uncached(node)
-        self._resolutions[node] = resolved
-        return resolved
+        if node not in self._resolutions:
+            self._resolutions[node] = self._resolve_uncached(node)
+        return self._resolutions[node]
 
     def _resolve_uncached(self, node: ast.AST) -> SymbolRef:
-        written = self._written_name(node)
+        name = self._written_name(node)
         provenance = self._provenance(node)
         if isinstance(node, ast.Name):
-            symbol = self._lookup(node.id)
-            if symbol is None and node.id in _BUILTINS:
-                symbol = SymbolId(f"builtins.{node.id}")
-            if symbol is not None:
-                return SymbolRef(written, ResolutionState.RESOLVED, symbol, (), provenance)
-            return SymbolRef(written, ResolutionState.UNRESOLVED, None, (), provenance)
+            symbol = self._lookup(node.id) or (
+                SymbolId(f"builtins.{node.id}") if node.id in _BUILTINS else None
+            )
+            state = ResolutionState.RESOLVED if symbol else ResolutionState.UNRESOLVED
+            return SymbolRef(name, state, symbol, (), provenance)
         if isinstance(node, ast.Attribute):
             if isinstance(node.value, ast.Name):
                 typed = self._lookup(node.value.id, type_only=True)
                 if typed is not None:
-                    symbol = SymbolId(f"{typed.value}.{node.attr}")
-                    return SymbolRef(written, ResolutionState.RESOLVED, symbol, (), provenance)
+                    return SymbolRef(
+                        name,
+                        ResolutionState.RESOLVED,
+                        SymbolId(f"{typed.value}.{node.attr}"),
+                        (),
+                        provenance,
+                    )
             base = self._resolve(node.value)
-            if base.state is ResolutionState.RESOLVED and base.symbol is not None:
-                symbol = SymbolId(f"{base.symbol.value}.{node.attr}")
-                return SymbolRef(written, ResolutionState.RESOLVED, symbol, (), provenance)
-            return SymbolRef(written, base.state, None, base.candidates, provenance)
+            if base.state is ResolutionState.RESOLVED and base.symbol:
+                return SymbolRef(
+                    name,
+                    ResolutionState.RESOLVED,
+                    SymbolId(f"{base.symbol.value}.{node.attr}"),
+                    (),
+                    provenance,
+                )
+            return SymbolRef(name, base.state, None, base.candidates, provenance)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "getattr"
         ):
-            return SymbolRef(written, ResolutionState.DYNAMIC, None, (), provenance)
-        return SymbolRef(written, ResolutionState.DYNAMIC, None, (), provenance)
+            return SymbolRef(name, ResolutionState.DYNAMIC, None, (), provenance)
+        return SymbolRef(name, ResolutionState.DYNAMIC, None, (), provenance)
 
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None:
-        if node is None:
-            return None
-        ref = self._resolve(node)
-        return ref.symbol if ref.state is ResolutionState.RESOLVED else None
+        ref = self._resolve(node) if node is not None else None
+        return ref.symbol if ref and ref.state is ResolutionState.RESOLVED else None

@@ -145,6 +145,7 @@ def _source_location(location: SourceRange) -> dict[str, object]:
 def _resolution_coverage(value: ResolutionCoverage) -> dict[str, int]:
     return {
         "resolved": value.resolved,
+        "conditional": value.conditional,
         "ambiguous": value.ambiguous,
         "unresolved": value.unresolved,
         "dynamic": value.dynamic,

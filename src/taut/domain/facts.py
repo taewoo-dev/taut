@@ -44,6 +44,7 @@ class CompletenessState(StrEnum):
 
 class ResolutionState(StrEnum):
     RESOLVED = "resolved"
+    CONDITIONAL = "conditional"
     UNRESOLVED = "unresolved"
     AMBIGUOUS = "ambiguous"
     DYNAMIC = "dynamic"
@@ -118,8 +119,13 @@ class SymbolRef:
             raise ValueError("non-resolved symbol cannot have a selected symbol")
         if self.state is ResolutionState.AMBIGUOUS and len(self.candidates) < 2:
             raise ValueError("ambiguous symbol must have at least two candidates")
-        if self.state is not ResolutionState.AMBIGUOUS and self.candidates:
-            raise ValueError("only ambiguous symbols can have candidates")
+        if self.state is ResolutionState.CONDITIONAL and not self.candidates:
+            raise ValueError("conditional symbol must have at least one candidate")
+        if (
+            self.state not in (ResolutionState.AMBIGUOUS, ResolutionState.CONDITIONAL)
+            and self.candidates
+        ):
+            raise ValueError("only ambiguous or conditional symbols can have candidates")
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from taut.domain.facts import CompletenessState, ModuleFacts, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import SnapshotId
 from taut.domain.issues import EngineIssue
+from taut.domain.relations import ModuleRelations
 from taut.domain.snapshot import (
     AnalysisCoverage,
     AnalysisInputDigest,
@@ -26,15 +27,17 @@ class ProjectAnalyzer:
         if workers < 1:
             raise ValueError("analysis workers must be positive")
         modules: list[ModuleFacts] = []
+        module_relations: list[ModuleRelations] = []
         issues: list[EngineIssue] = []
         results = self._adapter.analyze_modules(request.sources, request.resolver, workers)
         for result in results:
             modules.append(result.facts)
+            module_relations.append(result.relations)
             issues.extend(result.issues)
 
         module_map = FrozenMap((facts.module.id, facts) for facts in modules)
         project = build_project_index(modules)
-        relations = build_project_relations(module_map, project)
+        relations = build_project_relations(module_map, project, tuple(module_relations))
         states = tuple(facts.completeness.state for facts in modules)
         calls = tuple(call for facts in modules for call in facts.calls)
         references = tuple(reference for facts in modules for reference in facts.references)
@@ -64,6 +67,7 @@ class ProjectAnalyzer:
 def _resolution_coverage(states: tuple[ResolutionState, ...]) -> ResolutionCoverage:
     return ResolutionCoverage(
         resolved=states.count(ResolutionState.RESOLVED),
+        conditional=states.count(ResolutionState.CONDITIONAL),
         ambiguous=states.count(ResolutionState.AMBIGUOUS),
         unresolved=states.count(ResolutionState.UNRESOLVED),
         dynamic=states.count(ResolutionState.DYNAMIC),

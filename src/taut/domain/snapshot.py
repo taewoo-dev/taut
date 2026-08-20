@@ -31,6 +31,7 @@ class UnavailableCapability:
 @dataclass(frozen=True, order=True)
 class ResolutionCoverage:
     resolved: int = 0
+    conditional: int = 0
     ambiguous: int = 0
     unresolved: int = 0
     dynamic: int = 0
@@ -39,8 +40,8 @@ class ResolutionCoverage:
         if any(value < 0 for value in self.values()):
             raise ValueError("resolution coverage counts cannot be negative")
 
-    def values(self) -> tuple[int, int, int, int]:
-        return self.resolved, self.ambiguous, self.unresolved, self.dynamic
+    def values(self) -> tuple[int, int, int, int, int]:
+        return self.resolved, self.conditional, self.ambiguous, self.unresolved, self.dynamic
 
     @property
     def total(self) -> int:

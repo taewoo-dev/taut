@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -9,6 +9,7 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.issues import EngineIssue
 from taut.domain.location import ProjectPath
+from taut.domain.relations import ModuleRelations
 
 
 @dataclass(frozen=True, order=True)
@@ -89,6 +90,7 @@ class AdapterIdentity:
 class ModuleAnalysisResult:
     facts: ModuleFacts
     issues: tuple[EngineIssue, ...]
+    relations: ModuleRelations = field(default_factory=ModuleRelations)
 
 
 class LanguageAdapter(Protocol):

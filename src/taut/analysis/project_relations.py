@@ -10,16 +10,36 @@ from taut.domain.facts import (
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, SymbolId
-from taut.domain.relations import Binding, BindingKind, ProjectRelations, UseEdge, UsePurpose
+from taut.domain.relations import (
+    Binding,
+    BindingKind,
+    ModuleRelations,
+    ProjectRelations,
+    UseEdge,
+    UsePurpose,
+)
 
 
 def build_project_relations(
     modules: FrozenMap[ModuleId, ModuleFacts],
     project: ProjectIndex,
+    module_relations: tuple[ModuleRelations, ...] = (),
 ) -> ProjectRelations:
-    bindings = tuple(
+    derived = tuple(
         sorted(
             (binding for facts in modules.values() for binding in _module_bindings(facts)),
+            key=lambda item: (
+                item.location.path.value,
+                item.location.start_line,
+                item.location.start_column,
+                item.id.value,
+            ),
+        )
+    )
+    supplied = tuple(binding for relations in module_relations for binding in relations.bindings)
+    bindings = tuple(
+        sorted(
+            (*derived, *supplied),
             key=lambda item: (
                 item.location.path.value,
                 item.location.start_line,
@@ -32,7 +52,7 @@ def build_project_relations(
         module_id: tuple(binding for binding in bindings if binding.module_id == module_id)
         for module_id in modules
     }
-    use_edges = tuple(
+    derived_uses = tuple(
         UseEdge(
             module_id=reference.module_id,
             occurrence_id=reference.id,
@@ -44,6 +64,10 @@ def build_project_relations(
         )
         for facts in modules.values()
         for reference in facts.references
+    )
+    supplied_uses = tuple(edge for relations in module_relations for edge in relations.use_edges)
+    use_edges = tuple(
+        sorted((*derived_uses, *supplied_uses), key=lambda item: item.occurrence_id.value)
     )
     return ProjectRelations(bindings, project.import_edges, use_edges)
 

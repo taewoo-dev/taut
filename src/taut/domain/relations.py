@@ -12,6 +12,13 @@ class BindingKind(StrEnum):
     IMPORT = "import"
     DEFINITION = "definition"
     FIELD = "field"
+    PARAMETER = "parameter"
+    ASSIGNMENT = "assignment"
+    LOOP = "loop"
+    WITH_ITEM = "with_item"
+    EXCEPTION = "exception"
+    PATTERN = "pattern"
+    COMPREHENSION = "comprehension"
 
 
 @dataclass(frozen=True, order=True)
@@ -22,7 +29,7 @@ class Binding:
     kind: BindingKind
     lexical_owner: SymbolId | None
     target: SymbolRef
-    defining_fact_id: FactId
+    defining_fact_id: FactId | None
     location: SourceRange
     context: SyntaxContext
 
@@ -52,6 +59,18 @@ class UseEdge:
     location: SourceRange
     context: SyntaxContext
     purpose: UsePurpose
+
+
+@dataclass(frozen=True)
+class ModuleRelations:
+    bindings: tuple[Binding, ...] = ()
+    use_edges: tuple[UseEdge, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.bindings) != len({binding.id for binding in self.bindings}):
+            raise ValueError("module binding ids must be unique")
+        if len(self.use_edges) != len({edge.occurrence_id for edge in self.use_edges}):
+            raise ValueError("module use occurrence ids must be unique")
 
 
 @dataclass(frozen=True)
