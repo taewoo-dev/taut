@@ -120,3 +120,24 @@ def dynamic():
     assert post.confidence is FastAPIConfidence.RESOLVED
     variable = next(item for item in endpoints if item.symbol.value.endswith(".variable_path"))
     assert variable.path is None
+
+
+def test_response_model_resolution_state_is_preserved() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import APIRouter
+router = APIRouter()
+@router.get('/', response_model=UnknownModel)
+def unknown():
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    models = cast(
+        tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
+    )
+    assert len(models) == 1
+    assert models[0].model is None
+    assert models[0].model_ref.state is FastAPIConfidence.UNRESOLVED

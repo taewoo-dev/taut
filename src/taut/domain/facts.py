@@ -159,6 +159,7 @@ class FunctionParameter:
     annotation: ExpressionSummary | None
     has_default: bool
     default_expression: ExpressionSummary | None = None
+    default_location: SourceRange | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():

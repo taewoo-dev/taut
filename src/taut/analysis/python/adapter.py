@@ -75,7 +75,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
         self.enclosing_contexts: list[SymbolRef] = []
         self._syntax = SyntaxContextStack()
-        self._summarizer = ExpressionSummarizer(self._resolve, self._written_name)
+        self._summarizer = ExpressionSummarizer(self._resolve, self._written_name, self._location)
 
     def _syntax_context(self) -> SyntaxContext:
         scope_kind = (

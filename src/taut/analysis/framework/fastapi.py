@@ -6,13 +6,13 @@ from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import (
     CallFact,
     DecoratorFact,
-    ExpressionSummary,
     FunctionFact,
     ResolutionState,
     SymbolRef,
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
+from taut.domain.location import SourceRange
 from taut.domain.provenance import Provenance
 from taut.domain.relations import UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
@@ -47,6 +47,7 @@ class FastAPIEndpointFact:
     function: FunctionFact
     confidence: FastAPIConfidence
     response_model: SymbolId | None
+    response_model_ref: SymbolRef | None
     provenance: Provenance
 
 
@@ -65,7 +66,8 @@ class FastAPIDependencyFact:
 class FastAPIResponseModelFact:
     endpoint: SymbolId
     module_id: ModuleId
-    model: SymbolId
+    model: SymbolId | None
+    model_ref: SymbolRef
     source: str
     confidence: FastAPIConfidence
     provenance: Provenance
@@ -79,15 +81,20 @@ def _provenance(fact: CallFact | DecoratorFact) -> Provenance:
     return fact.provenance
 
 
-def _argument(call: CallFact, name: str) -> ExpressionSummary | None:
-    return next((argument.value for argument in call.arguments if argument.name == name), None)
-
-
 def _path(call: CallFact) -> str | None:
     argument = next((item for item in call.arguments if item.position == 0), None)
     if argument is None or argument.value.literal_kind != "str":
         return None
     return argument.value.literal_value
+
+
+def _contains(outer: SourceRange, inner: SourceRange) -> bool:
+    if outer.path != inner.path:
+        return False
+    return (outer.start_line, outer.start_column) <= (inner.start_line, inner.start_column) and (
+        inner.end_line,
+        inner.end_column,
+    ) <= (outer.end_line, outer.end_column)
 
 
 def _confidence_for_receiver(
@@ -104,7 +111,6 @@ def _confidence_for_receiver(
         for candidate in edge.candidate_binding_ids
         if candidate in binding_by_id
     ]
-    refs.extend(edge.ref for edge in snapshot.relations.use_edges if router in edge.ref.candidates)
     states = {ref.state for ref in refs}
     if method_state is ResolutionState.AMBIGUOUS or ResolutionState.AMBIGUOUS in states:
         return ResolutionState.AMBIGUOUS
@@ -269,12 +275,17 @@ class FastAPIProvider:
                     "head",
                 }:
                     router = SymbolId(router.value.rsplit(".", 1)[0])
-                response = _argument(decorator_as_call(decorator), "response_model")
-                response_symbol = (
-                    response.symbols[0]
-                    if response is not None and len(response.symbols) == 1
-                    else None
+                response_ref = next(
+                    (
+                        edge.ref
+                        for edge in snapshot.relations.use_edges
+                        if edge.location.path == decorator.location.path
+                        and edge.location.start_line == decorator.location.start_line
+                        and edge.context.argument_name == "response_model"
+                    ),
+                    None,
                 )
+                response_symbol = response_ref.symbol if response_ref is not None else None
                 result.append(
                     FastAPIEndpointFact(
                         function.symbol_id,
@@ -288,6 +299,7 @@ class FastAPIProvider:
                             snapshot, receiver_edges, router, method_ref.state
                         ),
                         response_symbol,
+                        response_ref,
                         _provenance(decorator),
                     )
                 )
@@ -313,6 +325,8 @@ class FastAPIProvider:
                         if function.module_id == call.module_id
                         for item in function.parameters
                         if item.default_expression is not None
+                        and item.default_location is not None
+                        and _contains(item.default_location, call.location)
                         and call.ref.symbol in item.default_expression.symbols
                         and item.default_expression.arguments == call.arguments
                     ),
@@ -363,12 +377,13 @@ class FastAPIProvider:
                 item.symbol,
                 item.module_id,
                 item.response_model,
+                item.response_model_ref,
                 "response_model",
-                item.confidence,
+                item.response_model_ref.state,
                 item.provenance,
             )
             for item in endpoints
-            if item.response_model is not None
+            if item.response_model_ref is not None
         )
 
 
