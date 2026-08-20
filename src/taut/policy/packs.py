@@ -6,6 +6,7 @@ from importlib.metadata import entry_points, version
 from typing import cast
 
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
+from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
 from taut.domain.frozen import FrozenMap
 from taut.domain.snapshot import AnalysisSnapshot
@@ -108,6 +109,8 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
         return PythonCoreProvider()
     if provider_id == FASTAPI_PROVIDER_ID:
         return FastAPIProvider()
+    if provider_id == SQLALCHEMY_PROVIDER_ID:
+        return SQLAlchemyProvider()
     matches = tuple(
         point for point in entry_points(group="taut.fact_providers.v1") if point.name == provider_id
     )
