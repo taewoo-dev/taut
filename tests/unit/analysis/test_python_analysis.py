@@ -110,6 +110,20 @@ def test_lambda_and_comprehension_have_stable_synthetic_scopes() -> None:
     }
 
 
+def test_parameters_and_lambda_parameters_are_lexical_bindings() -> None:
+    source = make_source(
+        "app/parameters.py",
+        "def run(value, *, flag=False):\n    return (lambda item: item)(value)\n",
+    )
+    module = analyze(source).modules[ModuleId("app.parameters")]
+
+    run_value = next(
+        reference for reference in module.references if reference.ref.written_name == "value"
+    )
+    assert run_value.ref.symbol == SymbolId("app.parameters.run.value")
+    assert run_value.ref.state is ResolutionState.RESOLVED
+
+
 def test_global_and_nonlocal_route_to_declaring_scope() -> None:
     source = make_source(
         "app/scopes.py",

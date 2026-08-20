@@ -13,6 +13,7 @@ from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
 )
 from taut.analysis.python.fact_order import fact_sort_key
+from taut.analysis.python.scope_flow import BindingState
 from taut.analysis.python.symbol_resolver import (
     PythonSymbolResolver,
 )
@@ -267,16 +268,15 @@ class PythonFactExtractor(PythonControlFlowVisitor):
         with self._syntax.occurrence(position=SyntaxPosition.DEFAULT):
             for default in defaults:
                 self.visit(default)
-        arguments = (
-            *node.args.posonlyargs,
-            *node.args.args,
-            *node.args.kwonlyargs,
-        )
+        arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
         if node.args.vararg is not None:
             arguments += (node.args.vararg,)
         if node.args.kwarg is not None:
             arguments += (node.args.kwarg,)
         for argument in arguments:
+            parameter_symbol = self._child_symbol(symbol, argument.arg)
+            self.bindings[symbol][argument.arg] = parameter_symbol
+            self.binding_states[symbol][argument.arg] = BindingState(frozenset({parameter_symbol}))
             annotation = self._annotation_symbol(argument.annotation)
             if annotation is not None:
                 self.types[symbol][argument.arg] = annotation

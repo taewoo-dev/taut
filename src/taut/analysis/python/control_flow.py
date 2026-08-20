@@ -16,6 +16,13 @@ class PythonControlFlowVisitor(PythonSymbolResolver, ast.NodeVisitor):
             self.visit(default)
         previous = self.current_scope
         self.current_scope = self.node_scopes[node]
+        arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        if node.args.vararg is not None:
+            arguments += (node.args.vararg,)
+        if node.args.kwarg is not None:
+            arguments += (node.args.kwarg,)
+        for argument in arguments:
+            self._declare(argument.arg, self._child_symbol(self.current_scope, argument.arg))
         self.visit(node.body)
         self.current_scope = previous
 
