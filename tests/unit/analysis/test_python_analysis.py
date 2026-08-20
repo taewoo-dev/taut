@@ -39,6 +39,79 @@ def run() -> None:
     assert value_ref.ref.state is ResolutionState.UNRESOLVED
 
 
+def test_module_and_class_bodies_resolve_bindings_in_source_order() -> None:
+    source = make_source(
+        "app/order.py",
+        """
+before_module = service
+from provider import service
+
+class Handler:
+    before_class = dependency
+    dependency = service
+""".strip(),
+    )
+
+    references = analyze(source).modules[ModuleId("app.order")].references
+    service_refs = [item for item in references if item.ref.written_name == "service"]
+    dependency_ref = next(item for item in references if item.ref.written_name == "dependency")
+
+    assert service_refs[0].ref.state is ResolutionState.UNRESOLVED
+    assert service_refs[1].ref.symbol == SymbolId("provider.service")
+    assert dependency_ref.ref.state is ResolutionState.UNRESOLVED
+
+
+def test_deferred_function_lookup_sees_later_module_binding() -> None:
+    source = make_source(
+        "app/deferred.py",
+        "def run():\n    return service()\n\nfrom provider import service",
+    )
+
+    calls = analyze(source).modules[ModuleId("app.deferred")].calls
+
+    assert calls[0].ref.symbol == SymbolId("provider.service")
+
+
+def test_method_lookup_skips_class_namespace() -> None:
+    source = make_source(
+        "app/method.py",
+        """
+from provider import service
+
+class Handler:
+    service = local_service
+    def run(self):
+        return service()
+""".strip(),
+    )
+
+    calls = analyze(source).modules[ModuleId("app.method")].calls
+
+    assert calls[0].ref.symbol == SymbolId("provider.service")
+
+
+def test_lambda_and_comprehension_have_stable_synthetic_scopes() -> None:
+    source = make_source(
+        "app/synthetic.py",
+        "transform = lambda item: item\nvalues = [item for item in source]",
+    )
+
+    first = analyze(source).modules[ModuleId("app.synthetic")]
+    second = analyze(source).modules[ModuleId("app.synthetic")]
+    item_scopes = {
+        item.enclosing_symbol
+        for item in first.references
+        if item.ref.written_name == "item"
+    }
+
+    assert first == second
+    assert all(scope is not None for scope in item_scopes)
+    assert {scope.value.rsplit(".", 1)[1].rsplit("_", 2)[0] for scope in item_scopes if scope} == {
+        "__lambda",
+        "__comprehension",
+    }
+
+
 def test_global_and_nonlocal_route_to_declaring_scope() -> None:
     source = make_source(
         "app/scopes.py",

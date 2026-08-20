@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from taut.analysis.contracts import SourceInput
@@ -58,13 +59,14 @@ def written_name(node: ast.AST) -> str:
 class _Scope:
     symbol: SymbolId | None
     parent: SymbolId | None
+    kind: str
 
 
 class PythonSymbolResolver:
     def __init__(self, source: SourceInput) -> None:
         self.source = source
         self.current_scope: SymbolId | None = None
-        self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None)}
+        self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None, "module")}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.future_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
@@ -76,22 +78,42 @@ class PythonSymbolResolver:
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
         self._resolutions: dict[ast.AST, SymbolRef] = {}
+        self.node_scopes: dict[ast.AST, SymbolId] = {}
+        self.variable_symbols: set[SymbolId] = set()
+        self.context_manager_providers: dict[SymbolId, SymbolId] = {}
 
     def _prime_statements(self, statements: list[ast.stmt], scope: SymbolId | None) -> None:
+        """Plan lexical scopes without making executable bindings visible early."""
         for statement in statements:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 symbol = self._child_symbol(scope, statement.name)
-                self.future_bindings[scope][statement.name] = symbol
-                if scope is not None:
-                    self.bindings[scope][statement.name] = symbol
-                self.scopes[symbol] = _Scope(symbol, scope)
+                self.node_scopes[statement] = symbol
+                self.scopes[symbol] = _Scope(
+                    symbol,
+                    scope,
+                    "class" if isinstance(statement, ast.ClassDef) else "function",
+                )
+                if scope is None:
+                    self.future_bindings[scope][statement.name] = symbol
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    self.local_names[symbol].update(self._assigned_names(statement.body))
-                    for nested in ast.walk(statement):
-                        if isinstance(nested, ast.Global):
-                            self.global_names[symbol].update(nested.names)
-                        elif isinstance(nested, ast.Nonlocal):
-                            self.nonlocal_names[symbol].update(nested.names)
+                    outer_expressions: list[ast.AST] = [
+                        *statement.decorator_list,
+                        *statement.args.defaults,
+                        *(item for item in statement.args.kw_defaults if item),
+                        *(
+                            argument.annotation
+                            for argument in (
+                                *statement.args.posonlyargs,
+                                *statement.args.args,
+                                *statement.args.kwonlyargs,
+                            )
+                            if argument.annotation is not None
+                        ),
+                    ]
+                    if statement.returns is not None:
+                        outer_expressions.append(statement.returns)
+                    self._prime_scope_nodes(outer_expressions, scope)
+                    self._plan_function_names(statement, symbol)
                     self.local_names[symbol].update(
                         argument.arg
                         for argument in (
@@ -104,38 +126,150 @@ class PythonSymbolResolver:
                         self.local_names[symbol].add(statement.args.vararg.arg)
                     if statement.args.kwarg is not None:
                         self.local_names[symbol].add(statement.args.kwarg.arg)
-                self._prime_statements(statement.body, symbol)
+                else:
+                    self._prime_scope_nodes([*statement.decorator_list, *statement.bases], scope)
+                self._prime_scope_nodes(statement.body, symbol)
             elif isinstance(statement, ast.Import):
-                for alias in statement.names:
-                    self.future_bindings[scope][alias.asname or alias.name.split(".")[0]] = (
-                        SymbolId(alias.name if alias.asname else alias.name.split(".")[0])
-                    )
-            elif isinstance(statement, ast.ImportFrom):
-                base = self._absolute_import_base(statement.module, statement.level)
-                for alias in statement.names:
-                    if alias.name != "*":
-                        self.future_bindings[scope][alias.asname or alias.name] = SymbolId(
-                            f"{base}.{alias.name}" if base else alias.name
+                if scope is None:
+                    for alias in statement.names:
+                        self.future_bindings[scope][alias.asname or alias.name.split(".")[0]] = (
+                            SymbolId(alias.name if alias.asname else alias.name.split(".")[0])
                         )
+            elif isinstance(statement, ast.ImportFrom):
+                if scope is None:
+                    base = self._absolute_import_base(statement.module, statement.level)
+                    for alias in statement.names:
+                        if alias.name != "*":
+                            self.future_bindings[scope][alias.asname or alias.name] = SymbolId(
+                                f"{base}.{alias.name}" if base else alias.name
+                            )
             else:
-                self._prime_nested_nodes(statement, scope)
+                if scope is None:
+                    for name in self._statement_assigned_names(statement):
+                        self.future_bindings[None][name] = self._child_symbol(None, name)
+                self._prime_scope_nodes([statement], scope)
 
-    def _assigned_names(self, statements: list[ast.stmt]) -> set[str]:
+    def _plan_function_names(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, scope: SymbolId
+    ) -> None:
+        globals_: set[str] = set()
+        nonlocals: set[str] = set()
+        for statement in node.body:
+            for child in self._same_scope_nodes(statement):
+                if isinstance(child, ast.Global):
+                    globals_.update(child.names)
+                elif isinstance(child, ast.Nonlocal):
+                    nonlocals.update(child.names)
+        self.global_names[scope].update(globals_)
+        self.nonlocal_names[scope].update(nonlocals)
+        for statement in node.body:
+            self.local_names[scope].update(self._statement_assigned_names(statement))
+        self.local_names[scope].difference_update(globals_ | nonlocals)
+
+    def _same_scope_nodes(self, node: ast.AST) -> list[ast.AST]:
+        result = [node]
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            return result
+        for child in ast.iter_child_nodes(node):
+            result.extend(self._same_scope_nodes(child))
+        return result
+
+    def _statement_assigned_names(self, statement: ast.stmt) -> set[str]:
         names: set[str] = set()
-        for statement in statements:
-            for node in ast.walk(statement):
-                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-                    names.add(node.id)
-                elif isinstance(node, (ast.Global, ast.Nonlocal)):
-                    names.difference_update(node.names)
+        for node in self._same_scope_nodes(statement):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, ast.Import):
+                names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                names.update(
+                    alias.asname or alias.name for alias in node.names if alias.name != "*"
+                )
         return names
 
-    def _prime_nested_nodes(self, node: ast.AST, scope: SymbolId | None) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.stmt):
-                self._prime_statements([child], scope)
-            else:
-                self._prime_nested_nodes(child, scope)
+    def _prime_scope_nodes(self, nodes: Sequence[ast.AST], scope: SymbolId | None) -> None:
+        for node in nodes:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node not in self.node_scopes:
+                    self._prime_statements([node], scope)
+                continue
+            if isinstance(node, ast.Lambda):
+                self._prime_scope_nodes(
+                    [*node.args.defaults, *(item for item in node.args.kw_defaults if item)], scope
+                )
+                symbol = self._synthetic_symbol(scope, "lambda", node)
+                self.node_scopes[node] = symbol
+                self.scopes[symbol] = _Scope(symbol, scope, "function")
+                arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+                self.local_names[symbol].update(argument.arg for argument in arguments)
+                if node.args.vararg:
+                    self.local_names[symbol].add(node.args.vararg.arg)
+                if node.args.kwarg:
+                    self.local_names[symbol].add(node.args.kwarg.arg)
+                self._prime_scope_nodes([node.body], symbol)
+                continue
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                first, *rest = node.generators
+                self._prime_scope_nodes([first.iter], scope)
+                symbol = self._synthetic_symbol(scope, "comprehension", node)
+                self.node_scopes[node] = symbol
+                self.scopes[symbol] = _Scope(symbol, scope, "comprehension")
+                for generator in node.generators:
+                    self.local_names[symbol].update(
+                        child.id
+                        for child in ast.walk(generator.target)
+                        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+                    )
+                scoped_nodes: list[ast.AST] = [first.target, *first.ifs]
+                for generator in rest:
+                    scoped_nodes.extend([generator.iter, generator.target, *generator.ifs])
+                if isinstance(node, ast.DictComp):
+                    scoped_nodes.extend([node.key, node.value])
+                else:
+                    scoped_nodes.append(node.elt)
+                self._prime_scope_nodes(scoped_nodes, symbol)
+                continue
+            self._prime_scope_nodes(list(ast.iter_child_nodes(node)), scope)
+
+    def _synthetic_symbol(self, scope: SymbolId | None, kind: str, node: ast.expr) -> SymbolId:
+        parent = scope.value if scope else self.source.module_id.value
+        return SymbolId(f"{parent}.__{kind}_{node.lineno}_{node.col_offset}")
+
+    def _visit_lambda_scope(
+        self, node: ast.Lambda, visit: Callable[[ast.AST], object]
+    ) -> None:
+        for default in (*node.args.defaults, *(item for item in node.args.kw_defaults if item)):
+            visit(default)
+        previous = self.current_scope
+        self.current_scope = self.node_scopes[node]
+        visit(node.body)
+        self.current_scope = previous
+
+    def _visit_comprehension_scope(
+        self,
+        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+        visit: Callable[[ast.AST], object],
+    ) -> None:
+        first, *rest = node.generators
+        visit(first.iter)
+        previous = self.current_scope
+        self.current_scope = self.node_scopes[node]
+        visit(first.target)
+        for condition in first.ifs:
+            visit(condition)
+        for generator in rest:
+            visit(generator.iter)
+            visit(generator.target)
+            for condition in generator.ifs:
+                visit(condition)
+        if isinstance(node, ast.DictComp):
+            visit(node.key)
+            visit(node.value)
+        else:
+            visit(node.elt)
+        self.current_scope = previous
 
     def _child_symbol(self, scope: SymbolId | None, name: str) -> SymbolId:
         return SymbolId(f"{scope.value if scope else self.source.module_id.value}.{name}")
@@ -175,7 +309,11 @@ class PythonSymbolResolver:
             result.append(scope)
             if scope is None:
                 return result
-            scope = self.scopes[scope].parent
+            parent = self.scopes[scope].parent
+            if self.scopes[scope].kind in {"function", "comprehension"}:
+                while parent is not None and self.scopes[parent].kind == "class":
+                    parent = self.scopes[parent].parent
+            scope = parent
 
     def _lookup(self, name: str, *, type_only: bool = False) -> SymbolId | None:
         table = self.types if type_only else self.bindings
@@ -208,7 +346,25 @@ class PythonSymbolResolver:
         return None
 
     def _declare(self, name: str, symbol: SymbolId) -> None:
-        self.bindings[self.current_scope][name] = symbol
+        self.bindings[self._binding_scope(name)][name] = symbol
+
+    def _declare_assignment(self, name: str) -> None:
+        scope = self._binding_scope(name)
+        symbol = self._child_symbol(scope, name)
+        self.variable_symbols.add(symbol)
+        self.bindings[scope][name] = symbol
+
+    def _binding_scope(self, name: str) -> SymbolId | None:
+        scope = self.current_scope
+        if scope in self.global_names and name in self.global_names[scope]:
+            scope = None
+        elif scope in self.nonlocal_names and name in self.nonlocal_names[scope]:
+            scope = self.scopes[scope].parent
+            while scope is not None and (
+                self.scopes[scope].kind == "class" or name not in self.local_names.get(scope, set())
+            ):
+                scope = self.scopes[scope].parent
+        return scope
 
     def _is_deferred_scope(self) -> bool:
         scope = self.current_scope
@@ -253,6 +409,8 @@ class PythonSymbolResolver:
                     )
             base = self._resolve(node.value)
             if base.state is ResolutionState.RESOLVED and base.symbol:
+                if base.symbol in self.variable_symbols:
+                    return SymbolRef(name, ResolutionState.UNRESOLVED, None, (), provenance)
                 return SymbolRef(
                     name,
                     ResolutionState.RESOLVED,
@@ -272,6 +430,14 @@ class PythonSymbolResolver:
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None:
         ref = self._resolve(node) if node is not None else None
         return ref.symbol if ref and ref.state is ResolutionState.RESOLVED else None
+
+    def _context_manager_item_type(self, expression: ast.expr) -> SymbolId | None:
+        if not isinstance(expression, ast.Call):
+            return None
+        provider = self._resolve(expression.func)
+        if provider.state is not ResolutionState.RESOLVED or provider.symbol is None:
+            return None
+        return self.context_manager_providers.get(provider.symbol)
 
     def _conditional_ref(self, ref: SymbolRef, conditional: bool) -> SymbolRef:
         if conditional and ref.state is ResolutionState.RESOLVED and ref.symbol is not None:

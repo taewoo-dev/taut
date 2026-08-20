@@ -173,7 +173,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        symbol = self._child_symbol(self.current_scope, node.name)
+        symbol = self.node_scopes[node]
         self._declare(node.name, symbol)
         self.class_symbols.add(symbol)
         self.definitions.append(
@@ -213,7 +213,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         self.current_scope = previous
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
-        symbol = self._child_symbol(self.current_scope, node.name)
+        symbol = self.node_scopes[node]
         self._declare(node.name, symbol)
         self.function_symbols.add(symbol)
         decorator_refs = tuple(self._resolve(decorator) for decorator in node.decorator_list)
@@ -343,7 +343,6 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             ):
                 self.visit(keyword.value)
             position += 1
-
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load):
             ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
@@ -361,6 +360,19 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
                     context=self._syntax_context(),
                 )
             )
+        elif isinstance(node.ctx, (ast.Store, ast.Del)):
+            self._declare_assignment(node.id)
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._visit_lambda_scope(node, self.visit)
+    def _visit_comprehension(
+        self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+    ) -> None:
+        self._visit_comprehension_scope(node, self.visit)
+
+    visit_ListComp = _visit_comprehension
+    visit_SetComp = _visit_comprehension
+    visit_DictComp = _visit_comprehension
+    visit_GeneratorExp = _visit_comprehension
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if isinstance(node.ctx, ast.Load):
@@ -416,14 +428,6 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
                 for statement in node.orelse:
                     self.visit(statement)
         self._mark_conditional_branch((*node.body, *node.orelse))
-
-    def _context_manager_item_type(self, expression: ast.expr) -> SymbolId | None:
-        if not isinstance(expression, ast.Call):
-            return None
-        provider = self._resolve(expression.func)
-        if provider.state is not ResolutionState.RESOLVED or provider.symbol is None:
-            return None
-        return self.context_manager_providers.get(provider.symbol)
 
     def visit_With(self, node: ast.With) -> None:
         self._visit_with(node)
