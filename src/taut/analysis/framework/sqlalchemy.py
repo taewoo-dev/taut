@@ -1,142 +1,63 @@
-"""Resolver-owned SQLAlchemy semantic facts.
-
-The provider deliberately consumes the language-neutral snapshot only.  In particular,
-it never guesses a receiver from a local name or from a source line: call ownership is
-established by the resolver's parent fact and source-range containment.
-"""
+"""Resolver-owned SQLAlchemy semantic facts."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from taut.analysis.providers import CapabilitySpec
-from taut.domain.facts import (
-    CallFact,
-    ClassFact,
-    FieldFact,
-    ResolutionState,
-    SymbolRef,
+from taut.analysis.framework.sqlalchemy_facts import (
+    COLUMN_CALLS,
+    MODEL_BASES,
+    QUERY_NAMES,
+    RELATIONSHIP_CALL,
+    SESSION_FACTORIES,
+    SESSION_TYPES,
+    SQLALCHEMY_MAPPED_COLUMNS,
+    SQLALCHEMY_MODELS,
+    SQLALCHEMY_PROVIDER_ID,
+    SQLALCHEMY_PROVIDER_VERSION,
+    SQLALCHEMY_QUERIES,
+    SQLALCHEMY_RAW_SQL,
+    SQLALCHEMY_RELATIONSHIPS,
+    SQLALCHEMY_SESSIONS,
+    SQLALCHEMY_TRANSACTIONS,
+    TX_NAMES,
+    SQLAlchemyMappedColumnFact,
+    SQLAlchemyModelFact,
+    SQLAlchemyQueryFact,
+    SQLAlchemyRawSQLFact,
+    SQLAlchemyRelationshipFact,
+    SQLAlchemySessionFact,
+    SQLAlchemyTransactionFact,
 )
+from taut.analysis.providers import CapabilitySpec
+from taut.domain.facts import CallFact, ClassFact, FieldFact, ResolutionState, SymbolRef
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import ModuleId, SymbolId
+from taut.domain.ids import SymbolId
 from taut.domain.location import SourceRange
-from taut.domain.provenance import Provenance
 from taut.domain.snapshot import AnalysisSnapshot
 
-SQLALCHEMY_PROVIDER_ID = "taut.sqlalchemy"
-SQLALCHEMY_PROVIDER_VERSION = "1"
-SQLALCHEMY_MODELS = "taut.sqlalchemy.models@1"
-SQLALCHEMY_MAPPED_COLUMNS = "taut.sqlalchemy.mapped_columns@1"
-SQLALCHEMY_RELATIONSHIPS = "taut.sqlalchemy.relationships@1"
-SQLALCHEMY_SESSIONS = "taut.sqlalchemy.sessions@1"
-SQLALCHEMY_TRANSACTIONS = "taut.sqlalchemy.transactions@1"
-SQLALCHEMY_QUERIES = "taut.sqlalchemy.queries@1"
-SQLALCHEMY_RAW_SQL = "taut.sqlalchemy.raw_sql@1"
-
-_MODEL_BASES = frozenset(
-    {
-        "sqlalchemy.orm.DeclarativeBase",
-        "sqlalchemy.orm.declarative_base",
-        "sqlalchemy.ext.declarative.declarative_base",
-    }
-)
-_COLUMN_CALLS = frozenset({"sqlalchemy.orm.mapped_column", "sqlalchemy.Column"})
-_RELATIONSHIP_CALL = "sqlalchemy.orm.relationship"
-_SESSION_TYPES = frozenset({"sqlalchemy.orm.Session", "sqlalchemy.ext.asyncio.AsyncSession"})
-_SESSION_FACTORIES = frozenset(
-    {
-        "sqlalchemy.orm.sessionmaker",
-        "sqlalchemy.orm.scoped_session",
-        "sqlalchemy.ext.asyncio.async_sessionmaker",
-        "sqlalchemy.ext.asyncio.async_scoped_session",
-    }
-)
-_QUERY_NAMES = frozenset({"select", "query", "execute", "scalars"})
-_TX_NAMES = frozenset({"begin", "commit", "rollback"})
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyModelFact:
-    symbol: SymbolId
-    module_id: ModuleId
-    class_fact: ClassFact
-    base_refs: tuple[SymbolRef, ...]
-    model_ref: SymbolRef
-    confidence: ResolutionState
-    provenance: Provenance
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyMappedColumnFact:
-    model: SymbolId
-    module_id: ModuleId
-    field: FieldFact
-    call: CallFact | None
-    ref: SymbolRef
-    confidence: ResolutionState
-    provenance: Provenance
-
-    @property
-    def name(self) -> str:
-        return self.field.name
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyRelationshipFact:
-    model: SymbolId
-    module_id: ModuleId
-    field: FieldFact
-    call: CallFact | None
-    ref: SymbolRef
-    confidence: ResolutionState
-    provenance: Provenance
-
-    @property
-    def name(self) -> str:
-        return self.field.name
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemySessionFact:
-    module_id: ModuleId
-    call: CallFact
-    ref: SymbolRef
-    confidence: ResolutionState
-    kind: str
-    is_async: bool
-    provenance: Provenance
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyTransactionFact:
-    module_id: ModuleId
-    call: CallFact
-    ref: SymbolRef
-    confidence: ResolutionState
-    operation: str
-    is_async: bool
-    provenance: Provenance
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyQueryFact:
-    module_id: ModuleId
-    call: CallFact
-    ref: SymbolRef
-    confidence: ResolutionState
-    operation: str
-    is_async: bool
-    provenance: Provenance
-
-
-@dataclass(frozen=True, order=True)
-class SQLAlchemyRawSQLFact:
-    module_id: ModuleId
-    call: CallFact
-    ref: SymbolRef
-    confidence: ResolutionState
-    operation: str
-    provenance: Provenance
+__all__ = [
+    "SQLALCHEMY_MAPPED_COLUMNS",
+    "SQLALCHEMY_MODELS",
+    "SQLALCHEMY_PROVIDER_ID",
+    "SQLALCHEMY_QUERIES",
+    "SQLALCHEMY_RAW_SQL",
+    "SQLALCHEMY_RELATIONSHIPS",
+    "SQLALCHEMY_SESSIONS",
+    "SQLALCHEMY_TRANSACTIONS",
+    "SQLAlchemyColumnFact",
+    "SQLAlchemyConfidence",
+    "SQLAlchemyMappedColumnFact",
+    "SQLAlchemyModelFact",
+    "SQLAlchemyProvider",
+    "SQLAlchemyQuery",
+    "SQLAlchemyQueryFact",
+    "SQLAlchemyRawSQL",
+    "SQLAlchemyRawSQLFact",
+    "SQLAlchemyRelationshipFact",
+    "SQLAlchemySession",
+    "SQLAlchemySessionFact",
+    "SQLAlchemyTransaction",
+    "SQLAlchemyTransactionFact",
+]
 
 
 def _contains(outer: SourceRange, inner: SourceRange) -> bool:
@@ -148,12 +69,8 @@ def _contains(outer: SourceRange, inner: SourceRange) -> bool:
     ) <= (outer.end_line, outer.end_column)
 
 
-def _state(ref: SymbolRef) -> ResolutionState:
-    return ref.state
-
-
 def _names(ref: SymbolRef) -> frozenset[str]:
-    values = {ref.symbol.value} if ref.symbol is not None else set()
+    values: set[str] = {ref.symbol.value} if ref.symbol is not None else set()
     values.update(candidate.value for candidate in ref.candidates)
     return frozenset(values)
 
@@ -194,7 +111,7 @@ class SQLAlchemyProvider:
         models = self._models(snapshot, classes, calls)
         model_symbols = {item.symbol for item in models}
         columns, relationships = self._mapped(snapshot, fields, calls, model_symbols)
-        sessions = self._sessions(calls)
+        sessions = self._sessions(fields, calls)
         transactions = self._transactions(calls)
         queries = self._queries(calls)
         raw_sql = self._raw_sql(calls)
@@ -226,12 +143,13 @@ class SQLAlchemyProvider:
                     SymbolId("sqlalchemy.orm.declarative_base"),
                     SymbolId("sqlalchemy.ext.declarative.declarative_base"),
                 }
+                and call.context.parent_fact_id is None
                 and _contains(binding.location, call.location)
                 for call in calls
             )
             if binding.target.symbol is not None
         }
-        direct_bases = {SymbolId(value) for value in _MODEL_BASES} | declarative_bases
+        direct_bases = {SymbolId(value) for value in MODEL_BASES} | declarative_bases
         result: list[SQLAlchemyModelFact] = []
         known: set[SymbolId] = set(direct_bases)
         pending = list(classes)
@@ -305,8 +223,6 @@ class SQLAlchemyProvider:
         for field in fields:
             if field.owner_symbol not in models:
                 continue
-            # parent_fact_id is the primary join; containment handles adapters that do not
-            # attach a parent to assignment calls while still preventing nested leakage.
             nested = tuple(
                 call
                 for call in calls
@@ -315,9 +231,9 @@ class SQLAlchemyProvider:
                 and (call.context.parent_fact_id == field.id or call.context.parent_fact_id is None)
             )
             for call in nested:
-                if call.ref.symbol in {SymbolId(value) for value in _COLUMN_CALLS} or _names(
+                if call.ref.symbol in {SymbolId(value) for value in COLUMN_CALLS} or _names(
                     call.ref
-                ).intersection(_COLUMN_CALLS):
+                ).intersection(COLUMN_CALLS):
                     columns.append(
                         SQLAlchemyMappedColumnFact(
                             field.owner_symbol,
@@ -325,11 +241,11 @@ class SQLAlchemyProvider:
                             field,
                             call,
                             call.ref,
-                            _state(call.ref),
+                            call.ref.state,
                             call.provenance,
                         )
                     )
-                if call.ref.symbol == SymbolId(_RELATIONSHIP_CALL) or _RELATIONSHIP_CALL in _names(
+                if call.ref.symbol == SymbolId(RELATIONSHIP_CALL) or RELATIONSHIP_CALL in _names(
                     call.ref
                 ):
                     relationships.append(
@@ -339,7 +255,7 @@ class SQLAlchemyProvider:
                             field,
                             call,
                             call.ref,
-                            _state(call.ref),
+                            call.ref.state,
                             call.provenance,
                         )
                     )
@@ -383,49 +299,73 @@ class SQLAlchemyProvider:
         relationships.sort(key=lambda item: (item.module_id, item.field.location))
         return tuple(columns), tuple(relationships)
 
-    def _sessions(self, calls: tuple[CallFact, ...]) -> tuple[SQLAlchemySessionFact, ...]:
-        result = []
+    def _sessions(
+        self, fields: tuple[FieldFact, ...], calls: tuple[CallFact, ...]
+    ) -> tuple[SQLAlchemySessionFact, ...]:
+        result: list[SQLAlchemySessionFact] = []
+        factory_origins: dict[SymbolId, tuple[SymbolRef, bool]] = {}
+        for call in calls:
+            if not _names(call.ref).intersection(SESSION_FACTORIES):
+                continue
+            for field in fields:
+                if (
+                    call.context.parent_fact_id is not None
+                    or field.module_id != call.module_id
+                    or not _contains(field.location, call.location)
+                ):
+                    continue
+                factory_origins[field.symbol_id] = (call.ref, _is_async(call.ref))
         for call in calls:
             names = _names(call.ref)
             kind = next(
                 (
                     name.rsplit(".", 1)[-1]
                     for name in names
-                    if name in _SESSION_TYPES | _SESSION_FACTORIES
+                    if name in SESSION_TYPES | SESSION_FACTORIES
                 ),
                 None,
             )
-            if kind is None:
+            if (
+                _names(call.ref).intersection(SESSION_FACTORIES)
+                and call.context.parent_fact_id is not None
+            ):
                 continue
+            origin = factory_origins.get(call.ref.symbol) if call.ref.symbol is not None else None
+            if kind is None and origin is None:
+                continue
+            if kind is None:
+                kind = "AsyncSession" if origin and origin[1] else "Session"
             result.append(
                 SQLAlchemySessionFact(
                     call.module_id,
                     call,
                     call.ref,
-                    _state(call.ref),
+                    call.ref.state,
                     kind,
                     kind.startswith("Async") or kind.startswith("async"),
                     call.provenance,
+                    origin[0] if origin else None,
+                    call.ref.symbol if origin else None,
                 )
             )
         return tuple(sorted(result, key=lambda item: (item.module_id, item.call.location)))
 
     def _transactions(self, calls: tuple[CallFact, ...]) -> tuple[SQLAlchemyTransactionFact, ...]:
-        result = []
+        result: list[SQLAlchemyTransactionFact] = []
         for call in calls:
-            if not _sqlalchemy_name(call.ref, _TX_NAMES):
+            if not _sqlalchemy_name(call.ref, TX_NAMES):
                 continue
             operation = next(
                 name.rsplit(".", 1)[-1]
                 for name in _names(call.ref)
-                if name.rsplit(".", 1)[-1] in _TX_NAMES
+                if name.rsplit(".", 1)[-1] in TX_NAMES
             )
             result.append(
                 SQLAlchemyTransactionFact(
                     call.module_id,
                     call,
                     call.ref,
-                    _state(call.ref),
+                    call.ref.state,
                     operation,
                     _is_async(call.ref),
                     call.provenance,
@@ -434,21 +374,21 @@ class SQLAlchemyProvider:
         return tuple(sorted(result, key=lambda item: (item.module_id, item.call.location)))
 
     def _queries(self, calls: tuple[CallFact, ...]) -> tuple[SQLAlchemyQueryFact, ...]:
-        result = []
+        result: list[SQLAlchemyQueryFact] = []
         for call in calls:
-            if not _sqlalchemy_name(call.ref, _QUERY_NAMES):
+            if not _sqlalchemy_name(call.ref, QUERY_NAMES):
                 continue
             operation = next(
                 name.rsplit(".", 1)[-1]
                 for name in _names(call.ref)
-                if name.rsplit(".", 1)[-1] in _QUERY_NAMES
+                if name.rsplit(".", 1)[-1] in QUERY_NAMES
             )
             result.append(
                 SQLAlchemyQueryFact(
                     call.module_id,
                     call,
                     call.ref,
-                    _state(call.ref),
+                    call.ref.state,
                     operation,
                     _is_async(call.ref),
                     call.provenance,
@@ -457,7 +397,7 @@ class SQLAlchemyProvider:
         return tuple(sorted(result, key=lambda item: (item.module_id, item.call.location)))
 
     def _raw_sql(self, calls: tuple[CallFact, ...]) -> tuple[SQLAlchemyRawSQLFact, ...]:
-        result = []
+        result: list[SQLAlchemyRawSQLFact] = []
         for call in calls:
             operation: str | None = None
             if _sqlalchemy_name(call.ref, frozenset({"text"})):
@@ -470,16 +410,24 @@ class SQLAlchemyProvider:
                     operation = "execute"
             if operation is None:
                 continue
+            first = next((arg for arg in call.arguments if arg.position == 0), None)
+            argument = first.value if first is not None else None
             result.append(
                 SQLAlchemyRawSQLFact(
-                    call.module_id, call, call.ref, _state(call.ref), operation, call.provenance
+                    call.module_id,
+                    call,
+                    call.ref,
+                    call.ref.state,
+                    operation,
+                    call.provenance,
+                    argument,
+                    bool(argument and argument.literal_kind == "str"),
+                    bool(argument and argument.is_dynamic_string),
                 )
             )
         return tuple(sorted(result, key=lambda item: (item.module_id, item.call.location)))
 
 
-# Short aliases make the provider convenient for integrations while preserving the
-# explicit names used in capability payloads.
 SQLAlchemyConfidence = ResolutionState
 SQLAlchemyColumnFact = SQLAlchemyMappedColumnFact
 SQLAlchemySession = SQLAlchemySessionFact

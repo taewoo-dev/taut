@@ -15,6 +15,7 @@ from taut.analysis.framework.sqlalchemy import (
     SQLAlchemyProvider,
     SQLAlchemyQueryFact,
     SQLAlchemyRawSQLFact,
+    SQLAlchemySessionFact,
     SQLAlchemyTransactionFact,
 )
 from taut.analysis.providers import apply_fact_providers
@@ -91,3 +92,29 @@ def unrelated(): return mapped_column()
     )
     assert len(columns) == 1
     assert columns[0].field.name == "id"
+
+
+def test_nested_declarative_and_factory_wrappers_are_not_sqlalchemy_origins() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/db.py",
+            """from sqlalchemy import text
+from sqlalchemy.orm import declarative_base, sessionmaker
+def wrap(value): return value
+Base = declarative_base()
+Bad = wrap(declarative_base())
+SessionLocal = sessionmaker()
+BadFactory = wrap(sessionmaker())
+good = SessionLocal()
+bad = BadFactory()
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (SQLAlchemyProvider(),))
+    sessions = cast(tuple[SQLAlchemySessionFact, ...], result.capabilities[SQLALCHEMY_SESSIONS])
+    assert len(sessions) == 2
+    produced = [item for item in sessions if getattr(item, "factory_symbol", None) is not None]
+    assert len(produced) == 1
+    factory_symbol = produced[0].factory_symbol
+    assert factory_symbol is not None
+    assert factory_symbol.value == "app.db.SessionLocal"

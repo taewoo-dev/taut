@@ -5,6 +5,16 @@ from taut.analysis.framework.fastapi import (
     FastAPIResponseModelFact,
     FastAPIRouterFact,
 )
+from taut.analysis.framework.sqlalchemy import (
+    SQLAlchemyMappedColumnFact,
+    SQLAlchemyModelFact,
+    SQLAlchemyProvider,
+    SQLAlchemyQueryFact,
+    SQLAlchemyRawSQLFact,
+    SQLAlchemyRelationshipFact,
+    SQLAlchemySessionFact,
+    SQLAlchemyTransactionFact,
+)
 from taut.analysis.providers import (
     CapabilityPayload,
     CapabilitySpec,
@@ -24,4 +34,12 @@ __all__ = [
     "FastAPIRouterFact",
     "ProviderDependency",
     "RulePackV1",
+    "SQLAlchemyMappedColumnFact",
+    "SQLAlchemyModelFact",
+    "SQLAlchemyProvider",
+    "SQLAlchemyQueryFact",
+    "SQLAlchemyRawSQLFact",
+    "SQLAlchemyRelationshipFact",
+    "SQLAlchemySessionFact",
+    "SQLAlchemyTransactionFact",
 ]
