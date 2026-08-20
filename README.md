@@ -27,7 +27,7 @@ default. File length is a repository policy parameter rather than an engine hard
 [tool.taut]
 schema_version = 3
 packs = ["taut.backend"]
-providers = ["taut.python-core"]
+providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]
 strict = true
 source_roots = ["."]
 
@@ -158,6 +158,11 @@ deterministically by dependency then `(id, version)` order. Each capability must
 owner; a provider that fails or returns a payload different from its declaration is isolated and
 reported as unavailable with an actionable reason. Successful capabilities retain provider/version
 provenance in the snapshot and JSON analysis coverage, so integrations can reproduce a decision.
+
+When `taut.backend` is used without an explicit `providers` setting, configuration loads the
+built-in providers in stable order: `taut.python-core`, `taut.fastapi`, `taut.pydantic`, and
+`taut.sqlalchemy`. An explicit `providers` list is authoritative (for example, listing only
+`taut.python-core` intentionally omits framework providers); provider IDs must be unique.
 
 An unregistered call that might have an external effect cannot be proven unsafe, so it is reported
 as a `CAT001` warning. After classifying the call, add it to the project effect catalog for precise

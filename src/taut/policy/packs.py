@@ -10,18 +10,14 @@ from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvi
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
 from taut.domain.frozen import FrozenMap
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS as _BUILTIN_BACKEND_PROVIDER_IDS
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.policy.registry import RuleRegistry
 from taut.policy.rules import builtin_rule_registry
 
 BACKEND_PACK_ID = "taut.backend"
 PYTHON_CORE_PROVIDER_ID = "taut.python-core"
-BUILTIN_BACKEND_PROVIDER_IDS = (
-    PYTHON_CORE_PROVIDER_ID,
-    FASTAPI_PROVIDER_ID,
-    PYDANTIC_PROVIDER_ID,
-    SQLALCHEMY_PROVIDER_ID,
-)
+BUILTIN_BACKEND_PROVIDER_IDS = _BUILTIN_BACKEND_PROVIDER_IDS
 SYNTAX_CAPABILITY = "taut.syntax@1"
 BINDING_CAPABILITY = "taut.bindings@1"
 IMPORT_CAPABILITY = "taut.imports@1"

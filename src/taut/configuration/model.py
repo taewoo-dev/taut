@@ -8,6 +8,7 @@ from taut.configuration.catalog import EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy
 from taut.configuration.manifest import ProjectManifest
 from taut.domain.location import ProjectPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,7 @@ class ProjectConfiguration:
     policy: EffectivePolicy
     schema_version: int = 3
     packs: tuple[str, ...] = ("taut.backend",)
-    providers: tuple[str, ...] = ("taut.python-core",)
+    providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
 
     def __post_init__(self) -> None:
         if not self.include:

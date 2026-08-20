@@ -22,6 +22,7 @@ from taut.domain.evaluations import RuleLevel, RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 from taut.loading.boundary_extension_schema import BOUNDARY_EXTENSION_KEYS
 from taut.loading.builtin_catalog import builtin_catalog_entries
 from taut.loading.code_conventions import load_code_conventions
@@ -92,7 +93,7 @@ def _load_project_configuration(
         raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
 
     packs = _strings(root.get("packs", ["taut.backend"]), "packs")
-    providers = _strings(root.get("providers", ["taut.python-core"]), "providers")
+    providers = _strings(root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)), "providers")
 
     location = ConfigLocation(document.path)
     project = _table(root.get("project", {}), "project")

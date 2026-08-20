@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from taut.domain.location import ConfigPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 from taut.loading.errors import PolicyConfigError
 
 PYPROJECT_CONFIG_PATH = ConfigPath("pyproject.toml")
@@ -144,7 +145,7 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     root: dict[str, object] = {
         "schema_version": section.get("schema_version", 3),
         "packs": section.get("packs", ["taut.backend"]),
-        "providers": section.get("providers", ["taut.python-core"]),
+        "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
     }
 
     project_keys = ("include", "exclude", "source_roots", "default_zone")

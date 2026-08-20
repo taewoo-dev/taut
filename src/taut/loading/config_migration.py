@@ -4,8 +4,11 @@ import re
 from pathlib import Path
 
 from taut.domain.location import ConfigPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 from taut.loading.configuration_document import LEGACY_CONFIG_PATH, PYPROJECT_CONFIG_PATH
 from taut.loading.errors import PolicyConfigError
+
+_DEFAULT_PROVIDERS = ", ".join(f'"{provider_id}"' for provider_id in BUILTIN_BACKEND_PROVIDER_IDS)
 
 _SCHEMA_LINE = re.compile(r"(?m)^schema_version\s*=\s*\d+\s*$")
 _PACKS_LINE = re.compile(r"(?m)^packs\s*=.*$")
@@ -61,7 +64,7 @@ def _migrate_pyproject(text: str) -> str:
     if _PACKS_LINE.search(section) is None:
         additions.append('packs = ["taut.backend"]')
     if _PROVIDERS_LINE.search(section) is None:
-        additions.append('providers = ["taut.python-core"]')
+        additions.append(f"providers = [{_DEFAULT_PROVIDERS}]")
     prefix = text[: match.end()]
     if additions:
         prefix += "\n" + "\n".join(additions)
@@ -84,7 +87,9 @@ def _migrate_standalone(text: str) -> str:
         if packs is None:
             raise PolicyConfigError("cannot insert v3 fact providers")
         migrated = (
-            migrated[: packs.end()] + '\nproviders = ["taut.python-core"]' + migrated[packs.end() :]
+            migrated[: packs.end()]
+            + f"\nproviders = [{_DEFAULT_PROVIDERS}]"
+            + migrated[packs.end() :]
         )
     return migrated
 

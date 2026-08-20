@@ -32,6 +32,17 @@ patterns = ["app/*.py"]
     )
 
 
+def _add_provider_list(root: Path, providers: tuple[str, ...]) -> None:
+    path = root / ".policy" / "policy.toml"
+    values = ", ".join(f'"{item}"' for item in providers)
+    text = path.read_text()
+    path.write_text(
+        text.replace(
+            'packs = ["taut.backend"]\n', f'packs = ["taut.backend"]\nproviders = [{values}]\n'
+        )
+    )
+
+
 def _write_pyproject_project(root: Path, content: str, *, strict: bool) -> None:
     app = root / "app"
     app.mkdir()
@@ -171,7 +182,46 @@ def test_config_validate_and_rule_explanation(
     config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
     assert config_explanation["schema_version"] == 3
     assert config_explanation["packs"] == ["taut.backend"]
-    assert config_explanation["providers"] == ["taut.python-core"]
+    assert config_explanation["providers"] == [
+        "taut.python-core",
+        "taut.fastapi",
+        "taut.pydantic",
+        "taut.sqlalchemy",
+    ]
+
+
+@pytest.mark.integration
+def test_default_backend_loads_all_builtin_providers_with_provenance(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(
+        tmp_path,
+        "from fastapi import APIRouter\nfrom pydantic import BaseModel\n"
+        "class Item(BaseModel): value: int\nrouter = APIRouter()\n",
+    )
+
+    assert main(["check", str(tmp_path), "--format", "json"]) in (0, 1)
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    coverage = cast(dict[str, object], payload["coverage"])
+    analysis = cast(dict[str, object], coverage["analysis"])
+    provenance = cast(list[dict[str, object]], analysis["capability_provenance"])
+    providers = {item["provider"] for item in provenance}
+    unavailable = cast(list[dict[str, object]], analysis["unavailable_capabilities"])
+    assert {"taut.fastapi", "taut.pydantic", "taut.sqlalchemy"} <= providers
+    assert unavailable == []
+
+
+@pytest.mark.integration
+def test_explicit_provider_list_remains_predictable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    _add_provider_list(tmp_path, ("taut.python-core",))
+
+    assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["providers"] == ["taut.python-core"]
 
 
 @pytest.mark.integration
@@ -190,7 +240,10 @@ def test_config_migrate_outputs_v3_without_modifying_source(
 
     assert "schema_version = 3" in migrated
     assert 'packs = ["taut.backend"]' in migrated
-    assert 'providers = ["taut.python-core"]' in migrated
+    assert (
+        'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]'
+        in migrated
+    )
     assert source.read_text() == original
 
 
