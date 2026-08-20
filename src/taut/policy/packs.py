@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from importlib.metadata import entry_points, version
 from typing import cast
 
+from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
 from taut.domain.frozen import FrozenMap
 from taut.domain.snapshot import AnalysisSnapshot
@@ -105,6 +106,8 @@ def load_rule_pack(pack_id: str) -> RulePackV1:
 def load_fact_provider(provider_id: str) -> FactProviderV1:
     if provider_id == PYTHON_CORE_PROVIDER_ID:
         return PythonCoreProvider()
+    if provider_id == FASTAPI_PROVIDER_ID:
+        return FastAPIProvider()
     matches = tuple(
         point for point in entry_points(group="taut.fact_providers.v1") if point.name == provider_id
     )
