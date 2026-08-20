@@ -28,8 +28,11 @@ from app.models import UserResponse
 def load_user():
     return UserResponse()
 
+def other_dep():
+    return None
+
 @api_router.get('/users', response_model=UserResponse)
-def users(limit: int = Depends(load_user)):
+def users(other: int = Depends(other_dep), limit: int = Depends(load_user)):
     return load_user()
 """,
         ),
@@ -55,10 +58,10 @@ def users(limit: int = Depends(load_user)):
     assert endpoints[0].path == "'/users'"
     assert endpoints[0].response_model is not None
     assert endpoints[0].confidence is FastAPIConfidence.RESOLVED
-    assert len(dependencies) == 1
-    assert dependencies[0].parameter == "limit"
-    assert dependencies[0].provider is not None
-    assert dependencies[0].provider.value == "app.api.load_user"
+    assert len(dependencies) == 2
+    dependency = next(item for item in dependencies if item.parameter == "limit")
+    assert dependency.provider is not None
+    assert dependency.provider.value == "app.api.load_user"
     assert len(models) == 1
 
 
@@ -81,8 +84,39 @@ def index():
     result = apply_fact_providers(snapshot, (FastAPIProvider(),))
     endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
     assert len(endpoints) == 1
-    assert endpoints[0].confidence in {
-        FastAPIConfidence.CONDITIONAL,
-        FastAPIConfidence.AMBIGUOUS,
-        FastAPIConfidence.RESOLVED,
-    }
+    assert endpoints[0].confidence is FastAPIConfidence.CONDITIONAL
+
+
+def test_fastapi_app_instance_and_unresolved_dynamic_decorators_are_precise() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import FastAPI
+app = FastAPI()
+@app.post('/users')
+def create():
+    pass
+
+@app.get(route_path)
+def variable_path():
+    pass
+
+@unknown.get('/ignored')
+def unresolved():
+    pass
+
+@make_router().get('/dynamic')
+def dynamic():
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    assert len(endpoints) == 2
+    post = next(item for item in endpoints if item.symbol.value.endswith(".create"))
+    assert post.router.value == "app.api.app"
+    assert post.method == "post"
+    assert post.confidence is FastAPIConfidence.RESOLVED
+    variable = next(item for item in endpoints if item.symbol.value.endswith(".variable_path"))
+    assert variable.path is None

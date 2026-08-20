@@ -103,6 +103,9 @@ class ExpressionSummarizer:
                 argument.arg,
                 self.expression(argument.annotation) if argument.annotation is not None else None,
                 index >= default_start,
+                self.expression(node.args.defaults[index - default_start])
+                if index >= default_start
+                else None,
             )
             for index, argument in enumerate(positional)
         ]
@@ -111,6 +114,7 @@ class ExpressionSummarizer:
                 argument.arg,
                 self.expression(argument.annotation) if argument.annotation is not None else None,
                 default is not None,
+                self.expression(default) if default is not None else None,
             )
             for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
         )
@@ -123,6 +127,7 @@ class ExpressionSummarizer:
                         if argument.annotation is not None
                         else None,
                         False,
+                        None,
                     )
                 )
         return tuple(result)

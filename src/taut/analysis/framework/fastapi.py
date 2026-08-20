@@ -14,6 +14,7 @@ from taut.domain.facts import (
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.provenance import Provenance
+from taut.domain.relations import UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 FastAPIConfidence = ResolutionState
@@ -89,6 +90,34 @@ def _path(call: CallFact) -> str | None:
     return argument.value.literal_value
 
 
+def _confidence_for_receiver(
+    snapshot: AnalysisSnapshot,
+    receiver_edges: tuple[UseEdge, ...],
+    router: SymbolId,
+    method_state: ResolutionState,
+) -> FastAPIConfidence:
+    refs = [edge.ref for edge in receiver_edges]
+    binding_by_id = {binding.id: binding for binding in snapshot.relations.bindings}
+    candidate_bindings = [
+        binding_by_id[candidate]
+        for edge in receiver_edges
+        for candidate in edge.candidate_binding_ids
+        if candidate in binding_by_id
+    ]
+    refs.extend(edge.ref for edge in snapshot.relations.use_edges if router in edge.ref.candidates)
+    states = {ref.state for ref in refs}
+    if method_state is ResolutionState.AMBIGUOUS or ResolutionState.AMBIGUOUS in states:
+        return ResolutionState.AMBIGUOUS
+    targets = {binding.target.symbol for binding in candidate_bindings}
+    if len(targets) > 1:
+        return ResolutionState.AMBIGUOUS
+    if any(binding.context.guard.value == "conditional" for binding in candidate_bindings):
+        return ResolutionState.CONDITIONAL
+    if ResolutionState.CONDITIONAL in states:
+        return ResolutionState.CONDITIONAL
+    return refs[0].state if refs else ResolutionState.RESOLVED
+
+
 class FastAPIProvider:
     """Extract FastAPI structure from the resolver-owned semantic snapshot.
 
@@ -134,6 +163,8 @@ class FastAPIProvider:
                 if call.ref.symbol not in {
                     SymbolId("fastapi.APIRouter"),
                     SymbolId("fastapi.routing.APIRouter"),
+                    SymbolId("fastapi.FastAPI"),
+                    SymbolId("fastapi.applications.FastAPI"),
                 }:
                     continue
                 candidates = [
@@ -171,6 +202,8 @@ class FastAPIProvider:
         for module in snapshot.modules.values():
             for decorator in module.decorators:
                 method_ref = decorator.ref
+                if method_ref.state is ResolutionState.DYNAMIC:
+                    continue
                 written_parts = method_ref.written_name.rsplit(".", 1)
                 method = written_parts[-1]
                 receiver_name = written_parts[0] if len(written_parts) == 2 else ""
@@ -189,7 +222,13 @@ class FastAPIProvider:
                     and edge.ref.written_name == receiver_name
                 )
                 if method_ref.symbol is not None and not (
-                    receiver_symbol in {"fastapi.APIRouter", "fastapi.routing.APIRouter"}
+                    receiver_symbol
+                    in {
+                        "fastapi.APIRouter",
+                        "fastapi.routing.APIRouter",
+                        "fastapi.FastAPI",
+                        "fastapi.applications.FastAPI",
+                    }
                     or (receiver_symbol and SymbolId(receiver_symbol) in router_symbols)
                     or any(
                         candidate in router_symbols
@@ -230,16 +269,6 @@ class FastAPIProvider:
                     "head",
                 }:
                     router = SymbolId(router.value.rsplit(".", 1)[0])
-                receiver_ref = next(
-                    (
-                        edge.ref
-                        for edge in snapshot.relations.use_edges
-                        if edge.location.path == decorator.location.path
-                        and edge.location.start_line == decorator.location.start_line
-                        and edge.ref.written_name == receiver_name
-                    ),
-                    method_ref,
-                )
                 response = _argument(decorator_as_call(decorator), "response_model")
                 response_symbol = (
                     response.symbols[0]
@@ -255,7 +284,9 @@ class FastAPIProvider:
                         _path(decorator_as_call(decorator)),
                         decorator,
                         function,
-                        _confidence(receiver_ref),
+                        _confidence_for_receiver(
+                            snapshot, receiver_edges, router, method_ref.state
+                        ),
                         response_symbol,
                         _provenance(decorator),
                     )
@@ -275,20 +306,23 @@ class FastAPIProvider:
                     SymbolId("fastapi.params.Depends"),
                 }:
                     continue
-                owner = next(
+                match = next(
                     (
-                        function.symbol_id
+                        (function, item)
                         for function in functions.values()
                         if function.module_id == call.module_id
-                        and function.location.start_line == call.location.start_line
+                        for item in function.parameters
+                        if item.default_expression is not None
+                        and call.ref.symbol in item.default_expression.symbols
+                        and item.default_expression.arguments == call.arguments
                     ),
                     None,
                 )
-                if owner is None:
+                if match is None:
                     continue
-                parameter = next(
-                    (item.name for item in functions[owner].parameters if item.has_default), ""
-                )
+                function, parameter_fact = match
+                owner = function.symbol_id
+                parameter = parameter_fact.name
                 provider = next(
                     (
                         argument.value.symbols[0]
