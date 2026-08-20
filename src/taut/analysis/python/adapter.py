@@ -68,25 +68,18 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         self._summarizer = ExpressionSummarizer(self._resolve, self._written_name)
 
     def _syntax_context(self) -> SyntaxContext:
-        if self.current_scope in self.class_symbols:
-            scope_kind = ScopeKind.CLASS
-        elif self.current_scope in self.function_symbols:
-            scope_kind = ScopeKind.FUNCTION
-        else:
-            scope_kind = ScopeKind.MODULE
+        scope_kind = (
+            ScopeKind.CLASS
+            if self.current_scope in self.class_symbols
+            else ScopeKind.FUNCTION
+            if self.current_scope in self.function_symbols
+            else ScopeKind.MODULE
+        )
         return self._syntax.current(
             self.current_scope,
             scope_kind,
             (ExecutionPhase.DEFERRED if self._is_deferred_scope() else ExecutionPhase.MODULE_INIT),
         )
-
-    def _is_deferred_scope(self) -> bool:
-        scope = self.current_scope
-        while scope is not None:
-            if scope in self.function_symbols:
-                return True
-            scope = self.scopes[scope].parent
-        return False
 
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)

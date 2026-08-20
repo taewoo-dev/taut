@@ -210,6 +210,14 @@ class PythonSymbolResolver:
     def _declare(self, name: str, symbol: SymbolId) -> None:
         self.bindings[self.current_scope][name] = symbol
 
+    def _is_deferred_scope(self) -> bool:
+        scope = self.current_scope
+        while scope is not None:
+            if scope in self.local_names:
+                return True
+            scope = self.scopes[scope].parent
+        return False
+
     def _mark_conditional_branch(self, nodes: tuple[ast.stmt, ...]) -> None:
         self.flow_conditional_names.update(
             child.id
