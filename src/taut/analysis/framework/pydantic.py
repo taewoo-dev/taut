@@ -98,10 +98,6 @@ def _refs(
     )
 
 
-def _name(ref: SymbolRef | None) -> str:
-    return ref.symbol.value if ref and ref.symbol else ""
-
-
 def _argument(
     call: CallFact | None, name: str, position: int | None = None
 ) -> ExpressionSummary | None:
@@ -111,6 +107,12 @@ def _argument(
     if item is None and position is not None:
         item = next((arg for arg in call.arguments if arg.position == position), None)
     return item.value if item else None
+
+
+def _matches(ref: SymbolRef, values: frozenset[str]) -> bool:
+    return (ref.symbol is not None and ref.symbol.value in values) or any(
+        candidate.value in values for candidate in ref.candidates
+    )
 
 
 class PydanticProvider:
@@ -242,13 +244,29 @@ class PydanticProvider:
                 ),
                 None,
             )
+            direct = (
+                field.value is not None
+                and field.value.kind == "Call"
+                and (
+                    bool(set(field.value.symbols).intersection(SymbolId(value) for value in _FIELD))
+                    or any(
+                        call.module_id == field.module_id
+                        and _contains(field.location, call.location)
+                        and call.context.parent_fact_id is None
+                        and _matches(call.ref, _FIELD)
+                        for call in calls
+                    )
+                )
+            )
             declaration = next(
                 (
                     call.ref
                     for call in calls
                     if call.module_id == field.module_id
                     and _contains(field.location, call.location)
-                    and (_name(call.ref) in _FIELD or call.ref.written_name == "Field")
+                    and direct
+                    and call.context.parent_fact_id is None
+                    and _matches(call.ref, _FIELD)
                 ),
                 None,
             )
@@ -298,12 +316,31 @@ class PydanticProvider:
         for field in fields:
             if field.owner_symbol not in models or field.name not in {"Config", "model_config"}:
                 continue
+            direct = (
+                field.value is not None
+                and field.value.kind == "Call"
+                and (
+                    bool(
+                        set(field.value.symbols).intersection(SymbolId(value) for value in _CONFIG)
+                    )
+                    or any(
+                        call.module_id == field.module_id
+                        and _contains(field.location, call.location)
+                        and call.context.parent_fact_id is None
+                        and _matches(call.ref, _CONFIG)
+                        for call in calls
+                    )
+                )
+            )
             call = next(
                 (
                     call
                     for call in calls
                     if call.module_id == field.module_id
                     and _contains(field.location, call.location)
+                    and direct
+                    and call.context.parent_fact_id is None
+                    and _matches(call.ref, _CONFIG)
                 ),
                 None,
             )
@@ -350,6 +387,11 @@ class PydanticProvider:
                     config.provenance,
                 ),
             )
+            options = tuple(
+                (field.name, field.value)
+                for field in fields
+                if field.owner_symbol == config.symbol_id and field.value is not None
+            )
             result.append(
                 PydanticConfigFact(
                     config.context.lexical_owner,
@@ -357,7 +399,7 @@ class PydanticProvider:
                     "v1",
                     None,
                     ref,
-                    (),
+                    options,
                     ref.state,
                     config.provenance,
                 )
@@ -372,11 +414,15 @@ class PydanticProvider:
         model_ids = {model.symbol for model in models}
         for module in snapshot.modules.values():
             for dec in module.decorators:
-                if (
-                    dec.ref.symbol is None
-                    or dec.ref.symbol.value not in wanted
-                    or dec.context.lexical_owner not in model_ids
-                ):
+                if dec.context.lexical_owner not in model_ids:
+                    continue
+                decorator_candidates = (
+                    (dec.ref.symbol,) if dec.ref.symbol is not None else dec.ref.candidates
+                )
+                matched = tuple(
+                    candidate for candidate in decorator_candidates if candidate.value in wanted
+                )
+                if not matched:
                     continue
                 names = tuple(
                     str(arg.value.literal_value)
@@ -389,7 +435,7 @@ class PydanticProvider:
                         dec.context.lexical_owner,
                         dec.module_id,
                         dec.decorated_symbol,
-                        dec.ref.symbol.value.rsplit(".", 1)[-1],
+                        matched[0].value.rsplit(".", 1)[-1],
                         dec.ref,
                         names,
                         dec.ref.state,
@@ -404,18 +450,31 @@ class PydanticProvider:
         result: list[PydanticOperationFact] = []
         for call in calls:
             operation = call.ref.written_name.rsplit(".", 1)[-1]
-            if operation not in _OPERATIONS:
-                continue
-            refs = _refs(snapshot, call.module_id, call.location)
-            receiver = next((ref for ref in refs if ref.written_name.startswith("self.")), None)
             model_ref = next(
                 (
-                    ref
-                    for ref in refs
-                    if ref.symbol in models or any(c in models for c in ref.candidates)
+                    SymbolRef(
+                        call.ref.written_name.rsplit(".", 1)[0],
+                        ResolutionState.RESOLVED,
+                        model,
+                        (),
+                        call.ref.provenance,
+                    )
+                    for model in models
+                    if call.ref.symbol is not None
+                    and call.ref.symbol.value.startswith(model.value + ".")
                 ),
                 None,
             )
+            is_constructor = call.ref.symbol in models
+            if operation not in _OPERATIONS and not is_constructor:
+                continue
+            refs = _refs(snapshot, call.module_id, call.location)
+            receiver = next((ref for ref in refs if ref.written_name.startswith("self.")), None)
+            if is_constructor:
+                model_ref = call.ref
+                operation = "construct"
+            if model_ref is None:
+                continue
             confidence = (
                 call.ref.state
                 if call.ref.state is not ResolutionState.RESOLVED
