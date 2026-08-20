@@ -136,6 +136,9 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
+            local_name = alias.asname or alias.name.split(".", 1)[0]
+            target = alias.name if alias.asname else alias.name.split(".", 1)[0]
+            self._declare(local_name, SymbolId(target))
             normalized = f"import:{alias.name}:{alias.asname or ''}"
             self.imports.append(
                 ImportFact(
@@ -156,6 +159,11 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         base = self._absolute_import_base(node.module, node.level)
         for alias in node.names:
+            if alias.name != "*":
+                self._declare(
+                    alias.asname or alias.name,
+                    SymbolId(f"{base}.{alias.name}" if base else alias.name),
+                )
             imported_name = f"{base}.{alias.name}" if base and alias.name != "*" else base
             normalized = f"from:{imported_name}:{alias.asname or ''}"
             self.imports.append(
@@ -176,6 +184,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         symbol = self._child_symbol(self.current_scope, node.name)
+        self._declare(node.name, symbol)
         self.class_symbols.add(symbol)
         self.definitions.append(
             DefinitionFact(
@@ -215,6 +224,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
         symbol = self._child_symbol(self.current_scope, node.name)
+        self._declare(node.name, symbol)
         self.function_symbols.add(symbol)
         decorator_refs = tuple(self._resolve(decorator) for decorator in node.decorator_list)
         self.definitions.append(

@@ -66,6 +66,7 @@ class PythonSymbolResolver:
         self.current_scope: SymbolId | None = None
         self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None)}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
+        self.future_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.local_names: dict[SymbolId, set[str]] = defaultdict(set)
         self.global_names: dict[SymbolId, set[str]] = defaultdict(set)
@@ -79,7 +80,9 @@ class PythonSymbolResolver:
         for statement in statements:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 symbol = self._child_symbol(scope, statement.name)
-                self.bindings[scope][statement.name] = symbol
+                self.future_bindings[scope][statement.name] = symbol
+                if scope is not None:
+                    self.bindings[scope][statement.name] = symbol
                 self.scopes[symbol] = _Scope(symbol, scope)
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     self.local_names[symbol].update(self._assigned_names(statement.body))
@@ -103,14 +106,14 @@ class PythonSymbolResolver:
                 self._prime_statements(statement.body, symbol)
             elif isinstance(statement, ast.Import):
                 for alias in statement.names:
-                    self.bindings[scope][alias.asname or alias.name.split(".")[0]] = SymbolId(
-                        alias.name if alias.asname else alias.name.split(".")[0]
+                    self.future_bindings[scope][alias.asname or alias.name.split(".")[0]] = (
+                        SymbolId(alias.name if alias.asname else alias.name.split(".")[0])
                     )
             elif isinstance(statement, ast.ImportFrom):
                 base = self._absolute_import_base(statement.module, statement.level)
                 for alias in statement.names:
                     if alias.name != "*":
-                        self.bindings[scope][alias.asname or alias.name] = SymbolId(
+                        self.future_bindings[scope][alias.asname or alias.name] = SymbolId(
                             f"{base}.{alias.name}" if base else alias.name
                         )
             else:
@@ -194,7 +197,13 @@ class PythonSymbolResolver:
         for scope in self._scope_chain():
             if (value := table[scope].get(name)) is not None:
                 return value
+            if scope is None and self.current_scope is not None and not type_only:
+                if (value := self.future_bindings[None].get(name)) is not None:
+                    return value
         return None
+
+    def _declare(self, name: str, symbol: SymbolId) -> None:
+        self.bindings[self.current_scope][name] = symbol
 
     def _resolve(self, node: ast.AST) -> SymbolRef:
         if node not in self._resolutions:
