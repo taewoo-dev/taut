@@ -112,7 +112,7 @@ def module_fact_uncertainty(
     calls: bool = True,
     references: bool = True,
 ) -> RuleEvaluation | None:
-    """Propagate incomplete or unresolved facts used by boundary evaluators."""
+    """Propagate module completeness; edge checks use resolver-owned predicates."""
     incomplete = incomplete_module_evaluation(rule_id, target, context, module_id)
     if incomplete is not None:
         return incomplete
@@ -144,15 +144,14 @@ def unresolved_call_evaluation(
     target: RuleTargetRef,
     context: PolicyContext,
     module_id: ModuleId,
-    candidates: tuple[str, ...],
+    candidates: tuple[SymbolId, ...],
 ) -> RuleEvaluation | None:
-    """Return indeterminate when a call that could affect a rule is unresolved."""
+    """Return indeterminate only when resolver candidates identify a relevant symbol."""
     names = frozenset(candidates)
     for call in context.model.calls_in(module_id):
         if call.ref.state is ResolutionState.RESOLVED:
             continue
-        written = call.ref.written_name
-        if written in names:
+        if call.ref.symbol in names or names.intersection(call.ref.candidates):
             return RuleEvaluation(
                 rule_id,
                 target,
@@ -160,6 +159,64 @@ def unresolved_call_evaluation(
                 (),
                 EvaluationReason(
                     "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
+                ),
+            )
+    return None
+
+
+def unresolved_use_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    module_id: ModuleId,
+    candidates: tuple[SymbolId, ...],
+) -> RuleEvaluation | None:
+    """Propagate uncertain use edges only when resolver candidates are relevant."""
+    names = frozenset(candidates)
+    for edge in context.model.uses(module_id):
+        if edge.ref.state is ResolutionState.RESOLVED:
+            continue
+        if edge.ref.symbol in names or names.intersection(edge.ref.candidates):
+            return RuleEvaluation(
+                rule_id,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "uncertain_symbol", "규칙에 필요한 use symbol을 확정하지 못했습니다."
+                ),
+            )
+    return None
+
+
+def unresolved_import_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    module_id: ModuleId,
+    prefixes: tuple[ModuleId, ...],
+) -> RuleEvaluation | None:
+    """Propagate only unresolved imports participating in configured boundaries."""
+    for item in context.model.unresolved_imports():
+        if item.importer != module_id:
+            continue
+        if any(
+            fact.imported_module_name == item.written_name
+            for fact in context.model.module(module_id).imports
+        ):
+            # The import syntax itself is sufficient for prefix-based policies.
+            continue
+        if any(
+            item.written_name == prefix.value or item.written_name.startswith(f"{prefix.value}.")
+            for prefix in prefixes
+        ):
+            return RuleEvaluation(
+                rule_id,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "uncertain_import", "규칙에 필요한 import edge를 확정하지 못했습니다."
                 ),
             )
     return None

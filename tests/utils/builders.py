@@ -130,14 +130,16 @@ def _provider_fact_state(fact: object, state: ResolutionState) -> object:
     return fact
 
 
-def _call_fact_state(fact: CallFact, state: ResolutionState) -> CallFact:
+def _call_fact_state(
+    fact: CallFact, state: ResolutionState, relevant: tuple[SymbolId, ...]
+) -> CallFact:
     if state is ResolutionState.RESOLVED:
         return fact
     candidates: tuple[SymbolId, ...]
     if state is ResolutionState.AMBIGUOUS:
-        candidates = (SymbolId("candidate.one"), SymbolId("candidate.two"))
+        candidates = (relevant or (SymbolId("candidate.one"),)) + (SymbolId("candidate.two"),)
     elif state is ResolutionState.CONDITIONAL:
-        candidates = (SymbolId("candidate.one"),)
+        candidates = relevant or (SymbolId("candidate.one"),)
     else:
         candidates = ()
     return replace(fact, ref=replace(fact.ref, state=state, symbol=None, candidates=candidates))
@@ -207,6 +209,7 @@ def make_context(
     missing_capability: str | None = None,
     incomplete_modules: frozenset[str] = frozenset(),
     fact_state: ResolutionState | None = None,
+    fact_candidates: tuple[SymbolId, ...] = (),
 ) -> PolicyContext:
     snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
     if fact_state is not None:
@@ -217,7 +220,10 @@ def make_context(
                     module_id,
                     replace(
                         module,
-                        calls=tuple(_call_fact_state(call, fact_state) for call in module.calls),
+                        calls=tuple(
+                            _call_fact_state(call, fact_state, fact_candidates)
+                            for call in module.calls
+                        ),
                     ),
                 )
                 for module_id, module in snapshot.modules.items()

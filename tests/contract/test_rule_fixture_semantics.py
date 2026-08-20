@@ -178,6 +178,7 @@ def _run_regular_fixture(
     missing_capability: str | None = None,
     incomplete: bool = False,
     fact_state: ResolutionState | None = None,
+    inject_relevant: bool = True,
 ) -> PolicyRunResult:
     definition = builtin_rule_registry().definitions[RuleId(rule_id)]
     paths = (
@@ -242,6 +243,11 @@ def _run_regular_fixture(
         if incomplete
         else frozenset(),
         fact_state=fact_state,
+        fact_candidates=(
+            tuple(SymbolId(value) for value in GROUP_B_RELEVANT_SYMBOLS.get(rule_id, ()))
+            if inject_relevant
+            else ()
+        ),
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -311,6 +317,28 @@ GROUP_B_RULES = (
     "QUERY001",
     "SERVICE001",
 )
+GROUP_B_RELEVANT_SYMBOLS = {
+    "DEPENDS001": ("fastapi.Depends",),
+    "ENTRY001": ("httpx.AsyncClient",),
+    "SERVICE001": ("sqlalchemy.select",),
+    "QUERY001": ("sqlalchemy.select",),
+    "MODEL001": ("httpx.AsyncClient",),
+}
+GROUP_B_EXPECTED = {
+    rule: {
+        state: (
+            "indeterminate"
+            if rule in GROUP_B_RELEVANT_SYMBOLS
+            and state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS}
+            else "not_applicable"
+            if rule == "DEPENDS001"
+            and state in {ResolutionState.UNRESOLVED, ResolutionState.DYNAMIC}
+            else "pass"
+        )
+        for state in ResolutionState
+    }
+    for rule in GROUP_B_RULES
+}
 PROVIDER_BACKED_GROUP_A_RULES = {
     "API001",
     "API002",
@@ -392,14 +420,27 @@ def test_group_b_evaluators_execute_call_resolution_states(
     result = _run_regular_fixture(rule_id, "compliant", fact_state=state)
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
-    if state is not ResolutionState.RESOLVED:
-        assert all(
-            item.verdict
-            in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE, RuleVerdict.INDETERMINATE}
-            for item in evaluations
-        )
-        uncertain = [item for item in evaluations if item.verdict is RuleVerdict.INDETERMINATE]
-        assert all(item.reason is not None for item in uncertain)
+    expected = GROUP_B_EXPECTED[rule_id][state]
+    assert {item.verdict.value for item in evaluations} == {expected}
+    if expected == "indeterminate":
+        assert {item.reason.code for item in evaluations if item.reason is not None} == {
+            "uncertain_symbol"
+        }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_B_RULES)
+def test_group_b_unrelated_uncertainty_does_not_propagate(rule_id: str) -> None:
+    result = _run_regular_fixture(
+        rule_id,
+        "compliant",
+        fact_state=ResolutionState.CONDITIONAL,
+        inject_relevant=False,
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    expected = "not_applicable" if rule_id == "DEPENDS001" else "pass"
+    assert {item.verdict.value for item in evaluations} == {expected}
 
 
 @pytest.mark.contract

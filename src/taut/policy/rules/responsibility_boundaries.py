@@ -12,6 +12,7 @@ from taut.policy.rules.helpers import (
     build_finding,
     module_fact_uncertainty,
     unresolved_call_evaluation,
+    unresolved_import_evaluation,
 )
 
 SERVICE_RULE_ID = RuleId("BOUNDARY002")
@@ -53,6 +54,11 @@ class _ImportBoundaryRule:
         if uncertainty is not None:
             return uncertainty
         prefixes = getattr(context.policy.boundaries, self.prefix_set_name)
+        uncertainty = unresolved_import_evaluation(
+            self.rule_id, target, context, target.module_id, prefixes
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         seen: set[tuple[str, int, int]] = set()
         for import_fact in context.model.module(target.module_id).imports:
@@ -123,12 +129,21 @@ class AdapterBoundaryRule:
         uncertainty = module_fact_uncertainty(ADAPTER_RULE_ID, target, context, target.module_id)
         if uncertainty is not None:
             return uncertainty
+        uncertainty = unresolved_import_evaluation(
+            ADAPTER_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            boundaries.adapter_forbidden_modules,
+        )
+        if uncertainty is not None:
+            return uncertainty
         uncertainty = unresolved_call_evaluation(
             ADAPTER_RULE_ID,
             target,
             context,
             target.module_id,
-            tuple(item.value for item in boundaries.adapter_forbidden_calls),
+            boundaries.adapter_forbidden_calls,
         )
         if uncertainty is not None:
             return uncertainty

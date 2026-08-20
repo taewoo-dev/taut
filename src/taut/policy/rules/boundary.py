@@ -12,7 +12,7 @@ from taut.domain.evaluations import (
 )
 from taut.domain.facts import AnalysisStage, CallFact, GuardKind, ImportFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding
-from taut.domain.ids import ModuleId, RuleId
+from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
 from taut.policy.rules.helpers import (
@@ -121,7 +121,7 @@ class ForbiddenImportRule:
             target,
             context,
             target.module_id,
-            tuple(call for boundary in boundaries for call in boundary.forbidden_calls),
+            tuple(SymbolId(call) for boundary in boundaries for call in boundary.forbidden_calls),
         )
         if uncertainty is not None:
             return uncertainty

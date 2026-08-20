@@ -21,6 +21,7 @@ from taut.policy.rules.helpers import (
     build_finding,
     module_fact_uncertainty,
     unresolved_call_evaluation,
+    unresolved_use_evaluation,
 )
 
 ENTRY_RULE_ID = RuleId("ENTRY001")
@@ -180,7 +181,7 @@ class _RoleBoundaryRule:
         if uncertainty is not None:
             return uncertainty
         candidates = tuple(
-            str(value)
+            value
             for name in (
                 "database_statement_calls",
                 "transport_exception_calls",
@@ -191,6 +192,11 @@ class _RoleBoundaryRule:
             for value in getattr(context.policy.boundaries, name)
         )
         uncertainty = unresolved_call_evaluation(
+            self.rule_id, target, context, target.module_id, candidates
+        )
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_use_evaluation(
             self.rule_id, target, context, target.module_id, candidates
         )
         if uncertainty is not None:
@@ -374,7 +380,7 @@ class DependencyInjectionBoundaryRule:
             target,
             context,
             target.module_id,
-            tuple(item.value for item in context.policy.boundaries.dependency_injection_calls),
+            context.policy.boundaries.dependency_injection_calls,
         )
         if uncertainty is not None:
             return uncertainty
