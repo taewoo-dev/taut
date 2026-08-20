@@ -96,10 +96,3 @@ class ProjectRelations:
             for edge in self.use_edges
         ):
             raise ValueError("use edges may only reference bindings in the same module")
-        if any(
-            edge.module_id != binding.module_id
-            for edge in self.use_edges
-            for binding in self.bindings
-            if edge.binding_id == binding.id
-        ):
-            raise ValueError("use edge module must match binding module")
