@@ -9,7 +9,12 @@ from tests.utils.builders import analyze, make_source
 
 import taut.plugins as public_plugins
 import taut.semantic as public_semantic
-from taut.analysis.providers import CapabilitySpec, FactProviderV1, apply_fact_providers
+from taut.analysis.providers import (
+    CapabilitySpec,
+    FactProviderV1,
+    ProviderDependency,
+    apply_fact_providers,
+)
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId
@@ -46,6 +51,21 @@ class EntryPoint:
 
     def load(self) -> Callable[[], object]:
         return lambda: self.value
+
+
+@dataclass(frozen=True)
+class OrderedProvider:
+    id: str
+    capability: str
+    requires: tuple[ProviderDependency, ...] = ()
+    version: str = "1"
+    provides: frozenset[CapabilitySpec] = frozenset()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "provides", frozenset({CapabilitySpec(self.capability)}))
+
+    def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]:
+        return FrozenMap({self.capability: (tuple(snapshot.capabilities),)})
 
 
 def test_public_v1_facades_export_stable_contracts() -> None:
@@ -89,6 +109,78 @@ def test_provider_failure_is_explicit_coverage_not_a_crash() -> None:
         "example.broken@1",
         "example.missing@1",
     }
+
+
+def test_provider_dependencies_ordering_provenance_and_actionable_reason() -> None:
+    snapshot = analyze(make_source("app/a.py", "value = 1"))
+    dependent = OrderedProvider(
+        "a-dependent",
+        "example.dependent@1",
+        (ProviderDependency(CapabilitySpec("example.base@1")),),
+    )
+    base = OrderedProvider("z-base", "example.base@1")
+
+    result = apply_fact_providers(snapshot, (dependent, base))
+
+    assert tuple(result.capabilities) == ("example.base@1", "example.dependent@1")
+    assert result.capability_provenance["example.base@1"].provider == "z-base"
+    assert result.coverage.capability_provenance[0][0] == "example.base@1"
+
+    missing = OrderedProvider(
+        "missing", "example.output@1", (ProviderDependency(CapabilitySpec("example.none@1")),)
+    )
+    failed = apply_fact_providers(snapshot, (missing,))
+    reason = failed.coverage.unavailable_capabilities[0].reason
+    assert "requires example.none@1" in reason
+
+
+def test_provider_contract_rejects_invalid_versions_and_duplicate_ownership() -> None:
+    snapshot = analyze(make_source("app/a.py", "value = 1"))
+    assert apply_fact_providers(
+        snapshot, (OrderedProvider("semver", "example.v@1", version="0.2.0"),)
+    )
+    with pytest.raises(ValueError, match="invalid fact provider version"):
+        apply_fact_providers(snapshot, (OrderedProvider("bad", "example.v@1", version="2.x"),))
+    with pytest.raises(ValueError, match="provider ids must be unique"):
+        apply_fact_providers(
+            snapshot,
+            (OrderedProvider("same", "example.a@1"), OrderedProvider("same", "example.b@1")),
+        )
+    with pytest.raises(ValueError, match="more than one provider"):
+        apply_fact_providers(
+            snapshot,
+            (OrderedProvider("one", "example.same@1"), OrderedProvider("two", "example.same@1")),
+        )
+
+
+def test_provider_dependency_cycle_optional_and_major_compatibility() -> None:
+    snapshot = analyze(make_source("app/a.py", "value = 1"))
+    cycle_a = OrderedProvider(
+        "cycle-a", "example.a@1", (ProviderDependency(CapabilitySpec("example.b@1")),)
+    )
+    cycle_b = OrderedProvider(
+        "cycle-b", "example.b@1", (ProviderDependency(CapabilitySpec("example.a@1")),)
+    )
+    result = apply_fact_providers(snapshot, (cycle_a, cycle_b))
+    assert len(result.coverage.unavailable_capabilities) == 2
+    assert all(
+        "cycle or missing capability" in item.reason
+        for item in result.coverage.unavailable_capabilities
+    )
+
+    optional = OrderedProvider(
+        "optional",
+        "example.optional@1",
+        (ProviderDependency(CapabilitySpec("example.none@1"), True),),
+    )
+    assert "example.optional@1" in apply_fact_providers(snapshot, (optional,)).capabilities
+
+    incompatible = OrderedProvider(
+        "incompatible", "example.out@1", (ProviderDependency(CapabilitySpec("example.in@2")),)
+    )
+    supplied = apply_fact_providers(snapshot, (OrderedProvider("input", "example.in@1"),))
+    result = apply_fact_providers(supplied, (incompatible,))
+    assert "requires example.in@2" in result.coverage.unavailable_capabilities[0].reason
 
 
 def test_semantic_model_exposes_cached_project_relations() -> None:

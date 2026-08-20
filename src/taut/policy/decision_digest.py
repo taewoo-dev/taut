@@ -26,8 +26,11 @@ def build_decision_digest(
                 "id": provider.id,
                 "version": provider.version,
                 "capabilities": sorted(spec.id for spec in provider.provides),
+                "requires": sorted(
+                    dependency.capability.id for dependency in getattr(provider, "requires", ())
+                ),
             }
-            for provider in providers
+            for provider in sorted(providers, key=lambda item: (item.id, item.version))
         ],
         "rules": [
             {

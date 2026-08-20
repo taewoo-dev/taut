@@ -151,6 +151,14 @@ the built-in Python provider (`taut.syntax@1`, `taut.bindings@1`, `taut.imports@
 `taut.uses@1`). Third-party integrations can use the public `taut.plugins.v1` and
 `taut.semantic.v1` contracts without importing the concrete AST analyzer.
 
+Fact providers are loaded through the `taut.fact_providers.v1` entry-point group. A provider
+declares a stable `id`, numeric dotted `version`, `provides` capability specifications such as
+`example.types@1`, and optional `requires` entries (`ProviderDependency`). Providers are composed
+deterministically by dependency then `(id, version)` order. Each capability must have exactly one
+owner; a provider that fails or returns a payload different from its declaration is isolated and
+reported as unavailable with an actionable reason. Successful capabilities retain provider/version
+provenance in the snapshot and JSON analysis coverage, so integrations can reproduce a decision.
+
 An unregistered call that might have an external effect cannot be proven unsafe, so it is reported
 as a `CAT001` warning. After classifying the call, add it to the project effect catalog for precise
 enforcement.

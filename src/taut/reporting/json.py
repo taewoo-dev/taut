@@ -96,6 +96,18 @@ def render_json(report: RunReport) -> str:
                     {"name": item.name, "reason": item.reason}
                     for item in report.analysis_coverage.unavailable_capabilities
                 ],
+                "capability_provenance": [
+                    {
+                        "capability": capability,
+                        "provider": provenance.provider,
+                        "provider_version": provenance.provider_version,
+                        "source_hash": provenance.source_hash,
+                        "location": _source_location(provenance.location)
+                        if provenance.location is not None
+                        else None,
+                    }
+                    for capability, provenance in report.analysis_coverage.capability_provenance
+                ],
             },
         },
         "ignores": {

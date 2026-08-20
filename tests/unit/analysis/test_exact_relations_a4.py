@@ -13,11 +13,22 @@ from taut.domain.facts import (
     IncompleteReason,
     ModuleCompleteness,
     ResolutionState,
+    SymbolRef,
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId
 from taut.domain.relations import BindingKind, ModuleRelations, ProjectRelations, UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
+
+
+class ExposedScopeFlow(PythonScopeFlow):
+    """Expose the abstract hooks through public test helpers."""
+
+    def resolve_for_test(self, node: ast.AST) -> SymbolRef:
+        return self._resolve(node)
+
+    def declare_assignment_for_test(self, name: str) -> None:
+        self._declare_assignment(name)
 
 
 def _uses(code: str) -> tuple[AnalysisSnapshot, tuple[UseEdge, ...]]:
@@ -161,8 +172,8 @@ def test_empty_relation_collections_are_valid() -> None:
 
 
 def test_scope_flow_protocol_methods_remain_abstract() -> None:
-    flow = PythonScopeFlow()
+    flow = ExposedScopeFlow()
     with pytest.raises(NotImplementedError):
-        flow._resolve(ast.Name(id="x"))
+        flow.resolve_for_test(ast.Name(id="x"))
     with pytest.raises(NotImplementedError):
-        flow._declare_assignment("x")
+        flow.declare_assignment_for_test("x")
