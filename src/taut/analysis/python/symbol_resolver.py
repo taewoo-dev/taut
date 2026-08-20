@@ -197,9 +197,13 @@ class PythonSymbolResolver:
         for scope in self._scope_chain():
             if (value := table[scope].get(name)) is not None:
                 return value
-            if scope is None and self.current_scope is not None and not type_only:
-                if (value := self.future_bindings[None].get(name)) is not None:
-                    return value
+            if (
+                scope is None
+                and self.current_scope is not None
+                and not type_only
+                and (value := self.future_bindings[None].get(name)) is not None
+            ):
+                return value
         return None
 
     def _declare(self, name: str, symbol: SymbolId) -> None:
