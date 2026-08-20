@@ -5,10 +5,12 @@ from dataclasses import dataclass, replace
 import pytest
 from tests.utils.builders import analyze, make_context, make_source
 
+from taut.analysis.providers import apply_fact_providers
 from taut.configuration.catalog import EffectCatalog, EffectResolution, EffectResolver
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import (
     ChangeImpact,
+    EvaluationReason,
     RuleLevel,
     RuleSetting,
     RuleTarget,
@@ -20,6 +22,7 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.engine import PolicyEngine
+from taut.policy.packs import SYNTAX_CAPABILITY, PythonCoreProvider
 from taut.policy.registry import RuleRegistry
 from taut.policy.rule import (
     Rule,
@@ -46,6 +49,21 @@ class ExplodingRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         del target, context
         raise RuntimeError("boom")
+
+
+@dataclass(frozen=True)
+class PassingWithGapRule:
+    def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
+        del context
+        return RuleEvaluation(
+            _SYNTHETIC_RULE_ID,
+            target,
+            RuleVerdict.PASS,
+            (),
+            coverage_gaps=(
+                EvaluationReason("partial_relation", "일부 관계를 해석하지 못했습니다."),
+            ),
+        )
 
 
 class CountingScheduler(RuleScheduler):
@@ -149,6 +167,30 @@ def test_missing_capability_skips_rule_execution() -> None:
 
     assert result.evaluations[0].verdict is RuleVerdict.INDETERMINATE
     assert result.coverage.skipped[0].reason.code == "missing_capability"
+
+
+def test_available_capability_allows_rule_execution() -> None:
+    base = analyze(make_source("app/a.py", "value = 1"))
+    context = _enable_test_rule(
+        make_context(
+            apply_fact_providers(base, (PythonCoreProvider(),)),
+            roles={"service": ("app/**",)},
+        )
+    )
+    definition = _definition(PassingRule(), capabilities=frozenset({SYNTAX_CAPABILITY}))
+
+    result = PolicyEngine(RuleRegistry.build((definition,))).run(context)
+
+    assert result.evaluations[0].verdict is RuleVerdict.PASS
+    assert result.coverage.skipped == ()
+
+
+def test_pass_can_report_a_coverage_gap_without_hiding_the_verdict() -> None:
+    result = PolicyEngine(RuleRegistry.build((_definition(PassingWithGapRule()),))).run(_context())
+
+    assert result.evaluations[0].verdict is RuleVerdict.PASS
+    assert result.coverage.passed == 1
+    assert result.coverage.gaps[0].reason.code == "partial_relation"
 
 
 def test_symbol_scheduler_targets_functions_and_classes() -> None:

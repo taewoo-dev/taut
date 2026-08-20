@@ -17,7 +17,8 @@ def _write_project(root: Path, content: str, *, role: str = "service") -> None:
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
+packs = ["taut.backend"]
 [project]
 include = ["app/*.py"]
 source_roots = ["."]
@@ -79,7 +80,7 @@ def test_cli_returns_one_and_text_diagnostic_for_violation(
 
 
 @pytest.mark.integration
-def test_cli_json_v2_is_deterministic_for_compliant_project(
+def test_cli_json_v3_is_deterministic_for_compliant_project(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -93,7 +94,11 @@ def test_cli_json_v2_is_deterministic_for_compliant_project(
 
     assert first_code == second_code == 0
     assert first == second
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
+    coverage = cast(dict[str, object], payload["coverage"])
+    analysis = cast(dict[str, object], coverage["analysis"])
+    calls = cast(dict[str, int], analysis["calls"])
+    assert calls["total"] >= 0
     assert payload["diagnostics"] == []
     assert len(cast(str, payload["decision_digest"])) == 64
 
@@ -129,7 +134,7 @@ def test_cli_invalid_or_missing_configuration_returns_two(
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text("schema_version = 1")
     assert main(["check", str(tmp_path)]) == 2
-    assert "schema_version must be 2" in capsys.readouterr().err
+    assert "schema_version must be 3" in capsys.readouterr().err
 
 
 @pytest.mark.integration
@@ -141,7 +146,7 @@ def test_cli_configuration_error_respects_json_format(
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
 
     assert code == 2
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert cast(dict[str, object], payload["exit"])["code"] == 2
     assert cast(list[dict[str, object]], payload["engine_issues"])[0]["code"] == (
         "INVALID_CONFIGURATION"
@@ -161,6 +166,49 @@ def test_config_validate_and_rule_explanation(
     explanation = capsys.readouterr().out
     assert "강도: enforced" in explanation
     assert "적용 영역:" in explanation
+
+    assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
+    config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert config_explanation["schema_version"] == 3
+    assert config_explanation["packs"] == ["taut.backend"]
+    assert config_explanation["providers"] == ["taut.python-core"]
+
+
+@pytest.mark.integration
+def test_config_migrate_outputs_v3_without_modifying_source(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    policy_dir = tmp_path / ".policy"
+    policy_dir.mkdir()
+    source = policy_dir / "policy.toml"
+    source.write_text("schema_version = 2\n[project]\ninclude = ['app/*.py']\nsource_roots = ['.']")
+    original = source.read_text()
+
+    assert main(["config", "migrate", str(tmp_path)]) == 0
+    migrated = capsys.readouterr().out
+
+    assert "schema_version = 3" in migrated
+    assert 'packs = ["taut.backend"]' in migrated
+    assert 'providers = ["taut.python-core"]' in migrated
+    assert source.read_text() == original
+
+
+@pytest.mark.integration
+def test_config_migrate_writes_only_to_explicit_new_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text("[project]\nname='sample'\nversion='0.1.0'\n\n[tool.taut]\nstrict=true\n")
+    output = tmp_path / "migrated.toml"
+
+    assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 0
+    assert capsys.readouterr().out == ""
+    assert "schema_version = 3" in output.read_text()
+    assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 2
+    assert "output already exists" in capsys.readouterr().err
 
 
 @pytest.mark.integration

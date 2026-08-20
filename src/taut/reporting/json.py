@@ -4,6 +4,7 @@ import json
 
 from taut.domain.location import ConfigLocation, SourceRange
 from taut.domain.reports import RunReport
+from taut.domain.snapshot import ResolutionCoverage
 
 
 def render_json(report: RunReport) -> str:
@@ -64,6 +65,38 @@ def render_json(report: RunReport) -> str:
                 }
                 for item in report.coverage.skipped
             ],
+            "gaps": [
+                {
+                    "rule_id": item.rule_id.value,
+                    "required_level": item.required_level.value,
+                    "target": {
+                        "kind": item.target.kind.value,
+                        "module_id": item.target.module_id.value if item.target.module_id else None,
+                        "symbol_id": item.target.symbol_id.value if item.target.symbol_id else None,
+                        "fact_id": item.target.fact_id.value if item.target.fact_id else None,
+                    },
+                    "reason": {"code": item.reason.code, "message": item.reason.message},
+                }
+                for item in report.coverage.gaps
+            ],
+            "analysis": {
+                "sources": {
+                    "requested": report.analysis_coverage.requested_sources,
+                    "complete": report.analysis_coverage.complete_modules,
+                    "partial": report.analysis_coverage.partial_modules,
+                    "failed": report.analysis_coverage.failed_modules,
+                },
+                "calls": _resolution_coverage(report.analysis_coverage.calls),
+                "references": _resolution_coverage(report.analysis_coverage.references),
+                "imports": {
+                    "resolved": report.analysis_coverage.resolved_imports,
+                    "unresolved": report.analysis_coverage.unresolved_imports,
+                },
+                "unavailable_capabilities": [
+                    {"name": item.name, "reason": item.reason}
+                    for item in report.analysis_coverage.unavailable_capabilities
+                ],
+            },
         },
         "ignores": {
             "used": report.ignore_audit.used,
@@ -79,7 +112,7 @@ def render_json(report: RunReport) -> str:
 
 def render_configuration_error_json(engine_version: str, message: str) -> str:
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "engine_version": engine_version,
         "snapshot_id": None,
         "decision_digest": None,
@@ -106,6 +139,16 @@ def _source_location(location: SourceRange) -> dict[str, object]:
         "path": location.path.value,
         "start": {"line": location.start_line, "column": location.start_column},
         "end": {"line": location.end_line, "column": location.end_column},
+    }
+
+
+def _resolution_coverage(value: ResolutionCoverage) -> dict[str, int]:
+    return {
+        "resolved": value.resolved,
+        "ambiguous": value.ambiguous,
+        "unresolved": value.unresolved,
+        "dynamic": value.dynamic,
+        "total": value.total,
     }
 
 

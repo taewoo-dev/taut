@@ -133,10 +133,12 @@ class PolicyEngine:
         context: PolicyContext,
         project_is_complete: bool,
     ) -> EvaluationReason | None:
-        if requirements.capabilities:
+        missing_capabilities = requirements.capabilities.difference(context.model.capabilities())
+        if missing_capabilities:
             return EvaluationReason(
                 "missing_capability",
-                "규칙에 필요한 추가 분석 자료가 없습니다.",
+                "규칙에 필요한 추가 분석 자료가 없습니다: "
+                + ", ".join(sorted(missing_capabilities)),
             )
         if requirements.needs_complete_project and not project_is_complete:
             return EvaluationReason(
@@ -176,6 +178,16 @@ def _coverage(
         for evaluation in evaluations
         if evaluation.verdict is RuleVerdict.INDETERMINATE and evaluation.reason is not None
     )
+    gaps = tuple(
+        CoverageIssue(
+            evaluation.rule_id,
+            evaluation.target,
+            gap,
+            context.policy.setting(evaluation.rule_id).level,
+        )
+        for evaluation in evaluations
+        for gap in evaluation.coverage_gaps
+    )
     return CoverageReport(
         enabled_rules=enabled_rules,
         total_targets=len(evaluations),
@@ -184,4 +196,5 @@ def _coverage(
         not_applicable=verdicts.count(RuleVerdict.NOT_APPLICABLE),
         indeterminate=verdicts.count(RuleVerdict.INDETERMINATE),
         skipped=skipped,
+        gaps=gaps,
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from taut.domain.frozen import FrozenMap
@@ -47,6 +47,57 @@ class ResolutionState(StrEnum):
     UNRESOLVED = "unresolved"
     AMBIGUOUS = "ambiguous"
     DYNAMIC = "dynamic"
+
+
+class ScopeKind(StrEnum):
+    MODULE = "module"
+    CLASS = "class"
+    FUNCTION = "function"
+    LAMBDA = "lambda"
+    COMPREHENSION = "comprehension"
+
+
+class SyntaxPosition(StrEnum):
+    BODY = "body"
+    ANNOTATION = "annotation"
+    DECORATOR = "decorator"
+    BASE = "base"
+    DEFAULT = "default"
+    ARGUMENT = "argument"
+    METADATA = "metadata"
+
+
+class ExecutionPhase(StrEnum):
+    MODULE_INIT = "module_init"
+    DEFERRED = "deferred"
+
+
+class GuardKind(StrEnum):
+    UNCONDITIONAL = "unconditional"
+    CONDITIONAL = "conditional"
+    TYPE_CHECKING_ONLY = "type_checking_only"
+
+
+@dataclass(frozen=True, order=True)
+class SyntaxContext:
+    lexical_owner: SymbolId | None = None
+    scope_kind: ScopeKind = ScopeKind.MODULE
+    position: SyntaxPosition = SyntaxPosition.BODY
+    execution_phase: ExecutionPhase = ExecutionPhase.MODULE_INIT
+    guard: GuardKind = GuardKind.UNCONDITIONAL
+    parent_fact_id: FactId | None = None
+    argument_name: str | None = None
+    argument_position: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.argument_name is not None and not self.argument_name.strip():
+            raise ValueError("syntax context argument name cannot be empty")
+        if self.argument_position is not None and self.argument_position < 0:
+            raise ValueError("syntax context argument position cannot be negative")
+        if self.position is not SyntaxPosition.ARGUMENT and (
+            self.argument_name is not None or self.argument_position is not None
+        ):
+            raise ValueError("argument metadata is only valid in argument position")
 
 
 @dataclass(frozen=True, order=True)
@@ -144,6 +195,7 @@ class ImportFact:
     enclosing_symbol: SymbolId | None
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True, order=True)
@@ -155,6 +207,7 @@ class DefinitionFact:
     enclosing_symbol: SymbolId | None
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True, order=True)
@@ -165,6 +218,7 @@ class ReferenceFact:
     enclosing_symbol: SymbolId | None
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True, order=True)
@@ -180,6 +234,7 @@ class CallFact:
     enclosing_contexts: tuple[SymbolRef, ...]
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
     def __post_init__(self) -> None:
         if self.positional_argument_count < 0:
@@ -200,6 +255,7 @@ class DecoratorFact:
     arguments: tuple[CallArgument, ...]
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True, order=True)
@@ -215,6 +271,7 @@ class FunctionFact:
     has_docstring: bool
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True)
@@ -227,6 +284,7 @@ class ClassFact:
     has_docstring: bool
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True)
@@ -241,6 +299,7 @@ class FieldFact:
     is_annotated: bool
     location: SourceRange
     provenance: Provenance
+    context: SyntaxContext
 
 
 @dataclass(frozen=True, order=True)
@@ -334,16 +393,60 @@ class UnresolvedImport:
 
 
 @dataclass(frozen=True, order=True)
+class ImportEdge:
+    importer: ModuleId
+    target: ModuleId
+    occurrence_id: FactId
+    location: SourceRange
+    context: SyntaxContext
+
+    @property
+    def is_eager_runtime(self) -> bool:
+        return (
+            self.context.guard is not GuardKind.TYPE_CHECKING_ONLY
+            and self.context.execution_phase is ExecutionPhase.MODULE_INIT
+        )
+
+    @property
+    def is_deferred_runtime(self) -> bool:
+        return (
+            self.context.guard is not GuardKind.TYPE_CHECKING_ONLY
+            and self.context.execution_phase is ExecutionPhase.DEFERRED
+        )
+
+    @property
+    def is_type_only(self) -> bool:
+        return self.context.guard is GuardKind.TYPE_CHECKING_ONLY
+
+
+@dataclass(frozen=True, order=True)
+class CycleEdge:
+    importer: ModuleId
+    target: ModuleId
+    location: SourceRange
+    occurrence_id: FactId
+
+
+@dataclass(frozen=True, order=True)
 class ImportCycle:
     modules: tuple[ModuleId, ...]
+    edges: tuple[CycleEdge, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.modules:
             raise ValueError("an import cycle must contain at least one module")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError("cycle modules must be unique")
-        if self.modules != tuple(sorted(self.modules)):
-            raise ValueError("cycle modules must use canonical sorted order")
+        if self.edges:
+            if len(self.edges) != len(self.modules):
+                raise ValueError("cycle witness must contain one edge per module")
+            for index, edge in enumerate(self.edges):
+                if edge.importer != self.modules[index]:
+                    raise ValueError("cycle edge importer must match cycle module order")
+                if edge.target != self.modules[(index + 1) % len(self.modules)]:
+                    raise ValueError("cycle edges must form a directed cycle")
+        elif self.modules != tuple(sorted(self.modules)):
+            raise ValueError("cycles without edge witnesses must use canonical sorted order")
 
 
 @dataclass(frozen=True)
@@ -352,6 +455,13 @@ class ProjectIndex:
     imported_by: FrozenMap[ModuleId, tuple[ModuleId, ...]]
     unresolved_imports: tuple[UnresolvedImport, ...]
     cycles: tuple[ImportCycle, ...]
+    import_edges: tuple[ImportEdge, ...] = ()
+    type_imports: FrozenMap[ModuleId, tuple[ModuleId, ...]] = field(
+        default_factory=lambda: FrozenMap[ModuleId, tuple[ModuleId, ...]]()
+    )
+    deferred_imports: FrozenMap[ModuleId, tuple[ModuleId, ...]] = field(
+        default_factory=lambda: FrozenMap[ModuleId, tuple[ModuleId, ...]]()
+    )
 
     def __post_init__(self) -> None:
         if set(self.imports) != set(self.imported_by):

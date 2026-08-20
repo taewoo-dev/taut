@@ -16,7 +16,7 @@ from taut.policy.rules.helpers import build_finding
 
 IMPORT_RULE_ID = RuleId("ARCH001")
 CYCLE_RULE_ID = RuleId("ARCH002")
-RULE_VERSION = 1
+RULE_VERSION = 2
 
 
 def _module_location(module_id: ModuleId, context: PolicyContext) -> SourceRange:
@@ -74,11 +74,9 @@ def _import_location(
     target: ModuleId,
     context: PolicyContext,
 ) -> SourceRange:
-    for import_fact in context.model.module(source).imports:
-        if import_fact.imported_name == target.value or import_fact.imported_name.startswith(
-            f"{target.value}."
-        ):
-            return import_fact.location
+    for edge in context.model.import_edges_of(source):
+        if edge.target == target and not edge.is_type_only:
+            return edge.location
     return _module_location(source, context)
 
 
@@ -91,9 +89,10 @@ class ImportCycleRule:
                 (*[module.value for module in cycle.modules], cycle.modules[0].value)
             )
             related = tuple(
-                RelatedLocation(_module_location(module_id, context), module_id.value)
-                for module_id in cycle.modules[1:]
+                RelatedLocation(edge.location, f"{edge.importer.value} -> {edge.target.value}")
+                for edge in cycle.edges[1:]
             )
+            location = cycle.edges[0].location if cycle.edges else _module_location(first, context)
             findings.append(
                 build_finding(
                     rule_id=CYCLE_RULE_ID,
@@ -104,8 +103,17 @@ class ImportCycleRule:
                     normalized_subject=cycle_text,
                     message_key="architecture.import_cycle",
                     arguments=(("cycle", cycle_text),),
-                    location=_module_location(first, context),
-                    evidence=(EvidenceItem("modules", tuple(m.value for m in cycle.modules)),),
+                    location=location,
+                    evidence=(
+                        EvidenceItem("modules", tuple(m.value for m in cycle.modules)),
+                        EvidenceItem(
+                            "edges",
+                            tuple(
+                                f"{edge.importer.value}->{edge.target.value}"
+                                for edge in cycle.edges
+                            ),
+                        ),
+                    ),
                     related_locations=related,
                 )
             )

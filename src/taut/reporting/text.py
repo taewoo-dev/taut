@@ -87,6 +87,22 @@ def render_text(
                 width=width,
             )
         )
+    for gap in report.coverage.gaps:
+        target = gap.target
+        subject = target.module_id.value if target.module_id is not None else target.kind.value
+        label = "error" if gap.required_level is RuleLevel.ENFORCED else "warning"
+        label_color = _RED if gap.required_level is RuleLevel.ENFORCED else _YELLOW
+        lines.extend(
+            _render_issue(
+                prefix="",
+                label=label,
+                label_color=label_color,
+                message=f"분석 범위 부족: {gap.reason.message} ({subject})",
+                code=gap.rule_id.value,
+                color=color,
+                width=width,
+            )
+        )
 
     active = tuple(
         item for item in report.diagnostics if item.disposition is FindingDisposition.ACTIVE

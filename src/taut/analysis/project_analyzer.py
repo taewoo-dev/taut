@@ -5,7 +5,8 @@ import json
 
 from taut.analysis.contracts import AnalysisRequest, LanguageAdapter
 from taut.analysis.project_index import build_project_index
-from taut.domain.facts import CompletenessState, ModuleFacts
+from taut.analysis.project_relations import build_project_relations
+from taut.domain.facts import CompletenessState, ModuleFacts, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import SnapshotId
 from taut.domain.issues import EngineIssue
@@ -13,6 +14,7 @@ from taut.domain.snapshot import (
     AnalysisCoverage,
     AnalysisInputDigest,
     AnalysisSnapshot,
+    ResolutionCoverage,
 )
 
 
@@ -32,12 +34,19 @@ class ProjectAnalyzer:
 
         module_map = FrozenMap((facts.module.id, facts) for facts in modules)
         project = build_project_index(modules)
+        relations = build_project_relations(module_map, project)
         states = tuple(facts.completeness.state for facts in modules)
+        calls = tuple(call for facts in modules for call in facts.calls)
+        references = tuple(reference for facts in modules for reference in facts.references)
         coverage = AnalysisCoverage(
             requested_sources=len(request.sources),
             complete_modules=states.count(CompletenessState.COMPLETE),
             partial_modules=states.count(CompletenessState.PARTIAL),
             failed_modules=states.count(CompletenessState.FAILED),
+            calls=_resolution_coverage(tuple(call.ref.state for call in calls)),
+            references=_resolution_coverage(tuple(reference.ref.state for reference in references)),
+            resolved_imports=len(project.import_edges),
+            unresolved_imports=len(project.unresolved_imports),
         )
         digest = _analysis_digest(request)
         return AnalysisSnapshot(
@@ -45,10 +54,20 @@ class ProjectAnalyzer:
             inputs=AnalysisInputDigest(digest),
             modules=module_map,
             project=project,
+            relations=relations,
             capabilities=FrozenMap(),
             coverage=coverage,
             issues=tuple(issues),
         )
+
+
+def _resolution_coverage(states: tuple[ResolutionState, ...]) -> ResolutionCoverage:
+    return ResolutionCoverage(
+        resolved=states.count(ResolutionState.RESOLVED),
+        ambiguous=states.count(ResolutionState.AMBIGUOUS),
+        unresolved=states.count(ResolutionState.UNRESOLVED),
+        dynamic=states.count(ResolutionState.DYNAMIC),
+    )
 
 
 def _analysis_digest(request: AnalysisRequest) -> str:

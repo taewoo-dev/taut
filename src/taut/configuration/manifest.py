@@ -41,10 +41,14 @@ class RoleMatcher:
     role: Role
     patterns: tuple[str, ...]
     source: ConfigLocation
+    exclude: tuple[str, ...] = ()
+    priority: int = 0
 
     def __post_init__(self) -> None:
         if not self.patterns or any(not pattern.strip() for pattern in self.patterns):
             raise ValueError("role matcher requires non-empty patterns")
+        if any(not pattern.strip() for pattern in self.exclude):
+            raise ValueError("role matcher exclude patterns cannot be empty")
 
 
 @dataclass(frozen=True, order=True)
@@ -90,9 +94,14 @@ class ProjectManifest:
                 matcher
                 for matcher in self.roles
                 if any(fnmatchcase(path, pattern) for pattern in matcher.patterns)
+                and not any(fnmatchcase(path, pattern) for pattern in matcher.exclude)
             )
-            if len(role_matches) > 1:
-                names = ", ".join(matcher.role.value for matcher in role_matches)
+            highest = max((matcher.priority for matcher in role_matches), default=None)
+            selected_roles = tuple(
+                matcher for matcher in role_matches if matcher.priority == highest
+            )
+            if len(selected_roles) > 1:
+                names = ", ".join(matcher.role.value for matcher in selected_roles)
                 raise ValueError(f"{path}: 둘 이상의 role과 일치합니다: {names}")
             zone_matches = tuple(
                 matcher
@@ -102,8 +111,8 @@ class ProjectManifest:
             if len(zone_matches) > 1:
                 names = ", ".join(matcher.zone.value for matcher in zone_matches)
                 raise ValueError(f"{path}: 둘 이상의 zone과 일치합니다: {names}")
-            role = role_matches[0].role if role_matches else None
-            role_source = role_matches[0].source if role_matches else None
+            role = selected_roles[0].role if selected_roles else None
+            role_source = selected_roles[0].source if selected_roles else None
             zone = zone_matches[0].zone if zone_matches else self.default_zone
             zone_source = zone_matches[0].source if zone_matches else self.source
             classifications.append(

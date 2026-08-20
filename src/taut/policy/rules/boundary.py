@@ -10,7 +10,7 @@ from taut.domain.evaluations import (
     RuleTargetRef,
     RuleVerdict,
 )
-from taut.domain.facts import AnalysisStage, CallFact, ImportFact, ResolutionState
+from taut.domain.facts import AnalysisStage, CallFact, GuardKind, ImportFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId
 from taut.policy.context import PolicyContext
@@ -112,6 +112,8 @@ class ForbiddenImportRule:
         findings: list[Finding] = []
         seen: set[tuple[str, str, int, int]] = set()
         for import_fact in context.model.module(target.module_id).imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             for boundary in boundaries:
                 prefix = next(
                     (

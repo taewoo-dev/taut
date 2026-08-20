@@ -8,7 +8,15 @@ from tests.utils.builders import analyze, make_source
 from taut.analysis.contracts import ContextManagerProvider, ResolverSettings
 from taut.analysis.module_analysis import ModuleAnalysis
 from taut.analysis.python.language_adapter import PythonAstAdapter
-from taut.domain.facts import AnalysisStage, CompletenessState, ResolutionState
+from taut.domain.facts import (
+    AnalysisStage,
+    CompletenessState,
+    ExecutionPhase,
+    GuardKind,
+    ResolutionState,
+    ScopeKind,
+    SyntaxPosition,
+)
 from taut.domain.ids import ModuleId, SymbolId
 
 
@@ -67,7 +75,82 @@ def run():
     module = analyze(source).modules[ModuleId("app.local")]
 
     assert module.imports[0].enclosing_symbol == SymbolId("app.local.run")
+    assert module.imports[0].context.scope_kind is ScopeKind.FUNCTION
+    assert module.imports[0].context.execution_phase is ExecutionPhase.DEFERRED
     assert module.calls[0].ref.symbol == SymbolId("app.worker.execute")
+
+
+def test_python_adapter_recognizes_aliased_type_checking_guard() -> None:
+    source = make_source(
+        "app/types.py",
+        "from typing import TYPE_CHECKING as TC\nif TC:\n    from app.models import User",
+    )
+
+    module = analyze(source).modules[ModuleId("app.types")]
+
+    assert module.imports[-1].context.guard is GuardKind.TYPE_CHECKING_ONLY
+
+
+def test_type_checking_guard_dominates_nested_condition() -> None:
+    source = make_source(
+        "app/types.py",
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    if enabled:\n"
+        "        import app.models",
+    )
+
+    module = analyze(source).modules[ModuleId("app.types")]
+
+    assert module.imports[-1].context.guard is GuardKind.TYPE_CHECKING_ONLY
+
+
+def test_occurrence_context_tracks_decorator_base_default_annotation_and_arguments() -> None:
+    source = make_source(
+        "app/contexts.py",
+        """
+from app.lib import Base, deco, factory, Type
+
+@deco(factory())
+class Child(Base):
+    pass
+
+def run(value: Type = factory()) -> Type:
+    return factory(value)
+""".strip(),
+    )
+
+    snapshot = analyze(source)
+    module = snapshot.modules[ModuleId("app.contexts")]
+    positions = {reference.context.position for reference in module.references}
+
+    assert SyntaxPosition.DECORATOR in positions
+    assert SyntaxPosition.BASE in positions
+    assert SyntaxPosition.DEFAULT in positions
+    assert SyntaxPosition.ANNOTATION in positions
+    assert SyntaxPosition.ARGUMENT in positions
+    argument = next(
+        edge
+        for edge in snapshot.relations.use_edges
+        if edge.context.position is SyntaxPosition.ARGUMENT
+    )
+    assert argument.context.parent_fact_id is not None
+    assert argument.context.argument_position == 0
+
+
+def test_project_relations_preserve_bindings_and_unresolved_uses() -> None:
+    snapshot = analyze(
+        make_source("app/a.py", "from app.b import run as execute\nexecute()\nmissing()"),
+        make_source("app/b.py", "def run(): pass"),
+    )
+
+    binding = next(item for item in snapshot.relations.bindings if item.local_name == "execute")
+    uses = tuple(
+        edge for edge in snapshot.relations.use_edges if edge.module_id == ModuleId("app.a")
+    )
+
+    assert any(edge.binding_id == binding.id for edge in uses)
+    assert any(edge.ref.state is ResolutionState.UNRESOLVED for edge in uses)
 
 
 def test_python_adapter_registers_nested_function_inside_control_flow() -> None:

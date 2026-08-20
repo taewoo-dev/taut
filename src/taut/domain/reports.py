@@ -6,6 +6,7 @@ from taut.domain.diagnostics import Diagnostic
 from taut.domain.evaluations import EvaluationReason, RuleLevel, RuleTargetRef
 from taut.domain.ids import RuleId, SnapshotId
 from taut.domain.issues import EngineIssue
+from taut.domain.snapshot import AnalysisCoverage
 
 
 @dataclass(frozen=True, order=True)
@@ -25,6 +26,7 @@ class CoverageReport:
     not_applicable: int
     indeterminate: int
     skipped: tuple[CoverageIssue, ...]
+    gaps: tuple[CoverageIssue, ...] = ()
 
     def __post_init__(self) -> None:
         counts = (
@@ -81,5 +83,6 @@ class RunReport:
     diagnostics: tuple[Diagnostic, ...]
     engine_issues: tuple[EngineIssue, ...]
     coverage: CoverageReport
+    analysis_coverage: AnalysisCoverage
     ignore_audit: IgnoreAudit
     exit_decision: ExitDecision

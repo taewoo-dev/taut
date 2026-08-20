@@ -32,7 +32,8 @@ from taut.loading.config_loader import (
 from taut.loading.errors import PolicyConfigError
 
 _VALID = """
-schema_version = 2
+schema_version = 3
+packs = ['taut.backend']
 [project]
 include = ["src/*.py", "src/**/*.py"]
 source_roots = ["src"]
@@ -134,9 +135,8 @@ def test_pyproject_strict_and_max_lines_use_builtin_defaults(tmp_path: Path) -> 
     assert policy.setting(RuleId("TIME001")).level is RuleLevel.ENFORCED
     assert policy.default_max_lines == 700
 
-    _write_pyproject(tmp_path, _PYPROJECT_VALID.replace("strict = true", "max_lines = 701"))
-    with pytest.raises(PolicyConfigError, match="built-in limit 700"):
-        load_project_configuration(tmp_path)
+    _write_pyproject(tmp_path, _PYPROJECT_VALID.replace("strict = true", "max_lines = 1200"))
+    assert load_project_configuration(tmp_path).policy.default_max_lines == 1200
 
 
 @pytest.mark.parametrize(
@@ -157,7 +157,7 @@ def test_pyproject_configuration_rejects_invalid_or_unknown_values(
         load_project_configuration(tmp_path)
 
 
-def test_load_v2_configuration_uses_locked_rules_and_closed_catalog(tmp_path: Path) -> None:
+def test_load_v3_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
     _write(tmp_path)
 
     config = load_project_configuration(tmp_path)
@@ -196,21 +196,30 @@ def test_missing_configuration_is_an_error(tmp_path: Path) -> None:
     "content",
     [
         "schema_version = 1",
-        "schema_version = 2\n[rules]\nTIME001 = 'off'",
-        "schema_version = 2\n[rules]\nCAT001 = 'enforced'",
-        "schema_version = 2\n[rules]\nUNKNOWN001 = 'enforced'",
-        "schema_version = 2\nunknown = true",
-        "schema_version = 2\n[project]\nunknown = true",
-        "schema_version = 2\n[[roles]]\nname='service'\npatterns=['**']\nunknown=true",
-        "schema_version = 2\n[[zones]]\nname='test'\npatterns=['tests/**']\nunknown=true",
-        "schema_version = 2\n[[effects]]\nsymbol='app.x'\neffects=['unknown.effect']",
-        "schema_version = 2\n[architecture]\nunknown=true",
-        "schema_version = 2\n[transaction]\nunknown=true",
-        "schema_version = 2\n[[boundaries]]\nunknown=true",
-        "schema_version = 2\n[size]\nunknown=true",
-        "schema_version = 2\n[boundary_extensions]\nunknown=true",
-        "schema_version = 2\n[security]\nallowed_roles=['service']",
-        "schema_version = 2\n[code_conventions]\nunknown=[]",
+        "schema_version = 3\npacks = ['taut.backend']\n[rules]\nTIME001 = 'off'",
+        "schema_version = 3\npacks = ['taut.backend']\n[rules]\nCAT001 = 'enforced'",
+        "schema_version = 3\npacks = ['taut.backend']\n[rules]\nUNKNOWN001 = 'enforced'",
+        "schema_version = 3\npacks = ['taut.backend']\nunknown = true",
+        "schema_version = 3\npacks = ['taut.backend']\n[project]\nunknown = true",
+        (
+            "schema_version = 3\npacks = ['taut.backend']\n[[roles]]\n"
+            "name='service'\npatterns=['**']\nunknown=true"
+        ),
+        (
+            "schema_version = 3\npacks = ['taut.backend']\n[[zones]]\n"
+            "name='test'\npatterns=['tests/**']\nunknown=true"
+        ),
+        (
+            "schema_version = 3\npacks = ['taut.backend']\n[[effects]]\n"
+            "symbol='app.x'\neffects=['unknown.effect']"
+        ),
+        "schema_version = 3\npacks = ['taut.backend']\n[architecture]\nunknown=true",
+        "schema_version = 3\npacks = ['taut.backend']\n[transaction]\nunknown=true",
+        "schema_version = 3\npacks = ['taut.backend']\n[[boundaries]]\nunknown=true",
+        "schema_version = 3\npacks = ['taut.backend']\n[size]\nunknown=true",
+        "schema_version = 3\npacks = ['taut.backend']\n[boundary_extensions]\nunknown=true",
+        "schema_version = 3\npacks = ['taut.backend']\n[security]\nallowed_roles=['service']",
+        "schema_version = 3\npacks = ['taut.backend']\n[code_conventions]\nunknown=[]",
     ],
 )
 def test_unknown_or_weakening_configuration_is_rejected(
@@ -227,7 +236,7 @@ def test_architecture_map_must_cover_declared_roles(tmp_path: Path) -> None:
     _write(
         tmp_path,
         """
-schema_version = 2
+schema_version = 3\npacks = ['taut.backend']
 [[roles]]
 name = "service"
 patterns = ["app/**"]
@@ -275,6 +284,33 @@ def test_manifest_rejects_overlapping_roles_and_zones() -> None:
         overlapping_roles.classify(snapshot)
     with pytest.raises(ValueError, match="zone"):
         overlapping_zones.classify(snapshot)
+
+
+def test_role_priority_and_exclude_make_overlaps_explicit() -> None:
+    location = ConfigLocation(ProjectPath("policy.toml"))
+    snapshot = analyze(
+        make_source("app/dtos/report_snapshot.py", "value = 1"),
+        make_source("app/dtos/report.py", "value = 1"),
+    )
+    manifest = ProjectManifest(
+        roles=(
+            RoleMatcher(Role("contract"), ("app/dtos/**",), location),
+            RoleMatcher(
+                Role("snapshot"),
+                ("app/dtos/*_snapshot.py",),
+                location,
+                priority=10,
+            ),
+        ),
+        zones=(),
+        default_zone=Zone("prod"),
+        source=location,
+    )
+
+    classified = manifest.classify(snapshot)
+
+    assert classified.get(ModuleId("app.dtos.report_snapshot")).role == Role("snapshot")
+    assert classified.get(ModuleId("app.dtos.report")).role == Role("contract")
 
 
 def test_policy_validation_allows_arch000_to_report_unassigned_module() -> None:

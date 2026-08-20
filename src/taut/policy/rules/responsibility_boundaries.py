@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
-from taut.domain.facts import AnalysisStage, CallFact, ImportFact, ResolutionState
+from taut.domain.facts import AnalysisStage, CallFact, GuardKind, ImportFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
@@ -49,6 +49,8 @@ class _ImportBoundaryRule:
         findings: list[Finding] = []
         seen: set[tuple[str, int, int]] = set()
         for import_fact in context.model.module(target.module_id).imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             prefix = next(
                 (item for item in prefixes if _matches_module(import_fact, item)),
                 None,
@@ -115,6 +117,8 @@ class AdapterBoundaryRule:
         findings: list[Finding] = []
         seen_imports: set[tuple[str, int, int]] = set()
         for import_fact in module.imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             import_prefix = next(
                 (
                     item

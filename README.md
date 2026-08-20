@@ -4,7 +4,8 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-The first PyPI release is being prepared. Until it is published, install directly from GitHub:
+Version 0.2 adds occurrence-aware symbol relations, capability-gated rule packs, and explicit
+analysis coverage. Install directly from GitHub while the next PyPI release is prepared:
 
 ```bash
 uv add --dev "pytaut @ git+https://github.com/taewoo-dev/taut.git"
@@ -20,10 +21,13 @@ uv add --dev pytaut
 ## Configuration
 
 Define repository roles and allowed dependencies in `pyproject.toml`. Strict mode is enabled by
-default, and the built-in maximum file length is 700 lines.
+default. File length is a repository policy parameter rather than an engine hard limit.
 
 ```toml
 [tool.taut]
+schema_version = 3
+packs = ["taut.backend"]
+providers = ["taut.python-core"]
 strict = true
 source_roots = ["."]
 
@@ -59,6 +63,8 @@ shared_modules = ["app.core.enums"]
 
 ```bash
 taut config validate .
+taut config explain .
+taut config migrate .
 taut check .
 taut check . --verbose
 taut check . --format json
@@ -80,8 +86,9 @@ taut check /path/to/project --config /path/to/audit-policy.toml
 ```
 
 Role patterns and `source_roots` are resolved relative to the target project, not the
-configuration file. The legacy `.policy/policy.toml` format and explicit external configuration
-files remain supported.
+configuration file. The `.policy/policy.toml` location and explicit external configuration files
+remain supported. Configuration content uses schema v3; `taut config migrate` prints a v3
+migration without changing the source unless an explicit output path is supplied.
 
 ## Results
 
@@ -89,6 +96,10 @@ The default terminal output prints one finding per line followed by the error an
 Long findings wrap to the next indented line. Non-terminal output uses a width of 120 characters;
 override it with an option such as `--width 100`. Use `--verbose` only when you need related
 locations, remediation guidance, decision counts, and the decision digest.
+
+JSON report schema v3 includes resolved, unresolved, ambiguous, and dynamic call/reference counts;
+resolved and unresolved imports; unavailable capabilities; skipped evaluations; and coverage gaps.
+A rule runs only when its declared semantic capabilities are present.
 
 - Exit code `0`: no enforced violations
 - Exit code `1`: one or more enforced violations
@@ -134,6 +145,11 @@ Each rule declares whether it applies to `prod`, `test`, `migration`, or `script
 roles, dependency cycles, import placement, file size, dynamic execution, async safety, and
 security access are checked in every zone. API, DTO, database, and service-boundary rules apply to
 production code.
+
+The built-in backend pack contains all 48 rules. It consumes versioned semantic capabilities from
+the built-in Python provider (`taut.syntax@1`, `taut.bindings@1`, `taut.imports@1`, and
+`taut.uses@1`). Third-party integrations can use the public `taut.plugins.v1` and
+`taut.semantic.v1` contracts without importing the concrete AST analyzer.
 
 An unregistered call that might have an external effect cannot be proven unsafe, so it is reported
 as a `CAT001` warning. After classifying the call, add it to the project effect catalog for precise

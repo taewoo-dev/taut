@@ -24,10 +24,11 @@ def build_run_report(
     ignore_audit: IgnoreAudit,
 ) -> RunReport:
     return RunReport(
-        run=RunMetadata(engine_version, 2, snapshot.id, decision_digest),
+        run=RunMetadata(engine_version, 3, snapshot.id, decision_digest),
         diagnostics=diagnostics,
         engine_issues=engine_issues,
         coverage=coverage,
+        analysis_coverage=snapshot.coverage,
         ignore_audit=ignore_audit,
         exit_decision=decide_exit(diagnostics, engine_issues, coverage),
     )
@@ -41,7 +42,9 @@ def decide_exit(
     trust_failures: list[str] = []
     if engine_issues:
         trust_failures.append("설정 또는 분석 문제")
-    if any(issue.required_level is RuleLevel.ENFORCED for issue in coverage.skipped):
+    if any(
+        issue.required_level is RuleLevel.ENFORCED for issue in (*coverage.skipped, *coverage.gaps)
+    ):
         trust_failures.append("강제 규칙 판단 불가")
     if trust_failures:
         return ExitDecision(2, tuple(trust_failures))

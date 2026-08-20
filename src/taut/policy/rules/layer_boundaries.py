@@ -8,6 +8,7 @@ from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, Rul
 from taut.domain.facts import (
     AnalysisStage,
     CallFact,
+    GuardKind,
     ImportFact,
     ResolutionState,
 )
@@ -174,6 +175,8 @@ class _RoleBoundaryRule:
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for import_fact in module.imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             violation = self._import_violation(import_fact, context)
             if violation is None:
                 continue
