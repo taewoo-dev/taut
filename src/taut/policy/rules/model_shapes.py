@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 
+from taut.analysis.framework.pydantic import (
+    PYDANTIC_CONFIGS,
+    PYDANTIC_FIELDS,
+    PYDANTIC_MODELS,
+)
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
@@ -16,7 +21,10 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    rule_uncertainty,
+)
 
 DTO_RULE_ID = RuleId("DTO001")
 DTO_NAME_RULE_ID = RuleId("DTO002")
@@ -101,6 +109,11 @@ class ImmutableDtoRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("DTO001 requires a module target")
+        uncertainty = rule_uncertainty(
+            DTO_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS, PYDANTIC_FIELDS)
+        )
+        if uncertainty is not None:
+            return uncertainty
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         module = context.model.module(target.module_id)
@@ -156,6 +169,11 @@ class DtoNameRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("DTO002 requires a module target")
+        uncertainty = rule_uncertainty(
+            DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,)
+        )
+        if uncertainty is not None:
+            return uncertainty
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         module = context.model.module(target.module_id)
@@ -183,6 +201,9 @@ class SnapshotPlacementRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SNAPSHOT001 requires a module target")
+        uncertainty = rule_uncertainty(SNAPSHOT_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         role = _role(target, context)
         module = context.model.module(target.module_id)
         snapshot_file = module.module.path.value.endswith("_snapshot.py")
@@ -236,6 +257,11 @@ class SchemaConfigRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SCHEMA001 requires a module target")
+        uncertainty = rule_uncertainty(
+            SCHEMA_CONFIG_RULE_ID, target, context, target.module_id, (PYDANTIC_CONFIGS,)
+        )
+        if uncertainty is not None:
+            return uncertainty
         if _role(target, context) not in context.policy.code.schema_roles:
             return RuleEvaluation(SCHEMA_CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         module = context.model.module(target.module_id)
@@ -277,6 +303,11 @@ class SchemaInheritanceRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SCHEMA002 requires a module target")
+        uncertainty = rule_uncertainty(
+            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,)
+        )
+        if uncertainty is not None:
+            return uncertainty
         if _role(target, context) not in context.policy.code.schema_roles:
             return RuleEvaluation(
                 SCHEMA_INHERITANCE_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ()

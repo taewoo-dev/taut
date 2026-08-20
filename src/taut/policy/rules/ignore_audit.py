@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from taut.configuration.manifest import Zone
-from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.domain.evaluations import (
+    ChangeImpact,
+    EvaluationReason,
+    RuleTarget,
+    RuleTargetRef,
+    RuleVerdict,
+)
 from taut.domain.facts import AnalysisStage
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
+from taut.policy.rules.helpers import incomplete_module_evaluation
 
 RULE_ID = RuleId("IGNORE001")
 RULE_VERSION = 1
@@ -16,6 +23,20 @@ class InlineIgnoreAuditRule:
     """The actual audit runs after findings exist; this registers its public contract."""
 
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
+        if any(
+            incomplete_module_evaluation(RULE_ID, target, context, module_id) is not None
+            for module_id in context.model.modules()
+        ):
+            return RuleEvaluation(
+                RULE_ID,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "incomplete_project",
+                    "ignore audit requires complete project facts.",
+                ),
+            )
         return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
 
 

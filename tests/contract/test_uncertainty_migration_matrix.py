@@ -11,6 +11,7 @@ MATRIX_PATH = (
     Path(__file__).resolve().parents[2]
     / "docs/refactoring/backend-taut/uncertainty-migration-matrix.json"
 )
+UNCERTAINTY_STATES = ("resolved", "conditional", "ambiguous", "unresolved", "dynamic")
 
 
 @pytest.mark.contract
@@ -62,10 +63,9 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
         assert set(row["missing_capability_completeness"].values()) == {"indeterminate"}
         assert row["current_code_evidence"]["module"] == row["source_module"]
         if not row["syntax_only"]:
-            assert any(
-                value == "indeterminate"
-                for value in row["resolution_policy"].values()
-            ), row["id"]
+            assert any(value == "indeterminate" for value in row["resolution_policy"].values()), (
+                row["id"]
+            )
         else:
             assert set(row["resolution_policy"].values()) == {"not_applicable"}
 
@@ -73,7 +73,7 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
 @pytest.mark.contract
 def test_uncertainty_matrix_groups_are_disjoint_and_dependency_ordered() -> None:
     matrix = json.loads(MATRIX_PATH.read_text())
-    grouped = {group: set() for group in matrix["groups"]}
+    grouped: dict[str, set[str]] = {group: set() for group in matrix["groups"]}
     for row in matrix["rules"]:
         assert row["id"] not in grouped[row["implementation_group"]]
         grouped[row["implementation_group"]].add(row["id"])
@@ -87,3 +87,16 @@ def test_uncertainty_matrix_groups_are_disjoint_and_dependency_ordered() -> None
     for name, group in matrix["groups"].items():
         assert set(group["depends_on"]) < set(matrix["groups"])
         assert name not in group["depends_on"]
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize(
+    "rule_id", [rule_id.value for rule_id in builtin_rule_registry().definitions]
+)
+@pytest.mark.parametrize("state", UNCERTAINTY_STATES)
+def test_every_builtin_rule_has_explicit_state_policy(rule_id: str, state: str) -> None:
+    matrix = json.loads(MATRIX_PATH.read_text())
+    row = next(item for item in matrix["rules"] if item["id"] == rule_id)
+    assert row["resolution_policy"][state] in {"evaluate", "indeterminate", "not_applicable"}
+    assert row["missing_capability_completeness"]["missing_capability"] == "indeterminate"
+    assert row["missing_capability_completeness"]["incomplete_project"] == "indeterminate"

@@ -2,6 +2,26 @@
   "schema": "taut.backend_uncertainty_migration.v2",
   "version": "0.2.0",
   "expected_builtin_count": 48,
+  "implemented_evidence": {
+    "scope": "group A",
+    "status": "implemented",
+    "shared_helpers": [
+      "taut.policy.rules.helpers.target_uncertainty",
+      "taut.policy.rules.helpers.uncertain_provider_evaluation",
+      "taut.policy.rules.helpers.incomplete_module_evaluation"
+    ],
+    "provider_capabilities": [
+      "taut.fastapi.endpoints@1",
+      "taut.fastapi.response_models@1",
+      "taut.fastapi.routers@1",
+      "taut.pydantic.fields@1",
+      "taut.pydantic.models@1",
+      "taut.pydantic.configs@1",
+      "taut.pydantic.operations@1"
+    ],
+    "tests": "tests/contract/test_uncertainty_migration_matrix.py plus focused rule/provider contracts",
+    "semantics": "resolved paths preserved; uncertain provider facts and incomplete modules return INDETERMINATE"
+  },
   "state_values": [
     "resolved",
     "conditional",

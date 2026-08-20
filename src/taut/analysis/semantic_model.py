@@ -41,6 +41,8 @@ class SemanticModel(Protocol):
 
     def capabilities(self) -> frozenset[str]: ...
 
+    def capability_values(self, capability: str) -> tuple[object, ...]: ...
+
     def bindings(self, module_id: ModuleId | None = None) -> tuple[Binding, ...]: ...
 
     def uses(self, module_id: ModuleId | None = None) -> tuple[UseEdge, ...]: ...
@@ -91,6 +93,9 @@ class SnapshotSemanticModel:
 
     def capabilities(self) -> frozenset[str]:
         return frozenset(self._snapshot.capabilities)
+
+    def capability_values(self, capability: str) -> tuple[object, ...]:
+        return self._snapshot.capabilities.get(capability, ())
 
     def bindings(self, module_id: ModuleId | None = None) -> tuple[Binding, ...]:
         if module_id is None:

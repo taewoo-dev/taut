@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from taut.domain.evaluations import EvaluationReason, RuleTargetRef, RuleVerdict
+from taut.domain.facts import CompletenessState, ResolutionState
 from taut.domain.findings import (
     EvidenceItem,
     Finding,
@@ -11,6 +13,99 @@ from taut.domain.findings import (
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
+from taut.policy.context import PolicyContext
+from taut.policy.rule import RuleEvaluation
+
+
+def incomplete_module_evaluation(
+    rule_id: RuleId, target: RuleTargetRef, context: PolicyContext, module_id: ModuleId
+) -> RuleEvaluation | None:
+    module = context.model.module(module_id)
+    if module.completeness.state is CompletenessState.COMPLETE:
+        return None
+    return RuleEvaluation(
+        rule_id,
+        target,
+        RuleVerdict.INDETERMINATE,
+        (),
+        EvaluationReason("incomplete_module", "규칙에 필요한 모듈 사실이 완성되지 않았습니다."),
+    )
+
+
+def uncertain_provider_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    capability_names: tuple[str, ...],
+    module_id: ModuleId,
+) -> RuleEvaluation | None:
+    model = context.model
+    for capability in capability_names:
+        for fact in model.capability_values(capability):
+            if getattr(fact, "module_id", None) != module_id:
+                continue
+            confidence = getattr(fact, "confidence", ResolutionState.RESOLVED)
+            if confidence is not ResolutionState.RESOLVED:
+                return RuleEvaluation(
+                    rule_id,
+                    target,
+                    RuleVerdict.INDETERMINATE,
+                    (),
+                    EvaluationReason(
+                        "uncertain_provider_fact",
+                        "provider가 규칙에 필요한 사실을 확정하지 못했습니다.",
+                    ),
+                )
+    return None
+
+
+def rule_uncertainty(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    module_id: ModuleId,
+    capabilities: tuple[str, ...] = (),
+) -> RuleEvaluation | None:
+    return incomplete_module_evaluation(rule_id, target, context, module_id) or (
+        uncertain_provider_evaluation(rule_id, target, context, capabilities, module_id)
+        if capabilities
+        else None
+    )
+
+
+def target_uncertainty(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    capabilities: tuple[str, ...] = (),
+) -> RuleEvaluation | None:
+    if target.module_id is None:
+        return None
+    return rule_uncertainty(rule_id, target, context, target.module_id, capabilities)
+
+
+def build_policy_finding(
+    rule_id: RuleId,
+    module_id: ModuleId,
+    enclosing_symbol: SymbolId,
+    subject: FindingSubject,
+    location: SourceRange,
+    message_key: str,
+    kind: str,
+    rule_version: int = 1,
+) -> Finding:
+    return build_finding(
+        rule_id=rule_id,
+        rule_version=rule_version,
+        module_id=module_id,
+        enclosing_symbol=enclosing_symbol,
+        subject=subject,
+        normalized_subject=f"{kind}:{subject.value}",
+        message_key=message_key,
+        arguments=(("symbol", enclosing_symbol.value), ("missing", kind)),
+        location=location,
+        evidence=(EvidenceItem("symbol", enclosing_symbol.value), EvidenceItem("missing", kind)),
+    )
 
 
 def build_finding(
