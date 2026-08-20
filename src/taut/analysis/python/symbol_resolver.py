@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from taut.analysis.contracts import SourceInput
-from taut.domain.facts import ResolutionState, SymbolRef
+from taut.domain.facts import GuardKind, ResolutionState, SymbolRef
 from taut.domain.ids import SymbolId
 from taut.domain.location import SourceRange
 from taut.domain.provenance import Provenance
@@ -271,3 +271,10 @@ class PythonSymbolResolver:
                 ref.written_name, ResolutionState.CONDITIONAL, None, (ref.symbol,), ref.provenance
             )
         return ref
+
+    def _contextual_ref(self, ref: SymbolRef, guard: GuardKind) -> SymbolRef:
+        return self._conditional_ref(
+            ref,
+            guard is GuardKind.CONDITIONAL
+            or ref.written_name.split(".", 1)[0] in self.flow_conditional_names,
+        )
