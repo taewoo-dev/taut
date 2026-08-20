@@ -39,6 +39,44 @@ def run() -> None:
     assert value_ref.ref.state is ResolutionState.UNRESOLVED
 
 
+def test_global_and_nonlocal_route_to_declaring_scope() -> None:
+    source = make_source(
+        "app/scopes.py",
+        """
+value = 1
+
+def outer() -> None:
+    value = 2
+    def inner() -> None:
+        nonlocal value
+        value = 3
+        global exported
+        exported = value
+""".strip(),
+    )
+
+    module = analyze(source).modules[ModuleId("app.scopes")]
+    assert module.completeness.state is CompletenessState.COMPLETE
+
+
+def test_conditional_reference_is_not_reported_as_unconditionally_resolved() -> None:
+    source = make_source(
+        "app/conditional.py",
+        """
+from provider import value
+
+if feature_flag:
+    consume(value)
+""".strip(),
+    )
+
+    module = analyze(source).modules[ModuleId("app.conditional")]
+    value_ref = next(
+        reference for reference in module.references if reference.ref.written_name == "value"
+    )
+    assert value_ref.ref.state is ResolutionState.CONDITIONAL
+
+
 def test_python_adapter_resolves_aliases_annotations_and_decorators() -> None:
     source = make_source(
         "app/service.py",

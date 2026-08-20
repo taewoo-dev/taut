@@ -88,6 +88,21 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             scope = self.scopes[scope].parent
         return False
 
+    def _contextual_ref(self, ref: SymbolRef) -> SymbolRef:
+        if (
+            ref.state is ResolutionState.RESOLVED
+            and ref.symbol is not None
+            and self._syntax_context().guard is GuardKind.CONDITIONAL
+        ):
+            return SymbolRef(
+                ref.written_name,
+                ResolutionState.CONDITIONAL,
+                None,
+                (ref.symbol,),
+                ref.provenance,
+            )
+        return ref
+
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
         self.visit(tree)
@@ -300,7 +315,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             self.visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        ref = self._resolve(node.func)
+        ref = self._contextual_ref(self._resolve(node.func))
         fact_id = self._fact_id(FactKind.CALL, ref.symbol.value if ref.symbol else ref.written_name)
         self.calls.append(
             CallFact(
@@ -343,7 +358,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
 
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load):
-            ref = self._resolve(node)
+            ref = self._contextual_ref(self._resolve(node))
             self.references.append(
                 ReferenceFact(
                     id=self._fact_id(
@@ -361,7 +376,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if isinstance(node.ctx, ast.Load):
-            ref = self._resolve(node)
+            ref = self._contextual_ref(self._resolve(node))
             self.references.append(
                 ReferenceFact(
                     id=self._fact_id(

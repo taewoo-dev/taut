@@ -68,6 +68,8 @@ class PythonSymbolResolver:
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.local_names: dict[SymbolId, set[str]] = defaultdict(set)
+        self.global_names: dict[SymbolId, set[str]] = defaultdict(set)
+        self.nonlocal_names: dict[SymbolId, set[str]] = defaultdict(set)
         self._locations: dict[ast.AST, SourceRange] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
@@ -81,6 +83,11 @@ class PythonSymbolResolver:
                 self.scopes[symbol] = _Scope(symbol, scope)
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     self.local_names[symbol].update(self._assigned_names(statement.body))
+                    for nested in ast.walk(statement):
+                        if isinstance(nested, ast.Global):
+                            self.global_names[symbol].update(nested.names)
+                        elif isinstance(nested, ast.Nonlocal):
+                            self.nonlocal_names[symbol].update(nested.names)
                     self.local_names[symbol].update(
                         argument.arg
                         for argument in (
@@ -168,6 +175,20 @@ class PythonSymbolResolver:
 
     def _lookup(self, name: str, *, type_only: bool = False) -> SymbolId | None:
         table = self.types if type_only else self.bindings
+        if (
+            self.current_scope in self.global_names
+            and name in self.global_names[self.current_scope]
+        ):
+            return table[None].get(name)
+        if (
+            self.current_scope in self.nonlocal_names
+            and name in self.nonlocal_names[self.current_scope]
+        ):
+            scope = self.scopes[self.current_scope].parent
+            while scope is not None:
+                if scope in self.local_names and name in self.local_names[scope]:
+                    return table[scope].get(name)
+                scope = self.scopes[scope].parent
         if self.current_scope in self.local_names and name in self.local_names[self.current_scope]:
             return table[self.current_scope].get(name)
         for scope in self._scope_chain():
