@@ -8,6 +8,7 @@ from taut.analysis.contracts import (
     ResolverSettings,
     SourceInput,
 )
+from taut.analysis.python.control_flow import PythonControlFlowVisitor
 from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
 )
@@ -28,7 +29,6 @@ from taut.domain.facts import (
     FactKind,
     FieldFact,
     FunctionFact,
-    GuardKind,
     ImportFact,
     ModuleCompleteness,
     ModuleFacts,
@@ -46,7 +46,7 @@ from taut.domain.ids import FactId, SymbolId
 _ALL_FACTS = frozenset(FactKind)
 
 
-class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
+class PythonFactExtractor(PythonControlFlowVisitor):
     def __init__(self, source: SourceInput, resolver: ResolverSettings) -> None:
         PythonSymbolResolver.__init__(self, source)
         self.context_manager_providers = {
@@ -63,6 +63,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         self.fields: list[FieldFact] = []
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
+        self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
         self.enclosing_contexts: list[SymbolRef] = []
         self._syntax = SyntaxContextStack()
         self._summarizer = ExpressionSummarizer(self._resolve, self._written_name)
@@ -84,6 +85,15 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
         self.visit(tree)
+        deferred_index = 0
+        while deferred_index < len(self._deferred_bodies):
+            scope, body = self._deferred_bodies[deferred_index]
+            deferred_index += 1
+            previous = self.current_scope
+            self.current_scope = scope
+            for statement in body:
+                self.visit(statement)
+            self.current_scope = previous
         module = ModuleIdentity(
             id=self.source.module_id,
             path=self.source.path,
@@ -217,6 +227,12 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
         self._declare(node.name, symbol)
         self.function_symbols.add(symbol)
         decorator_refs = tuple(self._resolve(decorator) for decorator in node.decorator_list)
+        self._enter_type_resolution()
+        parameters = self._summarizer.parameters(node)
+        return_annotation = (
+            self._expression_summary(node.returns) if node.returns is not None else None
+        )
+        self._leave_type_resolution()
         self.definitions.append(
             DefinitionFact(
                 id=self._fact_id(FactKind.DEFINITION, f"function:{symbol.value}"),
@@ -237,10 +253,8 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
                 name=node.name,
                 is_async=is_async,
                 decorators=decorator_refs,
-                parameters=self._summarizer.parameters(node),
-                return_annotation=(
-                    self._expression_summary(node.returns) if node.returns is not None else None
-                ),
+                parameters=parameters,
+                return_annotation=return_annotation,
                 has_docstring=ast.get_docstring(node, clean=False) is not None,
                 location=self._location(node),
                 provenance=self._provenance(node),
@@ -268,15 +282,15 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
                 self.types[symbol][argument.arg] = annotation
             if argument.annotation is not None:
                 with self._syntax.occurrence(position=SyntaxPosition.ANNOTATION):
+                    self._enter_type_resolution()
                     self.visit(argument.annotation)
+                    self._leave_type_resolution()
         if node.returns is not None:
             with self._syntax.occurrence(position=SyntaxPosition.ANNOTATION):
+                self._enter_type_resolution()
                 self.visit(node.returns)
-        previous = self.current_scope
-        self.current_scope = symbol
-        for statement in node.body:
-            self.visit(statement)
-        self.current_scope = previous
+                self._leave_type_resolution()
+        self._deferred_bodies.append((symbol, node.body))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node, False)
@@ -343,6 +357,7 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             ):
                 self.visit(keyword.value)
             position += 1
+
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load):
             ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
@@ -362,12 +377,14 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             )
         elif isinstance(node.ctx, (ast.Store, ast.Del)):
             self._declare_assignment(node.id)
+
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        self._visit_lambda_scope(node, self.visit)
+        self._visit_lambda_scope(node)
+
     def _visit_comprehension(
         self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
     ) -> None:
-        self._visit_comprehension_scope(node, self.visit)
+        self._visit_comprehension_scope(node)
 
     visit_ListComp = _visit_comprehension
     visit_SetComp = _visit_comprehension
@@ -410,24 +427,6 @@ class PythonFactExtractor(PythonSymbolResolver, ast.NodeVisitor):
             self.visit(statement)
         if pushed_contexts:
             del self.enclosing_contexts[-pushed_contexts:]
-
-    def visit_If(self, node: ast.If) -> None:
-        self.visit(node.test)
-        test_ref = self._resolve(node.test)
-        is_type_checking = (
-            test_ref.state is ResolutionState.RESOLVED
-            and test_ref.symbol is not None
-            and test_ref.symbol.value == "typing.TYPE_CHECKING"
-        )
-        body_guard = GuardKind.TYPE_CHECKING_ONLY if is_type_checking else GuardKind.CONDITIONAL
-        with self._syntax.occurrence(guard=body_guard):
-            for statement in node.body:
-                self.visit(statement)
-        if node.orelse:
-            with self._syntax.occurrence(guard=GuardKind.CONDITIONAL):
-                for statement in node.orelse:
-                    self.visit(statement)
-        self._mark_conditional_branch((*node.body, *node.orelse))
 
     def visit_With(self, node: ast.With) -> None:
         self._visit_with(node)

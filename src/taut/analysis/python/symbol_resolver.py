@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from taut.analysis.contracts import SourceInput
+from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
 from taut.domain.facts import GuardKind, ResolutionState, SymbolRef
 from taut.domain.ids import SymbolId
 from taut.domain.location import SourceRange
@@ -62,18 +63,21 @@ class _Scope:
     kind: str
 
 
-class PythonSymbolResolver:
+class PythonSymbolResolver(PythonScopeFlow):
     def __init__(self, source: SourceInput) -> None:
         self.source = source
         self.current_scope: SymbolId | None = None
         self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None, "module")}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
+        self.binding_states: dict[SymbolId | None, dict[str, BindingState]] = defaultdict(dict)
+        self.type_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.future_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.local_names: dict[SymbolId, set[str]] = defaultdict(set)
         self.global_names: dict[SymbolId, set[str]] = defaultdict(set)
         self.nonlocal_names: dict[SymbolId, set[str]] = defaultdict(set)
-        self.flow_conditional_names: set[str] = set()
+        self._type_checking_depth = 0
+        self._type_resolution_depth = 0
         self._locations: dict[ast.AST, SourceRange] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
@@ -145,9 +149,28 @@ class PythonSymbolResolver:
                             )
             else:
                 if scope is None:
-                    for name in self._statement_assigned_names(statement):
+                    future_statement = statement
+                    if isinstance(statement, ast.If) and self._is_type_checking_test(
+                        statement.test
+                    ):
+                        future_statement = ast.If(
+                            test=statement.test,
+                            body=statement.orelse,
+                            orelse=[],
+                        )
+                    for name in self._statement_assigned_names(future_statement):
                         self.future_bindings[None][name] = self._child_symbol(None, name)
                 self._prime_scope_nodes([statement], scope)
+
+    def _is_type_checking_test(self, node: ast.expr) -> bool:
+        if isinstance(node, ast.Name):
+            return self.future_bindings[None].get(node.id) == SymbolId("typing.TYPE_CHECKING")
+        return (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "typing"
+            and node.attr == "TYPE_CHECKING"
+        )
 
     def _plan_function_names(
         self, node: ast.FunctionDef | ast.AsyncFunctionDef, scope: SymbolId
@@ -237,40 +260,6 @@ class PythonSymbolResolver:
         parent = scope.value if scope else self.source.module_id.value
         return SymbolId(f"{parent}.__{kind}_{node.lineno}_{node.col_offset}")
 
-    def _visit_lambda_scope(
-        self, node: ast.Lambda, visit: Callable[[ast.AST], object]
-    ) -> None:
-        for default in (*node.args.defaults, *(item for item in node.args.kw_defaults if item)):
-            visit(default)
-        previous = self.current_scope
-        self.current_scope = self.node_scopes[node]
-        visit(node.body)
-        self.current_scope = previous
-
-    def _visit_comprehension_scope(
-        self,
-        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
-        visit: Callable[[ast.AST], object],
-    ) -> None:
-        first, *rest = node.generators
-        visit(first.iter)
-        previous = self.current_scope
-        self.current_scope = self.node_scopes[node]
-        visit(first.target)
-        for condition in first.ifs:
-            visit(condition)
-        for generator in rest:
-            visit(generator.iter)
-            visit(generator.target)
-            for condition in generator.ifs:
-                visit(condition)
-        if isinstance(node, ast.DictComp):
-            visit(node.key)
-            visit(node.value)
-        else:
-            visit(node.elt)
-        self.current_scope = previous
-
     def _child_symbol(self, scope: SymbolId | None, name: str) -> SymbolId:
         return SymbolId(f"{scope.value if scope else self.source.module_id.value}.{name}")
 
@@ -345,14 +334,56 @@ class PythonSymbolResolver:
                 return value
         return None
 
+    def _lookup_binding_state(self, name: str) -> BindingState | None:
+        if self._type_resolution_depth:
+            for scope in self._scope_chain():
+                if (symbol := self.type_bindings[scope].get(name)) is not None:
+                    return BindingState(frozenset({symbol}))
+        if (
+            self.current_scope in self.global_names
+            and name in self.global_names[self.current_scope]
+        ):
+            return self.binding_states[None].get(name) or self._future_binding_state(name)
+        if (
+            self.current_scope in self.nonlocal_names
+            and name in self.nonlocal_names[self.current_scope]
+        ):
+            scope = self.scopes[self.current_scope].parent
+            while scope is not None:
+                if scope in self.local_names and name in self.local_names[scope]:
+                    return self.binding_states[scope].get(name)
+                scope = self.scopes[scope].parent
+        if self.current_scope in self.local_names and name in self.local_names[self.current_scope]:
+            return self.binding_states[self.current_scope].get(name)
+        for scope in self._scope_chain():
+            if (state := self.binding_states[scope].get(name)) is not None:
+                return state
+            if (
+                scope is None
+                and self.current_scope is not None
+                and (state := self._future_binding_state(name)) is not None
+            ):
+                return state
+        return None
+
+    def _future_binding_state(self, name: str) -> BindingState | None:
+        symbol = self.future_bindings[None].get(name)
+        return BindingState(frozenset({symbol})) if symbol is not None else None
+
     def _declare(self, name: str, symbol: SymbolId) -> None:
-        self.bindings[self._binding_scope(name)][name] = symbol
+        scope = self._binding_scope(name)
+        if self._type_checking_depth:
+            self.type_bindings[scope][name] = symbol
+            return
+        self.bindings[scope][name] = symbol
+        self.binding_states[scope][name] = BindingState(frozenset({symbol}))
 
     def _declare_assignment(self, name: str) -> None:
         scope = self._binding_scope(name)
         symbol = self._child_symbol(scope, name)
         self.variable_symbols.add(symbol)
         self.bindings[scope][name] = symbol
+        self.binding_states[scope][name] = BindingState(frozenset({symbol}))
 
     def _binding_scope(self, name: str) -> SymbolId | None:
         scope = self.current_scope
@@ -374,14 +405,6 @@ class PythonSymbolResolver:
             scope = self.scopes[scope].parent
         return False
 
-    def _mark_conditional_branch(self, nodes: tuple[ast.stmt, ...]) -> None:
-        self.flow_conditional_names.update(
-            child.id
-            for node in nodes
-            for child in ast.walk(node)
-            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
-        )
-
     def _resolve(self, node: ast.AST) -> SymbolRef:
         if node not in self._resolutions:
             self._resolutions[node] = self._resolve_uncached(node)
@@ -391,10 +414,19 @@ class PythonSymbolResolver:
         name = self._written_name(node)
         provenance = self._provenance(node)
         if isinstance(node, ast.Name):
-            symbol = self._lookup(node.id) or (
-                SymbolId(f"builtins.{node.id}") if node.id in _BUILTINS else None
-            )
-            state = ResolutionState.RESOLVED if symbol else ResolutionState.UNRESOLVED
+            binding = self._lookup_binding_state(node.id)
+            if binding is not None:
+                candidates = tuple(sorted(binding.candidates, key=lambda item: item.value))
+                if len(candidates) > 1:
+                    return SymbolRef(name, ResolutionState.AMBIGUOUS, None, candidates, provenance)
+                if candidates and not binding.definite:
+                    return SymbolRef(
+                        name, ResolutionState.CONDITIONAL, None, candidates, provenance
+                    )
+                if candidates:
+                    return SymbolRef(name, ResolutionState.RESOLVED, candidates[0], (), provenance)
+            symbol = SymbolId(f"builtins.{node.id}") if node.id in _BUILTINS else None
+            state = ResolutionState.RESOLVED if symbol is not None else ResolutionState.UNRESOLVED
             return SymbolRef(name, state, symbol, (), provenance)
         if isinstance(node, ast.Attribute):
             if isinstance(node.value, ast.Name):
@@ -418,7 +450,10 @@ class PythonSymbolResolver:
                     (),
                     provenance,
                 )
-            return SymbolRef(name, base.state, None, base.candidates, provenance)
+            candidates = tuple(
+                SymbolId(f"{candidate.value}.{node.attr}") for candidate in base.candidates
+            )
+            return SymbolRef(name, base.state, None, candidates, provenance)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -428,7 +463,9 @@ class PythonSymbolResolver:
         return SymbolRef(name, ResolutionState.DYNAMIC, None, (), provenance)
 
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None:
+        self._enter_type_resolution()
         ref = self._resolve(node) if node is not None else None
+        self._leave_type_resolution()
         return ref.symbol if ref and ref.state is ResolutionState.RESOLVED else None
 
     def _context_manager_item_type(self, expression: ast.expr) -> SymbolId | None:
@@ -449,6 +486,5 @@ class PythonSymbolResolver:
     def _contextual_ref(self, ref: SymbolRef, guard: GuardKind) -> SymbolRef:
         return self._conditional_ref(
             ref,
-            guard is GuardKind.CONDITIONAL
-            or ref.written_name.split(".", 1)[0] in self.flow_conditional_names,
+            guard is GuardKind.CONDITIONAL,
         )

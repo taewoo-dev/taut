@@ -99,9 +99,7 @@ def test_lambda_and_comprehension_have_stable_synthetic_scopes() -> None:
     first = analyze(source).modules[ModuleId("app.synthetic")]
     second = analyze(source).modules[ModuleId("app.synthetic")]
     item_scopes = {
-        item.enclosing_symbol
-        for item in first.references
-        if item.ref.written_name == "item"
+        item.enclosing_symbol for item in first.references if item.ref.written_name == "item"
     }
 
     assert first == second
@@ -148,6 +146,182 @@ if feature_flag:
         reference for reference in module.references if reference.ref.written_name == "value"
     )
     assert value_ref.ref.state is ResolutionState.CONDITIONAL
+
+
+@pytest.mark.parametrize(
+    ("control_flow", "expected_state", "expected_candidates"),
+    [
+        (
+            "if enabled:\n    from provider import value",
+            ResolutionState.CONDITIONAL,
+            (SymbolId("provider.value"),),
+        ),
+        (
+            "if enabled:\n    from provider import value\nelse:\n    from provider import value",
+            ResolutionState.RESOLVED,
+            (),
+        ),
+        (
+            "if enabled:\n    from alpha import value\nelse:\n    from beta import value",
+            ResolutionState.AMBIGUOUS,
+            (SymbolId("alpha.value"), SymbolId("beta.value")),
+        ),
+        (
+            "for item in items:\n    from provider import value",
+            ResolutionState.CONDITIONAL,
+            (SymbolId("provider.value"),),
+        ),
+        (
+            "while enabled:\n    from provider import value",
+            ResolutionState.CONDITIONAL,
+            (SymbolId("provider.value"),),
+        ),
+        (
+            "try:\n    from alpha import value\nexcept Error:\n    from beta import value",
+            ResolutionState.AMBIGUOUS,
+            (SymbolId("alpha.value"), SymbolId("beta.value")),
+        ),
+        (
+            "match item:\n    case 1:\n        from alpha import value\n"
+            "    case _:\n        from beta import value",
+            ResolutionState.AMBIGUOUS,
+            (SymbolId("alpha.value"), SymbolId("beta.value")),
+        ),
+    ],
+)
+def test_control_flow_merges_binding_states(
+    control_flow: str,
+    expected_state: ResolutionState,
+    expected_candidates: tuple[SymbolId, ...],
+) -> None:
+    source = make_source("app/flow.py", f"{control_flow}\nvalue()")
+
+    call = analyze(source).modules[ModuleId("app.flow")].calls[-1]
+
+    assert call.ref.state is expected_state
+    assert call.ref.candidates == expected_candidates
+
+
+def test_deferred_function_observes_final_module_flow_merge() -> None:
+    source = make_source(
+        "app/deferred_flow.py",
+        """
+def load():
+    return value()
+
+if enabled:
+    from alpha import value
+else:
+    from beta import value
+""".strip(),
+    )
+
+    call = analyze(source).modules[ModuleId("app.deferred_flow")].calls[0]
+
+    assert call.ref.state is ResolutionState.AMBIGUOUS
+    assert call.ref.candidates == (SymbolId("alpha.value"), SymbolId("beta.value"))
+
+
+def test_global_binding_merges_in_declaring_module_scope() -> None:
+    source = make_source(
+        "app/global_flow.py",
+        """
+def load(enabled):
+    global value
+    if enabled:
+        from alpha import value
+    else:
+        from beta import value
+    return value()
+""".strip(),
+    )
+
+    call = analyze(source).modules[ModuleId("app.global_flow")].calls[0]
+
+    assert call.ref.state is ResolutionState.AMBIGUOUS
+    assert call.ref.candidates == (SymbolId("alpha.value"), SymbolId("beta.value"))
+
+
+def test_ambiguous_attribute_preserves_concrete_qualified_candidates() -> None:
+    source = make_source(
+        "app/attribute_flow.py",
+        """
+if enabled:
+    from alpha import client
+else:
+    from beta import client
+client.send()
+""".strip(),
+    )
+
+    call = analyze(source).modules[ModuleId("app.attribute_flow")].calls[0]
+
+    assert call.ref.state is ResolutionState.AMBIGUOUS
+    assert call.ref.candidates == (SymbolId("alpha.client.send"), SymbolId("beta.client.send"))
+
+
+def test_loop_else_binding_remains_conditional_because_break_can_skip_else() -> None:
+    source = make_source(
+        "app/loop_else.py",
+        """
+for item in items:
+    if stop:
+        break
+else:
+    from provider import value
+value()
+""".strip(),
+    )
+
+    call = analyze(source).modules[ModuleId("app.loop_else")].calls[-1]
+
+    assert call.ref.state is ResolutionState.CONDITIONAL
+    assert call.ref.candidates == (SymbolId("provider.value"),)
+
+
+def test_try_finally_binding_is_definite_after_all_try_paths() -> None:
+    source = make_source(
+        "app/finally_flow.py",
+        """
+try:
+    work()
+except Error:
+    recover()
+finally:
+    from provider import value
+value()
+""".strip(),
+    )
+
+    call = analyze(source).modules[ModuleId("app.finally_flow")].calls[-1]
+
+    assert call.ref.state is ResolutionState.RESOLVED
+    assert call.ref.symbol == SymbolId("provider.value")
+
+
+def test_type_checking_bindings_are_visible_only_to_type_namespace() -> None:
+    source = make_source(
+        "app/type_flow.py",
+        """
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.models import User
+
+def load(user: User) -> User:
+    return User()
+""".strip(),
+    )
+
+    module = analyze(source).modules[ModuleId("app.type_flow")]
+    annotation_symbols = {
+        symbol
+        for parameter in module.functions[0].parameters
+        if parameter.annotation is not None
+        for symbol in parameter.annotation.symbols
+    }
+
+    assert SymbolId("app.models.User") in annotation_symbols
+    assert module.calls[-1].ref.state is ResolutionState.UNRESOLVED
 
 
 def test_python_adapter_resolves_aliases_annotations_and_decorators() -> None:
