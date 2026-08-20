@@ -17,7 +17,11 @@ from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 
 ENTRY_RULE_ID = RuleId("ENTRY001")
 SERVICE_RULE_ID = RuleId("SERVICE001")
@@ -172,6 +176,25 @@ class _RoleBoundaryRule:
         roles: frozenset[Role] = getattr(context.policy.boundaries, self.roles_attribute)
         if role is None or role not in roles:
             return RuleEvaluation(self.rule_id, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(self.rule_id, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        candidates = tuple(
+            str(value)
+            for name in (
+                "database_statement_calls",
+                "transport_exception_calls",
+                "dependency_injection_calls",
+                "external_client_constructors",
+                "raw_sql_calls",
+            )
+            for value in getattr(context.policy.boundaries, name)
+        )
+        uncertainty = unresolved_call_evaluation(
+            self.rule_id, target, context, target.module_id, candidates
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for import_fact in module.imports:
@@ -343,6 +366,18 @@ class DependencyInjectionBoundaryRule:
         role = context.classification.get(target.module_id).role
         if role is None:
             return RuleEvaluation(DEPENDENCY_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(DEPENDENCY_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_call_evaluation(
+            DEPENDENCY_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            tuple(item.value for item in context.policy.boundaries.dependency_injection_calls),
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         matched = False
         for call in context.model.calls_in(target.module_id):

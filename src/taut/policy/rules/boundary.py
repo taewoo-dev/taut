@@ -15,7 +15,11 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 
 RULE_ID = RuleId("BOUNDARY001")
 RULE_VERSION = 2
@@ -109,6 +113,18 @@ class ForbiddenImportRule:
         )
         if not boundaries:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_call_evaluation(
+            RULE_ID,
+            target,
+            context,
+            target.module_id,
+            tuple(call for boundary in boundaries for call in boundary.forbidden_calls),
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         seen: set[tuple[str, str, int, int]] = set()
         for import_fact in context.model.module(target.module_id).imports:

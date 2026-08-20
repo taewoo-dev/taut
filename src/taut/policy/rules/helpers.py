@@ -102,6 +102,69 @@ def target_uncertainty(
     )
 
 
+def module_fact_uncertainty(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    module_id: ModuleId,
+    *,
+    imports: bool = True,
+    calls: bool = True,
+    references: bool = True,
+) -> RuleEvaluation | None:
+    """Propagate incomplete or unresolved facts used by boundary evaluators."""
+    incomplete = incomplete_module_evaluation(rule_id, target, context, module_id)
+    if incomplete is not None:
+        return incomplete
+    return None
+
+
+def project_fact_uncertainty(
+    rule_id: RuleId, target: RuleTargetRef, context: PolicyContext
+) -> RuleEvaluation | None:
+    """Project graph rules remain deterministic only over a complete graph."""
+    if any(
+        context.model.module(module_id).completeness.state is not CompletenessState.COMPLETE
+        for module_id in context.model.modules()
+    ):
+        return RuleEvaluation(
+            rule_id,
+            target,
+            RuleVerdict.INDETERMINATE,
+            (),
+            EvaluationReason(
+                "incomplete_project", "규칙에 필요한 project graph가 완성되지 않았습니다."
+            ),
+        )
+    return None
+
+
+def unresolved_call_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    module_id: ModuleId,
+    candidates: tuple[str, ...],
+) -> RuleEvaluation | None:
+    """Return indeterminate when a call that could affect a rule is unresolved."""
+    names = frozenset(candidates)
+    for call in context.model.calls_in(module_id):
+        if call.ref.state is ResolutionState.RESOLVED:
+            continue
+        written = call.ref.written_name
+        if written in names:
+            return RuleEvaluation(
+                rule_id,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
+                ),
+            )
+    return None
+
+
 def build_policy_finding(
     rule_id: RuleId,
     module_id: ModuleId,

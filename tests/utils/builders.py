@@ -44,8 +44,9 @@ from taut.configuration.manifest import (
     Zone,
     ZoneMatcher,
 )
+from taut.domain.analysis_state import AnalysisStage, CompletenessState
 from taut.domain.evaluations import RuleLevel, RuleSetting
-from taut.domain.facts import ResolutionState, SourceKind
+from taut.domain.facts import CallFact, ResolutionState, SourceKind
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
@@ -129,6 +130,19 @@ def _provider_fact_state(fact: object, state: ResolutionState) -> object:
     return fact
 
 
+def _call_fact_state(fact: CallFact, state: ResolutionState) -> CallFact:
+    if state is ResolutionState.RESOLVED:
+        return fact
+    candidates: tuple[SymbolId, ...]
+    if state is ResolutionState.AMBIGUOUS:
+        candidates = (SymbolId("candidate.one"), SymbolId("candidate.two"))
+    elif state is ResolutionState.CONDITIONAL:
+        candidates = (SymbolId("candidate.one"),)
+    else:
+        candidates = ()
+    return replace(fact, ref=replace(fact.ref, state=state, symbol=None, candidates=candidates))
+
+
 def make_source(
     path: str,
     content: str,
@@ -191,8 +205,53 @@ def make_context(
     extra_catalog_entries: tuple[CatalogEntry, ...] = (),
     provider_state: ResolutionState | None = None,
     missing_capability: str | None = None,
+    incomplete_modules: frozenset[str] = frozenset(),
+    fact_state: ResolutionState | None = None,
 ) -> PolicyContext:
     snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
+    if fact_state is not None:
+        snapshot = replace(
+            snapshot,
+            modules=FrozenMap(
+                (
+                    module_id,
+                    replace(
+                        module,
+                        calls=tuple(_call_fact_state(call, fact_state) for call in module.calls),
+                    ),
+                )
+                for module_id, module in snapshot.modules.items()
+            ),
+        )
+    if incomplete_modules:
+        modules = FrozenMap(
+            (
+                module_id,
+                replace(
+                    module,
+                    completeness=replace(
+                        module.completeness,
+                        state=CompletenessState.PARTIAL,
+                        stage=AnalysisStage.PARSED,
+                    ),
+                )
+                if module_id.value in incomplete_modules
+                else module,
+            )
+            for module_id, module in snapshot.modules.items()
+        )
+        incomplete_count = sum(
+            module_id.value in incomplete_modules for module_id in snapshot.modules
+        )
+        snapshot = replace(
+            snapshot,
+            modules=modules,
+            coverage=replace(
+                snapshot.coverage,
+                complete_modules=snapshot.coverage.complete_modules - incomplete_count,
+                partial_modules=snapshot.coverage.partial_modules + incomplete_count,
+            ),
+        )
     if provider_state is not None:
         snapshot = replace(
             snapshot,

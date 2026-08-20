@@ -176,6 +176,8 @@ def _run_regular_fixture(
     variant: str,
     provider_state: ResolutionState | None = None,
     missing_capability: str | None = None,
+    incomplete: bool = False,
+    fact_state: ResolutionState | None = None,
 ) -> PolicyRunResult:
     definition = builtin_rule_registry().definitions[RuleId(rule_id)]
     paths = (
@@ -236,6 +238,10 @@ def _run_regular_fixture(
         extra_catalog_entries=(time_wrapper,),
         provider_state=provider_state,
         missing_capability=missing_capability,
+        incomplete_modules=frozenset(module.value for module in snapshot.modules)
+        if incomplete
+        else frozenset(),
+        fact_state=fact_state,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -291,6 +297,19 @@ GROUP_A_RULES = (
     "SCHEMA003",
     "ENUM001",
     "IGNORE001",
+)
+GROUP_B_RULES = (
+    "ADAPTER001",
+    "ARCH001",
+    "ARCH002",
+    "BOUNDARY001",
+    "BOUNDARY002",
+    "BOUNDARY003",
+    "DEPENDS001",
+    "ENTRY001",
+    "MODEL001",
+    "QUERY001",
+    "SERVICE001",
 )
 PROVIDER_BACKED_GROUP_A_RULES = {
     "API001",
@@ -348,6 +367,39 @@ def test_group_a_evaluators_execute_real_fixtures_for_provider_states(
         assert {item.reason.code for item in evaluations if item.reason is not None} == {
             "uncertain_provider_fact"
         }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_B_RULES)
+def test_group_b_evaluators_propagate_incomplete_module_facts(rule_id: str) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", incomplete=True)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    assert {item.reason.code for item in evaluations if item.reason is not None} <= {
+        "incomplete_module",
+        "incomplete_project",
+        "insufficient_analysis",
+    }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_B_RULES)
+@pytest.mark.parametrize("state", tuple(ResolutionState))
+def test_group_b_evaluators_execute_call_resolution_states(
+    rule_id: str, state: ResolutionState
+) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", fact_state=state)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    if state is not ResolutionState.RESOLVED:
+        assert all(
+            item.verdict
+            in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE, RuleVerdict.INDETERMINATE}
+            for item in evaluations
+        )
+        uncertain = [item for item in evaluations if item.verdict is RuleVerdict.INDETERMINATE]
+        assert all(item.reason is not None for item in uncertain)
 
 
 @pytest.mark.contract

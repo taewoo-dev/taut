@@ -12,7 +12,11 @@ from taut.domain.ids import ModuleId, RuleId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    project_fact_uncertainty,
+)
 
 IMPORT_RULE_ID = RuleId("ARCH001")
 CYCLE_RULE_ID = RuleId("ARCH002")
@@ -31,6 +35,11 @@ class ImportDirectionRule:
         source_classification = context.classification.get(target.module_id)
         if source_classification.role is None:
             return RuleEvaluation(IMPORT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(
+            IMPORT_RULE_ID, target, context, target.module_id, calls=False, references=False
+        )
+        if uncertainty is not None:
+            return uncertainty
         allowed = context.policy.allowed_imports.get(source_classification.role, frozenset())
         findings: list[Finding] = []
         for imported_module in context.model.imports_of(target.module_id):
@@ -82,6 +91,9 @@ def _import_location(
 
 class ImportCycleRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
+        uncertainty = project_fact_uncertainty(CYCLE_RULE_ID, target, context)
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for cycle in context.model.import_cycles():
             first = cycle.modules[0]

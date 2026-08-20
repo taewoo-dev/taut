@@ -8,7 +8,11 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 
 SERVICE_RULE_ID = RuleId("BOUNDARY002")
 CONTRACT_RULE_ID = RuleId("BOUNDARY003")
@@ -45,6 +49,9 @@ class _ImportBoundaryRule:
         role = classification.role
         if role is None or role not in roles:
             return RuleEvaluation(self.rule_id, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(self.rule_id, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         prefixes = getattr(context.policy.boundaries, self.prefix_set_name)
         findings: list[Finding] = []
         seen: set[tuple[str, int, int]] = set()
@@ -113,6 +120,18 @@ class AdapterBoundaryRule:
         role = classification.role
         if role is None or role not in boundaries.adapter_roles:
             return RuleEvaluation(ADAPTER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(ADAPTER_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_call_evaluation(
+            ADAPTER_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            tuple(item.value for item in boundaries.adapter_forbidden_calls),
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         seen_imports: set[tuple[str, int, int]] = set()
