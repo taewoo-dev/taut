@@ -18,6 +18,7 @@ from taut.analysis.framework.pydantic_facts import (
     PydanticSerializerFact,
     PydanticValidatorFact,
 )
+from taut.analysis.framework.pydantic_operations import extract_operations
 from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import (
     CallFact,
@@ -59,6 +60,9 @@ _VALIDATORS = frozenset(
         "pydantic.root_validator",
         "pydantic.field_validator",
         "pydantic.model_validator",
+        "pydantic.functional_validators.field_validator",
+        "pydantic.class_validators.validator",
+        "pydantic.class_validators.root_validator",
     }
 )
 _SERIALIZERS = frozenset(
@@ -145,7 +149,7 @@ class PydanticProvider:
                 (PYDANTIC_CONFIGS, self._configs(snapshot, classes, fields, calls, model_ids)),
                 (PYDANTIC_VALIDATORS, self._decorated(snapshot, models, False)),
                 (PYDANTIC_SERIALIZERS, self._decorated(snapshot, models, True)),
-                (PYDANTIC_OPERATIONS, self._operations(snapshot, calls, model_ids)),
+                (PYDANTIC_OPERATIONS, extract_operations(snapshot, calls, model_ids)),
             )
         )
 
@@ -442,54 +446,4 @@ class PydanticProvider:
                         dec.provenance,
                     )
                 )
-        return tuple(result)
-
-    def _operations(
-        self, snapshot: AnalysisSnapshot, calls: tuple[CallFact, ...], models: set[SymbolId]
-    ) -> tuple[PydanticOperationFact, ...]:
-        result: list[PydanticOperationFact] = []
-        for call in calls:
-            operation = call.ref.written_name.rsplit(".", 1)[-1]
-            model_ref = next(
-                (
-                    SymbolRef(
-                        call.ref.written_name.rsplit(".", 1)[0],
-                        ResolutionState.RESOLVED,
-                        model,
-                        (),
-                        call.ref.provenance,
-                    )
-                    for model in models
-                    if call.ref.symbol is not None
-                    and call.ref.symbol.value.startswith(model.value + ".")
-                ),
-                None,
-            )
-            is_constructor = call.ref.symbol in models
-            if operation not in _OPERATIONS and not is_constructor:
-                continue
-            refs = _refs(snapshot, call.module_id, call.location)
-            receiver = next((ref for ref in refs if ref.written_name.startswith("self.")), None)
-            if is_constructor:
-                model_ref = call.ref
-                operation = "construct"
-            if model_ref is None:
-                continue
-            confidence = (
-                call.ref.state
-                if call.ref.state is not ResolutionState.RESOLVED
-                else (model_ref.state if model_ref else call.ref.state)
-            )
-            result.append(
-                PydanticOperationFact(
-                    call.module_id,
-                    operation,
-                    call,
-                    model_ref,
-                    receiver,
-                    call.arguments,
-                    confidence,
-                    call.provenance,
-                )
-            )
         return tuple(result)

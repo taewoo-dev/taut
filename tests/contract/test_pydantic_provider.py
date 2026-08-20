@@ -14,9 +14,11 @@ from taut.analysis.framework.pydantic import (
     PydanticModelFact,
     PydanticOperationFact,
     PydanticProvider,
+    PydanticSerializerFact,
     PydanticValidatorFact,
 )
 from taut.analysis.providers import apply_fact_providers
+from taut.domain.facts import ResolutionState
 
 
 def test_pydantic_provider_extracts_v1_v2_semantics_and_operations() -> None:
@@ -156,4 +158,124 @@ class Model(BaseModel):
         "root_validator",
         "field_validator",
         "model_validator",
+    }
+
+
+def test_pydantic_branch_aliases_preserve_ambiguous_field_and_decorator_refs() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/ambiguous.py",
+            """from pydantic import BaseModel
+if flag:
+    from pydantic import Field as F, field_validator as V
+else:
+    from pydantic.fields import Field as F
+    from pydantic.functional_validators import field_validator as V
+class Model(BaseModel):
+    value: int = F()
+    @V('value')
+    def validate(self, value): return value
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    fields = cast(tuple[PydanticFieldFact, ...], result.capabilities[PYDANTIC_FIELDS])
+    field = next(item for item in fields if item.name == "value")
+    assert field.declaration_ref is not None
+    assert field.declaration_ref.state is ResolutionState.AMBIGUOUS
+    assert field.declaration_ref.candidates == (
+        field.declaration_ref.candidates[0],
+        field.declaration_ref.candidates[1],
+    )
+    assert {candidate.value for candidate in field.declaration_ref.candidates} == {
+        "pydantic.Field",
+        "pydantic.fields.Field",
+    }
+    validators = cast(tuple[PydanticValidatorFact, ...], result.capabilities[PYDANTIC_VALIDATORS])
+    validator = next(item for item in validators if item.function.value.endswith("validate"))
+    assert validator.decorator_ref.state is ResolutionState.AMBIGUOUS
+    assert {candidate.value for candidate in validator.decorator_ref.candidates} == {
+        "pydantic.field_validator",
+        "pydantic.functional_validators.field_validator",
+    }
+
+
+def test_pydantic_unresolved_lookalikes_are_not_facts() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/unresolved.py",
+            """from pydantic import BaseModel
+class Model(BaseModel):
+    value: int = UnknownField()
+    @unknown_validator('value')
+    def validate(self, value): return value
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    fields = cast(tuple[PydanticFieldFact, ...], result.capabilities[PYDANTIC_FIELDS])
+    assert next(item for item in fields if item.name == "value").declaration_ref is None
+    assert result.capabilities[PYDANTIC_VALIDATORS] == ()
+
+
+def test_pydantic_child_before_base_module_reaches_fixpoint() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/00_child.py",
+            "from app.base import Base\nclass Child(Base):\n    value: int\n",
+            module_id="app.child",
+        ),
+        make_source(
+            "app/base.py",
+            "from pydantic import BaseModel\nclass Base(BaseModel): pass\n",
+        ),
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    models = cast(tuple[PydanticModelFact, ...], result.capabilities[PYDANTIC_MODELS])
+    assert {item.symbol.value for item in models} == {"app.base.Base", "app.child.Child"}
+
+
+def test_pydantic_v2_model_serializer_is_explicitly_typed() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/serializers.py",
+            """from pydantic import BaseModel, field_serializer, model_serializer
+class Model(BaseModel):
+    value: int
+    @field_serializer('value')
+    def serialize_value(self, value): return value
+    @model_serializer
+    def serialize_model(self): return {'value': self.value}
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    serializers = cast(
+        tuple[PydanticSerializerFact, ...], result.capabilities[PYDANTIC_SERIALIZERS]
+    )
+    assert {item.decorator for item in serializers} == {"field_serializer", "model_serializer"}
+
+
+def test_pydantic_ambiguous_member_operation_preserves_candidates() -> None:
+    snapshot = analyze(
+        make_source("app/a.py", "from pydantic import BaseModel\nclass User(BaseModel): pass\n"),
+        make_source("app/b.py", "from pydantic import BaseModel\nclass User(BaseModel): pass\n"),
+        make_source(
+            "app/main.py",
+            """if flag:
+    from app.a import User
+else:
+    from app.b import User
+User.model_dump()
+""",
+        ),
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    operations = cast(tuple[PydanticOperationFact, ...], result.capabilities[PYDANTIC_OPERATIONS])
+    dump = next(item for item in operations if item.operation == "model_dump")
+    assert dump.model_ref is not None
+    assert dump.model_ref.state is ResolutionState.AMBIGUOUS
+    assert {candidate.value for candidate in dump.model_ref.candidates} == {
+        "app.a.User",
+        "app.b.User",
     }
