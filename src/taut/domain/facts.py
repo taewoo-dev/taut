@@ -3,10 +3,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from taut.domain.analysis_state import (
+    AnalysisStage,
+    CompletenessState,
+    FactKind,
+    IncompleteReason,
+    ModuleCompleteness,
+)
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, SymbolId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.domain.provenance import Provenance
+
+__all__ = [
+    "AnalysisStage",
+    "CompletenessState",
+    "FactKind",
+    "IncompleteReason",
+    "ModuleCompleteness",
+]
 
 
 class SourceKind(StrEnum):
@@ -14,32 +29,6 @@ class SourceKind(StrEnum):
     THIRD_PARTY = "third_party"
     STUB = "stub"
     GENERATED = "generated"
-
-
-class AnalysisStage(StrEnum):
-    DISCOVERED = "discovered"
-    PARSED = "parsed"
-    INDEXED = "indexed"
-    RESOLVED = "resolved"
-    FACTS_READY = "facts_ready"
-    FAILED = "failed"
-
-
-class FactKind(StrEnum):
-    IMPORT = "import"
-    DEFINITION = "definition"
-    REFERENCE = "reference"
-    CALL = "call"
-    DECORATOR = "decorator"
-    FUNCTION = "function"
-    CLASS = "class"
-    FIELD = "field"
-
-
-class CompletenessState(StrEnum):
-    COMPLETE = "complete"
-    PARTIAL = "partial"
-    FAILED = "failed"
 
 
 class ResolutionState(StrEnum):
@@ -319,29 +308,6 @@ class BindingFact:
     location: SourceRange
     provenance: Provenance
     context: SyntaxContext
-@dataclass(frozen=True, order=True)
-class IncompleteReason:
-    code: str
-    message: str
-
-
-@dataclass(frozen=True)
-class ModuleCompleteness:
-    state: CompletenessState
-    stage: AnalysisStage
-    available_facts: frozenset[FactKind]
-    unavailable_facts: FrozenMap[FactKind, IncompleteReason]
-
-    def __post_init__(self) -> None:
-        overlap = self.available_facts.intersection(self.unavailable_facts)
-        if overlap:
-            raise ValueError(f"fact kinds cannot be both available and unavailable: {overlap}")
-        if self.state is CompletenessState.COMPLETE and (
-            self.stage is not AnalysisStage.FACTS_READY or self.unavailable_facts
-        ):
-            raise ValueError("complete module must be facts_ready with no unavailable facts")
-        if self.state is CompletenessState.FAILED and self.stage is not AnalysisStage.FAILED:
-            raise ValueError("failed module must be in failed stage")
 
 
 type LocatedFact = (

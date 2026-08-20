@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable
 
-from taut.analysis.python.symbol_resolver import written_name
+from taut.analysis.python.resolver_primitives import written_name
 from taut.domain.facts import (
     CallArgument,
     ExpressionSummary,

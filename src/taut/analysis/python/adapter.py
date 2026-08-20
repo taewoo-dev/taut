@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import hashlib
 from collections import defaultdict
 from dataclasses import replace
 
@@ -15,6 +14,7 @@ from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
 )
 from taut.analysis.python.fact_order import fact_sort_key
+from taut.analysis.python.module_relations import emit_module_relations
 from taut.analysis.python.scope_flow import BindingState
 from taut.analysis.python.symbol_resolver import (
     PythonSymbolResolver,
@@ -38,7 +38,6 @@ from taut.domain.facts import (
     ModuleFacts,
     ModuleIdentity,
     ReferenceFact,
-    ResolutionState,
     ScopeKind,
     SymbolRef,
     SyntaxContext,
@@ -46,7 +45,7 @@ from taut.domain.facts import (
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, SymbolId
-from taut.domain.relations import BindingKind
+from taut.domain.relations import BindingKind, ModuleRelations
 
 _ALL_FACTS = frozenset(FactKind)
 
@@ -67,6 +66,8 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self.classes: list[ClassFact] = []
         self.fields: list[FieldFact] = []
         self.binding_facts: list[BindingFact] = []
+        self._reference_binding_ids: dict[FactId, FactId | None] = {}
+        self._reference_candidate_binding_ids: dict[FactId, tuple[FactId, ...]] = {}
         self._binding_kind = BindingKind.ASSIGNMENT
         self._binding_targets: dict[ast.AST, BindingKind] = {}
         self.class_symbols: set[SymbolId] = set()
@@ -92,7 +93,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
-        self._index_binding_targets(tree)
+        self._index_binding_targets(tree)  # type: ignore[misc]
         self.visit(tree)
         deferred_index = 0
         while deferred_index < len(self._deferred_bodies):
@@ -117,7 +118,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             available_facts=_ALL_FACTS,
             unavailable_facts=FrozenMap(),
         )
-        return ModuleFacts(
+        facts = ModuleFacts(
             module=module,
             imports=tuple(sorted(self.imports, key=fact_sort_key)),
             definitions=tuple(sorted(self.definitions, key=fact_sort_key)),
@@ -127,24 +128,24 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             functions=tuple(sorted(self.functions, key=fact_sort_key)),
             classes=tuple(sorted(self.classes, key=fact_sort_key)),
             fields=tuple(sorted(self.fields, key=fact_sort_key)),
-            bindings=tuple(sorted(
-                self.binding_facts,
-                key=lambda item: (
-                    item.location.start_line, item.location.start_column, item.id.value
-                ),
-            )),
+            bindings=tuple(
+                sorted(
+                    self.binding_facts,
+                    key=lambda item: (
+                        item.location.start_line,
+                        item.location.start_column,
+                        item.id.value,
+                    ),
+                )
+            ),
             completeness=completeness,
         )
+        return facts
 
-    def _fact_id(self, kind: FactKind, normalized_subject: str) -> FactId:
-        scope = self.current_scope.value if self.current_scope else self.source.module_id.value
-        key = (scope, kind.value, normalized_subject)
-        occurrence = self.occurrences[key]
-        self.occurrences[key] += 1
-        raw = "\0".join(
-            (self.source.module_id.value, scope, kind.value, normalized_subject, str(occurrence))
+    def relations(self, facts: ModuleFacts) -> ModuleRelations:
+        return emit_module_relations(
+            facts, self._reference_binding_ids, self._reference_candidate_binding_ids
         )
-        return FactId(hashlib.sha256(raw.encode()).hexdigest())
 
     def _expression_summary(self, node: ast.AST) -> ExpressionSummary:
         return self._summarizer.expression(node)
@@ -153,11 +154,12 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         for alias in node.names:
             local_name = alias.asname or alias.name.split(".", 1)[0]
             target = alias.name if alias.asname else alias.name.split(".", 1)[0]
-            self._declare(local_name, SymbolId(target))
             normalized = f"import:{alias.name}:{alias.asname or ''}"
+            fact_id = self._next_fact_id(FactKind.IMPORT, normalized)
+            self._declare(local_name, SymbolId(target), fact_id)
             self.imports.append(
                 ImportFact(
-                    id=self._fact_id(FactKind.IMPORT, normalized),
+                    id=fact_id,
                     module_id=self.source.module_id,
                     imported_name=alias.name,
                     imported_module_name=alias.name,
@@ -174,16 +176,18 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         base = self._absolute_import_base(node.module, node.level)
         for alias in node.names:
+            imported_name = f"{base}.{alias.name}" if base and alias.name != "*" else base
+            normalized = f"from:{imported_name}:{alias.asname or ''}"
+            fact_id = self._next_fact_id(FactKind.IMPORT, normalized)
             if alias.name != "*":
                 self._declare(
                     alias.asname or alias.name,
                     SymbolId(f"{base}.{alias.name}" if base else alias.name),
+                    fact_id,
                 )
-            imported_name = f"{base}.{alias.name}" if base and alias.name != "*" else base
-            normalized = f"from:{imported_name}:{alias.asname or ''}"
             self.imports.append(
                 ImportFact(
-                    id=self._fact_id(FactKind.IMPORT, normalized),
+                    id=fact_id,
                     module_id=self.source.module_id,
                     imported_name=imported_name,
                     imported_module_name=base,
@@ -199,11 +203,12 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         symbol = self.node_scopes[node]
-        self._declare(node.name, symbol)
+        definition_id = self._next_fact_id(FactKind.DEFINITION, f"class:{symbol.value}")
+        self._declare(node.name, symbol, definition_id)
         self.class_symbols.add(symbol)
         self.definitions.append(
             DefinitionFact(
-                id=self._fact_id(FactKind.DEFINITION, f"class:{symbol.value}"),
+                id=definition_id,
                 module_id=self.source.module_id,
                 symbol_id=symbol,
                 kind="class",
@@ -215,7 +220,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         )
         self.classes.append(
             ClassFact(
-                id=self._fact_id(FactKind.CLASS, symbol.value),
+                id=self._next_fact_id(FactKind.CLASS, symbol.value),
                 module_id=self.source.module_id,
                 symbol_id=symbol,
                 name=node.name,
@@ -239,7 +244,8 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, is_async: bool) -> None:
         symbol = self.node_scopes[node]
-        self._declare(node.name, symbol)
+        definition_id = self._next_fact_id(FactKind.DEFINITION, f"function:{symbol.value}")
+        self._declare(node.name, symbol, definition_id)
         self.function_symbols.add(symbol)
         decorator_refs = tuple(self._resolve(decorator) for decorator in node.decorator_list)
         self._enter_type_resolution()
@@ -250,7 +256,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self._leave_type_resolution()
         self.definitions.append(
             DefinitionFact(
-                id=self._fact_id(FactKind.DEFINITION, f"function:{symbol.value}"),
+                id=definition_id,
                 module_id=self.source.module_id,
                 symbol_id=symbol,
                 kind="function",
@@ -262,7 +268,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         )
         self.functions.append(
             FunctionFact(
-                id=self._fact_id(FactKind.FUNCTION, symbol.value),
+                id=self._next_fact_id(FactKind.FUNCTION, symbol.value),
                 module_id=self.source.module_id,
                 symbol_id=symbol,
                 name=node.name,
@@ -290,16 +296,27 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         for argument in arguments:
             parameter_symbol = self._child_symbol(symbol, argument.arg)
             self.bindings[symbol][argument.arg] = parameter_symbol
-            self.binding_states[symbol][argument.arg] = BindingState(frozenset({parameter_symbol}))
-            self.binding_facts.append(BindingFact(
-                id=self._fact_id(FactKind.FIELD, f"parameter:{symbol.value}:{argument.arg}"),
-                module_id=self.source.module_id, local_name=argument.arg,
-                kind=BindingKind.PARAMETER, lexical_owner=symbol, symbol_id=parameter_symbol,
-                location=self._location(argument), provenance=self._provenance(argument),
-                context=replace(
-                    self._syntax_context(), lexical_owner=symbol, scope_kind=ScopeKind.FUNCTION
-                ),
-            ))
+            parameter_id = self._next_fact_id(
+                FactKind.FIELD, f"parameter:{symbol.value}:{argument.arg}"
+            )
+            self.binding_states[symbol][argument.arg] = BindingState(
+                frozenset({parameter_symbol}), True, frozenset({parameter_id})
+            )
+            self.binding_facts.append(
+                BindingFact(
+                    id=parameter_id,
+                    module_id=self.source.module_id,
+                    local_name=argument.arg,
+                    kind=BindingKind.PARAMETER,
+                    lexical_owner=symbol,
+                    symbol_id=parameter_symbol,
+                    location=self._location(argument),
+                    provenance=self._provenance(argument),
+                    context=replace(
+                        self._syntax_context(), lexical_owner=symbol, scope_kind=ScopeKind.FUNCTION
+                    ),
+                )
+            )
             annotation = self._annotation_symbol(argument.annotation)
             if annotation is not None:
                 self.types[symbol][argument.arg] = annotation
@@ -323,7 +340,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def _add_decorator(self, symbol: SymbolId, node: ast.expr) -> None:
         ref = self._resolve(node.func if isinstance(node, ast.Call) else node)
-        fact_id = self._fact_id(FactKind.DECORATOR, f"{symbol.value}:{ref.written_name}")
+        fact_id = self._next_fact_id(FactKind.DECORATOR, f"{symbol.value}:{ref.written_name}")
         self.decorators.append(
             DecoratorFact(
                 id=fact_id,
@@ -341,7 +358,9 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         ref = self._contextual_ref(self._resolve(node.func), self._syntax_context().guard)
-        fact_id = self._fact_id(FactKind.CALL, ref.symbol.value if ref.symbol else ref.written_name)
+        fact_id = self._next_fact_id(
+            FactKind.CALL, ref.symbol.value if ref.symbol else ref.written_name
+        )
         self.calls.append(
             CallFact(
                 id=fact_id,
@@ -386,7 +405,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
             self.references.append(
                 ReferenceFact(
-                    id=self._fact_id(
+                    id=self._next_fact_id(
                         FactKind.REFERENCE,
                         ref.symbol.value if ref.symbol else ref.written_name,
                     ),
@@ -423,67 +442,3 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
         self._visit_with(node)
-
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        if isinstance(node.target, ast.Name):
-            annotation = self._annotation_symbol(node.annotation)
-            if annotation is not None:
-                self.types[self.current_scope][node.target.id] = annotation
-            self._add_field(
-                node.target.id,
-                node,
-                self._expression_summary(node.annotation),
-                self._expression_summary(node.value) if node.value is not None else None,
-                True,
-            )
-        self.generic_visit(node)
-
-    def visit_Assign(self, node: ast.Assign) -> None:
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                self._add_field(
-                    target.id,
-                    node,
-                    None,
-                    self._expression_summary(node.value),
-                    False,
-                )
-        self.visit(node.value)
-        inferred: SymbolId | None = None
-        if isinstance(node.value, ast.Call):
-            ref = self._resolve(node.value.func)
-            if ref.state is ResolutionState.RESOLVED:
-                inferred = ref.symbol
-        if inferred is not None:
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    self.types[self.current_scope][target.id] = inferred
-        for target in node.targets:
-            self.visit(target)
-
-    def _add_field(
-        self,
-        name: str,
-        node: ast.AST,
-        annotation: ExpressionSummary | None,
-        value: ExpressionSummary | None,
-        is_annotated: bool,
-    ) -> None:
-        if self.current_scope is not None and self.current_scope not in self.class_symbols:
-            return
-        symbol = self._child_symbol(self.current_scope, name)
-        self.fields.append(
-            FieldFact(
-                id=self._fact_id(FactKind.FIELD, symbol.value),
-                module_id=self.source.module_id,
-                owner_symbol=self.current_scope,
-                symbol_id=symbol,
-                name=name,
-                annotation=annotation,
-                value=value,
-                is_annotated=is_annotated,
-                location=self._location(node),
-                provenance=self._provenance(node),
-                context=self._syntax_context(),
-            )
-        )

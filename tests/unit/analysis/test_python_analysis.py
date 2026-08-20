@@ -172,11 +172,32 @@ def outer() -> None:
     second = analyze(source).relations.bindings
     assert first == second
 
-    by_name = {name: [item for item in first if item.local_name == name] for name in (
-        "annotated", "left", "right", "head", "tail", "item", "resource", "async_item",
-        "async_resource", "star_error", "matched", "rest", "first", "remaining",
-        "class_value", "or_value", "written", "argument", "element", "routed", "exported",
-    )}
+    by_name = {
+        name: [item for item in first if item.local_name == name]
+        for name in (
+            "annotated",
+            "left",
+            "right",
+            "head",
+            "tail",
+            "item",
+            "resource",
+            "async_item",
+            "async_resource",
+            "star_error",
+            "matched",
+            "rest",
+            "first",
+            "remaining",
+            "class_value",
+            "or_value",
+            "written",
+            "argument",
+            "element",
+            "routed",
+            "exported",
+        )
+    }
     assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["annotated"])
     assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["left"])
     assert any(item.kind is BindingKind.ASSIGNMENT for item in by_name["right"])

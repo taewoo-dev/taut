@@ -60,6 +60,7 @@ class UseEdge:
     location: SourceRange
     context: SyntaxContext
     purpose: UsePurpose
+    candidate_binding_ids: tuple[FactId, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,17 @@ class ModuleRelations:
             raise ValueError("module binding ids must be unique")
         if len(self.use_edges) != len({edge.occurrence_id for edge in self.use_edges}):
             raise ValueError("module use occurrence ids must be unique")
+        if any(
+            edge.binding_id is not None and edge.binding_id not in edge.candidate_binding_ids
+            for edge in self.use_edges
+        ):
+            raise ValueError("selected binding must be one of the candidate bindings")
+        if any(
+            edge.candidate_binding_ids
+            != tuple(sorted(set(edge.candidate_binding_ids), key=lambda item: item.value))
+            for edge in self.use_edges
+        ):
+            raise ValueError("candidate binding ids must be sorted and unique")
 
 
 @dataclass(frozen=True)
@@ -90,6 +102,12 @@ class ProjectRelations:
         known_bindings = set(binding_ids)
         if any(edge.binding_id not in known_bindings for edge in self.use_edges if edge.binding_id):
             raise ValueError("use edges may only reference known bindings")
+        if any(
+            candidate not in known_bindings
+            for edge in self.use_edges
+            for candidate in edge.candidate_binding_ids
+        ):
+            raise ValueError("use edge candidates may only reference known bindings")
         binding_by_id = {binding.id: binding for binding in self.bindings}
         if any(
             edge.binding_id is not None
@@ -97,3 +115,9 @@ class ProjectRelations:
             for edge in self.use_edges
         ):
             raise ValueError("use edges may only reference bindings in the same module")
+        if any(
+            binding_by_id[candidate].module_id != edge.module_id
+            for edge in self.use_edges
+            for candidate in edge.candidate_binding_ids
+        ):
+            raise ValueError("use edge candidates may only reference bindings in the same module")

@@ -3,12 +3,13 @@ from __future__ import annotations
 import ast
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 from taut.analysis.contracts import SourceInput
+from taut.analysis.python.fact_ids import next_fact_id
+from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
 from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
-from taut.domain.facts import GuardKind, ResolutionState, SymbolRef
-from taut.domain.ids import SymbolId
+from taut.domain.facts import FactKind, GuardKind, ResolutionState, SymbolRef
+from taut.domain.ids import FactId, SymbolId
 from taut.domain.location import SourceRange
 from taut.domain.provenance import Provenance
 
@@ -37,37 +38,13 @@ _BUILTINS = frozenset(
 )
 
 
-def node_range(source: SourceInput, node: ast.AST) -> SourceRange:
-    start_line = max(getattr(node, "lineno", 1) - 1, 0)
-    start_column = max(getattr(node, "col_offset", 0), 0)
-    end_line = max(getattr(node, "end_lineno", start_line + 1) - 1, start_line)
-    end_column = max(getattr(node, "end_col_offset", start_column), 0)
-    return SourceRange(source.path, start_line, start_column, end_line, end_column)
-
-
-def written_name(node: ast.AST) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return f"{written_name(node.value)}.{node.attr}"
-    try:
-        return ast.unparse(node)
-    except (ValueError, TypeError):
-        return node.__class__.__name__
-
-
-@dataclass(frozen=True)
-class _Scope:
-    symbol: SymbolId | None
-    parent: SymbolId | None
-    kind: str
-
-
 class PythonSymbolResolver(PythonScopeFlow):
+    occurrences: dict[tuple[str, str, str], int]
+
     def __init__(self, source: SourceInput) -> None:
         self.source = source
         self.current_scope: SymbolId | None = None
-        self.scopes: dict[SymbolId | None, _Scope] = {None: _Scope(None, None, "module")}
+        self.scopes: dict[SymbolId | None, Scope] = {None: Scope(None, None, "module")}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.binding_states: dict[SymbolId | None, dict[str, BindingState]] = defaultdict(dict)
         self.type_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
@@ -92,7 +69,7 @@ class PythonSymbolResolver(PythonScopeFlow):
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 symbol = self._child_symbol(scope, statement.name)
                 self.node_scopes[statement] = symbol
-                self.scopes[symbol] = _Scope(
+                self.scopes[symbol] = Scope(
                     symbol,
                     scope,
                     "class" if isinstance(statement, ast.ClassDef) else "function",
@@ -224,7 +201,7 @@ class PythonSymbolResolver(PythonScopeFlow):
                 )
                 symbol = self._synthetic_symbol(scope, "lambda", node)
                 self.node_scopes[node] = symbol
-                self.scopes[symbol] = _Scope(symbol, scope, "function")
+                self.scopes[symbol] = Scope(symbol, scope, "function")
                 arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
                 self.local_names[symbol].update(argument.arg for argument in arguments)
                 if node.args.vararg:
@@ -238,7 +215,7 @@ class PythonSymbolResolver(PythonScopeFlow):
                 self._prime_scope_nodes([first.iter], scope)
                 symbol = self._synthetic_symbol(scope, "comprehension", node)
                 self.node_scopes[node] = symbol
-                self.scopes[symbol] = _Scope(symbol, scope, "comprehension")
+                self.scopes[symbol] = Scope(symbol, scope, "comprehension")
                 for generator in node.generators:
                     self.local_names[symbol].update(
                         child.id
@@ -338,7 +315,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         if self._type_resolution_depth:
             for scope in self._scope_chain():
                 if (symbol := self.type_bindings[scope].get(name)) is not None:
-                    return BindingState(frozenset({symbol}))
+                    return BindingState(frozenset({symbol}), True, frozenset())
         if (
             self.current_scope in self.global_names
             and name in self.global_names[self.current_scope]
@@ -368,22 +345,26 @@ class PythonSymbolResolver(PythonScopeFlow):
 
     def _future_binding_state(self, name: str) -> BindingState | None:
         symbol = self.future_bindings[None].get(name)
-        return BindingState(frozenset({symbol})) if symbol is not None else None
+        return BindingState(frozenset({symbol}), True, frozenset()) if symbol is not None else None
 
-    def _declare(self, name: str, symbol: SymbolId) -> None:
+    def _declare(self, name: str, symbol: SymbolId, binding_id: FactId | None = None) -> None:
         scope = self._binding_scope(name)
         if self._type_checking_depth:
             self.type_bindings[scope][name] = symbol
             return
         self.bindings[scope][name] = symbol
-        self.binding_states[scope][name] = BindingState(frozenset({symbol}))
+        self.binding_states[scope][name] = BindingState(
+            frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()
+        )
 
-    def _declare_assignment(self, name: str) -> None:
+    def _declare_assignment(self, name: str, binding_id: FactId | None = None) -> None:
         scope = self._binding_scope(name)
         symbol = self._child_symbol(scope, name)
         self.variable_symbols.add(symbol)
         self.bindings[scope][name] = symbol
-        self.binding_states[scope][name] = BindingState(frozenset({symbol}))
+        self.binding_states[scope][name] = BindingState(
+            frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()
+        )
 
     def _binding_scope(self, name: str) -> SymbolId | None:
         scope = self.current_scope
@@ -409,6 +390,15 @@ class PythonSymbolResolver(PythonScopeFlow):
         if node not in self._resolutions:
             self._resolutions[node] = self._resolve_uncached(node)
         return self._resolutions[node]
+
+    def _next_fact_id(self, kind: FactKind, subject: str) -> FactId:
+        return next_fact_id(
+            self.source.module_id.value, self.current_scope, kind, subject, self.occurrences
+        )
+
+    def _resolved_binding_ids(self, node: ast.AST) -> tuple[FactId, ...]:
+        state = self._lookup_binding_state(node.id) if isinstance(node, ast.Name) else None
+        return tuple(sorted(state.binding_ids, key=lambda item: item.value)) if state else ()
 
     def _resolve_uncached(self, node: ast.AST) -> SymbolRef:
         name = self._written_name(node)

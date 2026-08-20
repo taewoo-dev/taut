@@ -161,6 +161,7 @@ shared_modules = [
   "taut.domain.diagnostics",
   "taut.domain.evaluations",
   "taut.domain.facts",
+  "taut.domain.analysis_state",
   "taut.domain.findings",
   "taut.domain.issues",
   "taut.domain.relations",

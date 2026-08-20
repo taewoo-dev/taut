@@ -5,13 +5,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from taut.domain.facts import GuardKind, ResolutionState, SymbolRef
-from taut.domain.ids import SymbolId
+from taut.domain.ids import FactId, SymbolId
 
 
 @dataclass(frozen=True)
 class BindingState:
     candidates: frozenset[SymbolId]
     definite: bool = True
+    binding_ids: frozenset[FactId] = frozenset()
 
 
 FlowSnapshot = tuple[
@@ -67,8 +68,14 @@ class PythonScopeFlow:
                     if state is not None
                     for candidate in state.candidates
                 )
+                binding_ids = frozenset(
+                    binding_id
+                    for state in path_states
+                    if state is not None
+                    for binding_id in state.binding_ids
+                )
                 definite = all(state is not None and state.definite for state in path_states)
-                scope_states[name] = BindingState(candidates, definite)
+                scope_states[name] = BindingState(candidates, definite, binding_ids)
                 if len(candidates) == 1:
                     scope_bindings[name] = next(iter(candidates))
             merged_bindings[scope] = scope_bindings
