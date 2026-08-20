@@ -19,6 +19,7 @@ from taut.analysis.framework.sqlalchemy import (
     SQLAlchemyTransactionFact,
 )
 from taut.analysis.providers import apply_fact_providers
+from taut.plugins.v1 import SQLAlchemyProvider as PublicSQLAlchemyProvider
 
 
 def test_sqlalchemy_provider_extracts_14_and_20_declarative_and_runtime_facts() -> None:
@@ -118,3 +119,18 @@ bad = BadFactory()
     factory_symbol = produced[0].factory_symbol
     assert factory_symbol is not None
     assert factory_symbol.value == "app.db.SessionLocal"
+
+
+def test_sqlalchemy_provider_is_public_plugin_contract() -> None:
+    provider = PublicSQLAlchemyProvider()
+    assert provider.id == "taut.sqlalchemy"
+    assert provider.version == "1"
+    assert {spec.id for spec in provider.provides} == {
+        SQLALCHEMY_MODELS,
+        SQLALCHEMY_MAPPED_COLUMNS,
+        SQLALCHEMY_RELATIONSHIPS,
+        SQLALCHEMY_SESSIONS,
+        SQLALCHEMY_TRANSACTIONS,
+        SQLALCHEMY_QUERIES,
+        SQLALCHEMY_RAW_SQL,
+    }
