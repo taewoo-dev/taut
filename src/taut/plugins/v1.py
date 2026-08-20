@@ -5,6 +5,15 @@ from taut.analysis.framework.fastapi import (
     FastAPIResponseModelFact,
     FastAPIRouterFact,
 )
+from taut.analysis.framework.pydantic import (
+    PydanticConfigFact,
+    PydanticFieldFact,
+    PydanticModelFact,
+    PydanticOperationFact,
+    PydanticProvider,
+    PydanticSerializerFact,
+    PydanticValidatorFact,
+)
 from taut.analysis.framework.sqlalchemy import (
     SQLAlchemyMappedColumnFact,
     SQLAlchemyModelFact,
@@ -33,6 +42,13 @@ __all__ = [
     "FastAPIResponseModelFact",
     "FastAPIRouterFact",
     "ProviderDependency",
+    "PydanticConfigFact",
+    "PydanticFieldFact",
+    "PydanticModelFact",
+    "PydanticOperationFact",
+    "PydanticProvider",
+    "PydanticSerializerFact",
+    "PydanticValidatorFact",
     "RulePackV1",
     "SQLAlchemyMappedColumnFact",
     "SQLAlchemyModelFact",
