@@ -83,14 +83,14 @@ class EndpointDocumentationRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("API001 requires a module target")
+        role = context.classification.get(target.module_id).role
+        if role not in context.policy.code.router_roles:
+            return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = target_uncertainty(
             ENDPOINT_RULE_ID, target, context, (FASTAPI_ENDPOINTS, FASTAPI_RESPONSE_MODELS)
         )
         if uncertainty is not None:
             return uncertainty
-        role = context.classification.get(target.module_id).role
-        if role not in context.policy.code.router_roles:
-            return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         module = context.model.module(target.module_id)
         functions = {function.symbol_id: function for function in module.functions}
         findings: list[Finding] = []
@@ -165,12 +165,12 @@ class PublicFieldDocumentationRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("API002 requires a module target")
-        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,))
-        if uncertainty is not None:
-            return uncertainty
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.schema_roles:
             return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,))
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         classes = {
             class_fact.symbol_id: class_fact
@@ -280,11 +280,6 @@ class RouterMetadataRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("API003 requires a module target")
-        uncertainty = target_uncertainty(
-            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,)
-        )
-        if uncertainty is not None:
-            return uncertainty
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.router_roles:
             return RuleEvaluation(
@@ -293,6 +288,11 @@ class RouterMetadataRule:
                 RuleVerdict.NOT_APPLICABLE,
                 (),
             )
+        uncertainty = target_uncertainty(
+            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,)
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         registrations = _router_registration_tags(target, context)
         for call in context.model.module(target.module_id).calls:
@@ -344,10 +344,15 @@ class ResponseMappingRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SCHEMA003 requires a module target")
+        role = context.classification.get(target.module_id).role
+        if (
+            role not in context.policy.code.schema_roles
+            and role not in context.policy.code.router_roles
+        ):
+            return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = target_uncertainty(MAPPING_RULE_ID, target, context, (PYDANTIC_OPERATIONS,))
         if uncertainty is not None:
             return uncertainty
-        role = context.classification.get(target.module_id).role
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         if role in context.policy.code.schema_roles:

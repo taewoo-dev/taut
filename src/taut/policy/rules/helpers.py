@@ -38,9 +38,21 @@ def uncertain_provider_evaluation(
     context: PolicyContext,
     capability_names: tuple[str, ...],
     module_id: ModuleId,
+    require_capabilities: bool = False,
 ) -> RuleEvaluation | None:
     model = context.model
     for capability in capability_names:
+        if require_capabilities and capability not in model.capabilities():
+            return RuleEvaluation(
+                rule_id,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "missing_capability",
+                    f"provider capability {capability} is unavailable.",
+                ),
+            )
         for fact in model.capability_values(capability):
             if getattr(fact, "module_id", None) != module_id:
                 continue
@@ -65,9 +77,12 @@ def rule_uncertainty(
     context: PolicyContext,
     module_id: ModuleId,
     capabilities: tuple[str, ...] = (),
+    require_capabilities: bool = False,
 ) -> RuleEvaluation | None:
     return incomplete_module_evaluation(rule_id, target, context, module_id) or (
-        uncertain_provider_evaluation(rule_id, target, context, capabilities, module_id)
+        uncertain_provider_evaluation(
+            rule_id, target, context, capabilities, module_id, require_capabilities
+        )
         if capabilities
         else None
     )
@@ -78,10 +93,13 @@ def target_uncertainty(
     target: RuleTargetRef,
     context: PolicyContext,
     capabilities: tuple[str, ...] = (),
+    require_capabilities: bool = False,
 ) -> RuleEvaluation | None:
     if target.module_id is None:
         return None
-    return rule_uncertainty(rule_id, target, context, target.module_id, capabilities)
+    return rule_uncertainty(
+        rule_id, target, context, target.module_id, capabilities, require_capabilities
+    )
 
 
 def build_policy_finding(

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 from taut.analysis.contracts import (
     AnalysisRequest,
@@ -11,6 +13,7 @@ from taut.analysis.contracts import (
     SourceInput,
 )
 from taut.analysis.project_analyzer import ProjectAnalyzer
+from taut.analysis.providers import apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.configuration.catalog import CatalogEntry, EffectCatalog, EffectResolver
@@ -29,13 +32,14 @@ from taut.configuration.manifest import (
     ZoneMatcher,
 )
 from taut.domain.evaluations import RuleLevel, RuleSetting
-from taut.domain.facts import SourceKind
+from taut.domain.facts import ResolutionState, SourceKind
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.loading.config_loader import default_project_configuration
 from taut.policy.context import PolicyContext
+from taut.policy.packs import builtin_backend_providers
 
 RULE_IDS = tuple(
     RuleId(value)
@@ -152,7 +156,25 @@ def make_context(
     code_policy: CodeConventionPolicy | None = None,
     security_policy: SecurityPolicy | None = None,
     extra_catalog_entries: tuple[CatalogEntry, ...] = (),
+    provider_state: ResolutionState | None = None,
 ) -> PolicyContext:
+    snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
+    if provider_state is not None:
+        snapshot = replace(
+            snapshot,
+            capabilities=FrozenMap(
+                (
+                    capability,
+                    tuple(
+                        replace(cast(Any, fact), confidence=provider_state)
+                        if hasattr(fact, "confidence")
+                        else fact
+                        for fact in facts
+                    ),
+                )
+                for capability, facts in snapshot.capabilities.items()
+            ),
+        )
     location = ConfigLocation(ProjectPath("policy.toml"))
     matchers = tuple(
         RoleMatcher(Role(role), patterns, location) for role, patterns in roles.items()

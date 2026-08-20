@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from tests.utils.builders import analyze, make_context, make_source
 
 from taut.analysis.contracts import ContextManagerProvider, ResolverSettings, SourceInput
+from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect
 from taut.configuration.effective_policy import (
     BoundaryPolicy,
@@ -13,7 +15,8 @@ from taut.configuration.effective_policy import (
     SecurityPolicy,
 )
 from taut.configuration.manifest import Role
-from taut.domain.evaluations import RuleLevel
+from taut.domain.evaluations import RuleLevel, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.domain.facts import ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.ignores import InlineIgnore
@@ -21,6 +24,7 @@ from taut.domain.location import ProjectPath, SourceRange
 from taut.finding_processing.finding_processor import FindingProcessor
 from taut.policy.engine import PolicyEngine, PolicyRunResult
 from taut.policy.rules import builtin_rule_registry
+from taut.policy.rules.helpers import target_uncertainty
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -167,7 +171,9 @@ def _roles(rule_id: str, variant: str) -> dict[str, tuple[str, ...]]:
     return {role: ("app/**",)}
 
 
-def _run_regular_fixture(rule_id: str, variant: str) -> PolicyRunResult:
+def _run_regular_fixture(
+    rule_id: str, variant: str, provider_state: ResolutionState | None = None
+) -> PolicyRunResult:
     definition = builtin_rule_registry().definitions[RuleId(rule_id)]
     paths = (
         definition.compliant_fixtures if variant == "compliant" else definition.violation_fixtures
@@ -225,6 +231,7 @@ def _run_regular_fixture(rule_id: str, variant: str) -> PolicyRunResult:
         code_policy=_code_policy(),
         security_policy=_security_policy(),
         extra_catalog_entries=(time_wrapper,),
+        provider_state=provider_state,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -266,3 +273,57 @@ def test_registered_rule_fixtures_have_expected_semantics(rule_id: str, variant:
 
     assert not indeterminate, f"{rule_id} {variant} was indeterminate"
     assert bool(findings) is (variant == "violation")
+
+
+GROUP_A_RULES = (
+    "API001",
+    "API002",
+    "API003",
+    "DTO001",
+    "DTO002",
+    "SNAPSHOT001",
+    "SCHEMA001",
+    "SCHEMA002",
+    "SCHEMA003",
+    "ENUM001",
+    "IGNORE001",
+)
+PROVIDER_BACKED_GROUP_A_RULES = {"API001", "API002", "API003", "SCHEMA001", "SCHEMA002"}
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_A_RULES)
+@pytest.mark.parametrize("state", tuple(ResolutionState))
+def test_group_a_evaluators_execute_real_fixtures_for_provider_states(
+    rule_id: str, state: ResolutionState
+) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", provider_state=state)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations, rule_id
+    assert not result.engine_issues
+    if state is not ResolutionState.RESOLVED and rule_id in PROVIDER_BACKED_GROUP_A_RULES:
+        assert all(item.verdict.value == "indeterminate" for item in evaluations)
+        assert all(item.reason is not None for item in evaluations)
+        assert {item.reason.code for item in evaluations if item.reason is not None} == {
+            "uncertain_provider_fact"
+        }
+
+
+@pytest.mark.contract
+def test_missing_required_provider_capability_is_indeterminate() -> None:
+    snapshot = analyze(make_source("app/fixture.py", "value = 1"))
+    context = make_context(snapshot, roles={"router": ("app/**",)})
+    target = RuleTargetRef(RuleTarget.MODULE, module_id=ModuleId("app.fixture"))
+    model_without_provider = SnapshotSemanticModel(snapshot)
+    context = replace(context, model=model_without_provider)
+    result = target_uncertainty(
+        RuleId("API001"),
+        target,
+        context,
+        ("taut.fastapi.endpoints@1",),
+        True,
+    )
+    assert result is not None
+    assert result.verdict is RuleVerdict.INDETERMINATE
+    assert result.reason is not None
+    assert result.reason.code == "missing_capability"
