@@ -19,27 +19,55 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
     rows = matrix["rules"]
     registry_ids = {rule_id.value for rule_id in builtin_rule_registry().definitions}
     row_ids = [row["id"] for row in rows]
+    states = set(matrix["state_values"])
+    verdicts = set(matrix["verdict_values"])
+    required = {
+        "id",
+        "source_module",
+        "evaluator",
+        "target",
+        "syntax_only",
+        "semantic_facts_consumed",
+        "resolution_source",
+        "resolution_policy",
+        "missing_capability_completeness",
+        "current_code_evidence",
+        "required_code_test_change",
+        "heuristic_provider_migration",
+        "implementation_group",
+        "group_files",
+        "dependencies",
+    }
+    required_missing = {
+        "missing_capability",
+        "incomplete_project",
+        "insufficient_analysis_stage",
+        "missing_required_fact",
+    }
     assert matrix["expected_builtin_count"] == 48
     assert len(registry_ids) == 48
     assert len(rows) == 48
     assert len(row_ids) == len(set(row_ids))
     assert set(row_ids) == registry_ids
     assert {row["target"] for row in rows} <= {"module", "symbol", "call", "operation", "project"}
-    assert {row["group"] for row in rows} == set(matrix["groups"])
-    allowed_maps = {
-        "not_applicable",
-        "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable",
-        "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate",
-        (
-            "resolved=evaluate; conditional/ambiguous/unresolved/dynamic="
-            "indeterminate_if_suffix_else_not_applicable"
-        ),
-        (
-            "resolved=evaluate; conditional/ambiguous/unresolved/dynamic="
-            "indeterminate_if_db_owner_suffix_else_not_applicable"
-        ),
-    }
-    assert {row["resolution_map"] for row in rows} <= allowed_maps
+    assert {row["implementation_group"] for row in rows} == set(matrix["groups"])
+    for row in rows:
+        assert required <= row.keys()
+        assert row["source_module"].startswith("src/taut/policy/rules/")
+        assert row["evaluator"]["class"] and row["evaluator"]["function"]
+        assert row["semantic_facts_consumed"]
+        assert set(row["resolution_policy"]) == states
+        assert set(row["resolution_policy"].values()) <= verdicts | {"evaluate"}
+        assert required_missing <= row["missing_capability_completeness"].keys()
+        assert set(row["missing_capability_completeness"].values()) == {"indeterminate"}
+        assert row["current_code_evidence"]["module"] == row["source_module"]
+        if not row["syntax_only"]:
+            assert any(
+                value == "indeterminate"
+                for value in row["resolution_policy"].values()
+            ), row["id"]
+        else:
+            assert set(row["resolution_policy"].values()) == {"not_applicable"}
 
 
 @pytest.mark.contract
@@ -47,11 +75,15 @@ def test_uncertainty_matrix_groups_are_disjoint_and_dependency_ordered() -> None
     matrix = json.loads(MATRIX_PATH.read_text())
     grouped = {group: set() for group in matrix["groups"]}
     for row in matrix["rules"]:
-        assert row["id"] not in grouped[row["group"]]
-        grouped[row["group"]].add(row["id"])
-    assert not (grouped["A"] & grouped["B"])
-    assert not (grouped["A"] & grouped["C"])
-    assert not (grouped["A"] & grouped["D"])
-    assert not (grouped["B"] & grouped["C"])
-    assert not (grouped["B"] & grouped["D"])
-    assert not (grouped["C"] & grouped["D"])
+        assert row["id"] not in grouped[row["implementation_group"]]
+        grouped[row["implementation_group"]].add(row["id"])
+        assert row["source_module"] in matrix["groups"][row["implementation_group"]]["files"]
+        assert row["group_files"] == matrix["groups"][row["implementation_group"]]["files"]
+    assert sum(len(ids) for ids in grouped.values()) == 48
+    assert all(9 <= len(ids) <= 16 for ids in grouped.values())
+    assert len({path for group in matrix["groups"].values() for path in group["files"]}) == sum(
+        len(group["files"]) for group in matrix["groups"].values()
+    )
+    for name, group in matrix["groups"].items():
+        assert set(group["depends_on"]) < set(matrix["groups"])
+        assert name not in group["depends_on"]
