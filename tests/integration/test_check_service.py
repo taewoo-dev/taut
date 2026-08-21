@@ -234,6 +234,7 @@ def test_provider_exception_is_a_deterministic_coverage_failure(
 
     assert first.exit_code == second.exit_code == 2
     assert first.stdout == second.stdout
+    assert first.report is not None
     assert first.report.analysis_coverage.unavailable_capabilities[0].name == "broken.facts@1"
 
 

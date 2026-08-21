@@ -84,7 +84,7 @@ class CheckResult:
     stdout: bytes
     stderr: bytes
     exit_code: int
-    report: RunReport
+    report: RunReport | None
     findings: tuple[Finding, ...] = ()
     coverage: CoverageReport | None = None
     issues: tuple[EngineIssue, ...] = ()

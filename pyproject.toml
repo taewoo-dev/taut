@@ -126,9 +126,11 @@ composition = [
   "src/taut/__init__.py",
   "src/taut/check_service.py",
   "src/taut/cli.py",
+  "src/taut/daemon_*.py",
   "src/taut/plugins/*.py",
   "src/taut/semantic/*.py",
 ]
+bootstrap = { include = ["src/taut/daemon_state.py"], priority = 10 }
 
 [tool.taut.allow]
 domain = ["domain"]
@@ -151,6 +153,20 @@ composition = [
   "reporting",
   "cache",
   "composition",
+  "bootstrap",
+]
+bootstrap = [
+  "domain",
+  "analysis",
+  "configuration",
+  "policy",
+  "finding_processing",
+  "incremental",
+  "loading",
+  "reporting",
+  "cache",
+  "composition",
+  "bootstrap",
 ]
 
 [tool.taut.layers]

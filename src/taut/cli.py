@@ -14,6 +14,14 @@ from taut import __version__
 from taut.cache import CacheStore
 from taut.cache.store import ReportEnvelope
 from taut.check_service import CheckRequest, run_check_request
+from taut.daemon_client import (
+    DaemonError,
+    check_daemon,
+    daemon_status,
+    restart_daemon,
+    start_daemon,
+    stop_daemon,
+)
 from taut.domain.ids import RuleId
 from taut.domain.location import ConfigPath
 from taut.loading.config_loader import (
@@ -41,6 +49,7 @@ class CheckOptions:
     width: int | None
     no_cache: bool = False
     cache_dir: Path | None = None
+    daemon_mode: str = "never"
 
 
 @contextmanager
@@ -74,6 +83,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     check.add_argument("--no-cache", action="store_true")
     check.add_argument("--cache-dir")
+    check.add_argument("--daemon", choices=("auto", "never", "required"), default="never")
     check.add_argument("--format", choices=("text", "json"), default="text")
     check.add_argument("--show-inactive", action="store_true")
     check.add_argument("-v", "--verbose", action="store_true")
@@ -108,6 +118,11 @@ def _parser() -> argparse.ArgumentParser:
         command_parser = cache_commands.add_parser(name, help=help_text)
         command_parser.add_argument("project_root", nargs="?", default=".")
         command_parser.add_argument("--cache-dir")
+    daemon = subparsers.add_parser("daemon", help="상주 분석 daemon 관리")
+    daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
+    for name in ("start", "status", "stop", "restart"):
+        command_parser = daemon_commands.add_parser(name)
+        command_parser.add_argument("project_root", nargs="?", default=".")
     return parser
 
 
@@ -120,6 +135,7 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
     color = namespace.color
     width = namespace.width
     no_cache = namespace.no_cache
+    daemon_mode = namespace.daemon
     cache_dir = Path(namespace.cache_dir).resolve() if namespace.cache_dir else None
     if not isinstance(root_value, str):
         raise ValueError("project_root must be a string")
@@ -135,6 +151,8 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
         raise ValueError("color must be a string")
     if width is not None and (not isinstance(width, int) or width < MINIMUM_TEXT_WIDTH):
         raise ValueError(f"width must be at least {MINIMUM_TEXT_WIDTH}")
+    if daemon_mode not in {"auto", "never", "required"}:
+        raise ValueError("daemon mode is invalid")
     return CheckOptions(
         project_root=Path(root_value).resolve(),
         config_path=ConfigPath(config_value) if config_value is not None else None,
@@ -145,10 +163,34 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
         width=width,
         no_cache=no_cache,
         cache_dir=cache_dir,
+        daemon_mode=daemon_mode,
     )
 
 
 def run_check(options: CheckOptions) -> int:
+    request = _check_request(options)
+    if options.daemon_mode != "never":
+        try:
+            result = check_daemon(request)
+        except (DaemonError, OSError, TimeoutError):
+            if options.daemon_mode == "required":
+                raise
+            if options.verbose:
+                print("taut daemon: unavailable; using local pipeline", file=sys.stderr)
+        else:
+            sys.stdout.buffer.write(result.stdout)
+            if result.stderr:
+                sys.stderr.buffer.write(result.stderr)
+            if options.verbose:
+                counters = result.counters
+                print(
+                    "taut daemon: "
+                    f"reparsed={counters.reparsed_modules} "
+                    f"reused={counters.reused_modules} "
+                    f"evaluated={counters.recomputed_evaluations}",
+                    file=sys.stderr,
+                )
+            return result.exit_code
     config = load_project_configuration(options.project_root, options.config_path)
     discovery = discover_sources(options.project_root, config)
     cache_key = None
@@ -192,17 +234,7 @@ def run_check(options: CheckOptions) -> int:
                 return int(cached.exit_code)
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
-    result = run_check_request(
-        CheckRequest(
-            project_root=options.project_root,
-            config_path=options.config_path,
-            output_format=options.output_format,
-            show_inactive=options.show_inactive,
-            verbose=options.verbose,
-            use_color=_use_color(options.color),
-            width=_output_width(options.width),
-        )
-    )
+    result = run_check_request(request)
     output_bytes = result.stdout
     sys.stdout.buffer.write(result.stdout)
     if result.stderr:
@@ -321,10 +353,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(f"리포트: {stats.report_entries}")
                     print(f"바이트: {stats.total_bytes}")
             return 0
+        if command == "daemon":
+            root = Path(namespace.project_root).resolve()
+            daemon_command = namespace.daemon_command
+            if daemon_command == "start":
+                status = start_daemon(root)
+                print(f"daemon running: pid={status.pid} port={status.port}")
+                return 0
+            if daemon_command == "status":
+                running = daemon_status(root)
+                if running is None:
+                    print("daemon stopped")
+                    return 1
+                print(f"daemon running: pid={running.pid} port={running.port}")
+                return 0
+            if daemon_command == "stop":
+                stopped = stop_daemon(root)
+                print("daemon stopped" if stopped else "daemon not running")
+                return 0 if stopped else 1
+            if daemon_command == "restart":
+                status = restart_daemon(root)
+                print(f"daemon running: pid={status.pid} port={status.port}")
+                return 0
+            parser.error("unknown daemon command")
         if command != "check":
             parser.error("unknown command")
         return run_check(_check_options(namespace))
-    except (PolicyConfigError, ValueError, OSError) as error:
+    except (DaemonError, PolicyConfigError, ValueError, OSError) as error:
         message = f"configuration error: {error}"
         if _requests_json(raw_arguments):
             print(render_configuration_error_json(__version__, message))
@@ -337,6 +392,18 @@ def _requests_json(arguments: tuple[str, ...]) -> bool:
     return "--format=json" in arguments or any(
         argument == "--format" and index + 1 < len(arguments) and arguments[index + 1] == "json"
         for index, argument in enumerate(arguments)
+    )
+
+
+def _check_request(options: CheckOptions) -> CheckRequest:
+    return CheckRequest(
+        project_root=options.project_root,
+        config_path=options.config_path,
+        output_format=options.output_format,
+        show_inactive=options.show_inactive,
+        verbose=options.verbose,
+        use_color=_use_color(options.color),
+        width=_output_width(options.width),
     )
 
 
