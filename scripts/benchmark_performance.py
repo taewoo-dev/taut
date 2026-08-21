@@ -9,6 +9,7 @@ import os
 import platform
 import resource
 import shutil
+import sqlite3
 import statistics
 import subprocess
 import sys
@@ -59,6 +60,14 @@ BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
 # Additive schema note: existing result keys remain stable; cache_scenarios is optional.
 WALL_FLOOR_SECONDS = 0.05
 RSS_FLOOR_BYTES = 1 << 20
+
+
+def _report_count(directory: Path) -> int:
+    path = directory / "cache.sqlite3"
+    if not path.exists():
+        return 0
+    with sqlite3.connect(path) as connection:
+        return int(connection.execute("SELECT count(*) FROM report_entries").fetchone()[0])
 
 
 class TimedProvider:
@@ -226,14 +235,38 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
     with tempfile.TemporaryDirectory(prefix="pytaut-benchmark-") as copied:
         changed_root = Path(copied) / "project"
         shutil.copytree(root, changed_root)
-        for index, source in enumerate(sorted(changed_root.rglob("*.py"))[:2]):
+        changed_config = load_project_configuration(changed_root)
+        discovered = discover_sources(changed_root, changed_config).sources
+        source_by_path = {item.path.value: changed_root / item.path.value for item in discovered}
+        baseline_request = request_for(len(discovered), mixed=False)
+        baseline_request = AnalysisRequest(
+            ProjectRoot(changed_root),
+            discovered,
+            LanguageSettings(),
+            ResolverSettings(),
+            baseline_request.adapter_versions,
+        )
+        baseline_snapshot = ProjectAnalyzer(PythonAstAdapter()).analyze(baseline_request)
+        inbound = baseline_snapshot.project.imported_by
+        eligible = [item for item in discovered if not item.path.value.endswith("__init__.py")]
+        ordinary_source = sorted(eligible, key=lambda item: item.path.value)[0]
+        shared_source = max(
+            eligible, key=lambda item: (len(inbound.get(item.module_id, ())), item.path.value)
+        )
+        selected = (ordinary_source, shared_source)
+        for index in range(2):
+            source = source_by_path[selected[index].path.value]
             for iteration in range(repeats):
                 original = source.read_text(encoding="utf-8")
                 source.write_text(
                     original + f"\n# benchmark edit {index}-{iteration}\n", encoding="utf-8"
                 )
                 canonical = invoke(changed_root, False)
+                before_count = _report_count(cache_dir)
                 cached = invoke(changed_root, True, cache_dir)
+                after_count = _report_count(cache_dir)
+                if after_count - before_count != 1:
+                    raise RuntimeError("cache report entry delta was not exactly one")
                 (ordinary if index == 0 else shared).append(cached)
                 parity.append(canonical[1:] == cached[1:])
                 source.write_text(original, encoding="utf-8")
@@ -265,6 +298,11 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
         "stderr_digests": [hashlib.sha256(item[2]).hexdigest() for item in unchanged],
         "canonical_no_cache_digest": hashlib.sha256(canonical[1]).hexdigest(),
         "cached_matches_canonical": all(parity),
+        "selected_paths": {
+            "ordinary": ordinary_source.path.value,
+            "shared": shared_source.path.value,
+            "shared_inbound": len(inbound.get(shared_source.module_id, ())),
+        },
         "cache_db_bytes": (cache_dir / "cache.sqlite3").stat().st_size
         if (cache_dir / "cache.sqlite3").exists()
         else 0,
