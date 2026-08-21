@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from scripts.benchmark_performance import request_for
+from typing import cast
+
+from scripts.benchmark_performance import BASELINE_SCHEMA, compare, measure, request_for, rss_bytes
 
 from taut.analysis.project_analyzer import ProjectAnalyzer
-from taut.analysis.providers import CapabilitySpec, apply_fact_providers
+from taut.analysis.providers import FactProviderV1, apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.domain.frozen import FrozenMap
 from taut.domain.snapshot import AnalysisSnapshot
@@ -21,24 +23,68 @@ def test_representative_fixtures_have_stable_digest_and_no_engine_issues() -> No
     assert first.issues == second.issues == ()
 
 
-def test_provider_pipeline_invokes_each_provider_once_per_snapshot() -> None:
+def test_all_builtin_providers_are_invoked_once_per_snapshot() -> None:
     request = request_for(8, mixed=True)
     snapshot = ProjectAnalyzer(PythonAstAdapter()).analyze(request)
 
-    class CountingProvider:
-        id = "test.counting"
-        version = "1"
-        provides: frozenset[CapabilitySpec] = frozenset()
-        calls = 0
+    class SpyProvider:
+        def __init__(self, delegate: FactProviderV1) -> None:
+            self.delegate = delegate
+            self.calls = 0
+            self.id = delegate.id
+            self.version = delegate.version
+            self.provides = delegate.provides
 
         def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]:
             self.calls += 1
-            return FrozenMap()
+            return self.delegate.analyze(snapshot)
 
-    provider = CountingProvider()
-    # An empty provider is valid and makes the invocation contract explicit.
-    apply_fact_providers(snapshot, (provider,))
-    assert provider.calls == 1
+    providers = tuple(SpyProvider(provider) for provider in builtin_backend_providers())
+    result = apply_fact_providers(snapshot, providers)
+    assert result.coverage.unavailable_capabilities == ()
+    assert all(provider.calls == 1 for provider in providers)
+
+
+def test_rss_conversion_is_platform_correct() -> None:
+    assert rss_bytes(2_000_000, system="darwin") == 2_000_000
+    assert rss_bytes(2_000, system="linux") == 2_048_000
+
+
+def test_measurement_runs_policy_engine_and_reports_real_engine_issues() -> None:
+    measurement = measure(request_for(8, mixed=True))
+    assert measurement.analysis_issues == 0
+    assert measurement.engine_issues == 0
+    assert len(measurement.snapshot_digest) == 64
+
+
+def test_baseline_comparison_uses_medians_and_ci_thresholds() -> None:
+    baseline = {
+        "schema": BASELINE_SCHEMA,
+        "results": [
+            {
+                "scale": "small",
+                "repeats": [
+                    {"wall_seconds": 0.10, "rss_bytes": 2_000_000},
+                    {"wall_seconds": 0.12, "rss_bytes": 2_200_000},
+                    {"wall_seconds": 0.11, "rss_bytes": 2_100_000},
+                ],
+            }
+        ],
+    }
+    current = {
+        "results": [
+            {
+                "scale": "small",
+                "repeats": [
+                    {"wall_seconds": 0.11, "rss_bytes": 2_100_000},
+                    {"wall_seconds": 0.10, "rss_bytes": 2_000_000},
+                    {"wall_seconds": 0.12, "rss_bytes": 2_200_000},
+                ],
+            }
+        ]
+    }
+    comparison = compare(cast(dict[str, object], current), cast(dict[str, object], baseline))
+    assert comparison == {"schema": BASELINE_SCHEMA, "passed": True, "violations": []}
 
 
 def test_benchmark_request_is_sorted_and_digest_changes_only_with_sources() -> None:
