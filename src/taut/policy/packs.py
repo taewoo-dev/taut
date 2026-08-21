@@ -74,6 +74,14 @@ class PythonCoreProvider:
             )
         )
 
+    def analyze_incremental(
+        self,
+        snapshot: AnalysisSnapshot,
+        previous: FrozenMap[str, tuple[object, ...]],
+        impacted: frozenset[object],
+    ) -> FrozenMap[str, tuple[object, ...]]:
+        return self.analyze(snapshot)
+
 
 def builtin_backend_pack() -> RulePackV1:
     registry = builtin_rule_registry()

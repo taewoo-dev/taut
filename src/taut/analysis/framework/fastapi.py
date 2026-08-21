@@ -170,6 +170,16 @@ class FastAPIProvider:
             )
         )
 
+    def analyze_incremental(
+        self,
+        snapshot: AnalysisSnapshot,
+        previous: FrozenMap[str, tuple[object, ...]],
+        impacted: frozenset[object],
+    ) -> FrozenMap[str, tuple[object, ...]]:
+        # Recognition depends on global router/function/relation indexes; re-extract
+        # deterministically from the new full snapshot while preserving the contract.
+        return self.analyze(snapshot)
+
     def _routers(
         self, snapshot: AnalysisSnapshot, bindings_by_module: dict[ModuleId, tuple[Binding, ...]]
     ) -> tuple[FastAPIRouterFact, ...]:

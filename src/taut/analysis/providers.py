@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, runtime_checkable
 
 from taut.domain.frozen import FrozenMap
 from taut.domain.provenance import Provenance
@@ -62,6 +62,7 @@ def _provider_requires(provider: object) -> tuple[ProviderDependency, ...]:
     )
 
 
+@runtime_checkable
 class FactProviderV1(Protocol):
     @property
     def id(self) -> str: ...
@@ -73,6 +74,43 @@ class FactProviderV1(Protocol):
     def provides(self) -> frozenset[CapabilitySpec]: ...
 
     def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]: ...
+
+
+@runtime_checkable
+class IncrementalFactProviderV1(FactProviderV1, Protocol):
+    def analyze_incremental(
+        self,
+        snapshot: AnalysisSnapshot,
+        previous: FrozenMap[str, tuple[object, ...]],
+        impacted: frozenset[object],
+    ) -> FrozenMap[str, tuple[object, ...]]: ...
+
+
+def apply_fact_providers_incremental(
+    snapshot: AnalysisSnapshot,
+    providers: tuple[FactProviderV1, ...],
+    previous_snapshot: AnalysisSnapshot,
+    impacted: frozenset[object],
+) -> AnalysisSnapshot:
+    """Apply providers with an optional incremental hook; V1 providers safely fall back."""
+    values = dict(previous_snapshot.capabilities.items())
+    base = replace(snapshot, capabilities=FrozenMap(values.items()))
+    ordered = _order_providers(providers)
+    for provider in ordered:
+        if isinstance(provider, IncrementalFactProviderV1):
+            method = provider.analyze_incremental
+            supplied = method(base, previous_snapshot.capabilities, impacted)
+            declared = frozenset(spec.id for spec in provider.provides)
+            if frozenset(supplied) != declared:
+                raise ValueError(f"incremental provider result does not match {provider.id}")
+            base = replace(base, capabilities=FrozenMap({**values, **supplied}.items()))
+            values.update(supplied)
+        else:
+            # Unknown V1 providers cannot prove reuse safety.
+            supplied = provider.analyze(base)
+            values.update(supplied)
+            base = replace(base, capabilities=FrozenMap(values.items()))
+    return apply_fact_providers(snapshot, providers) if not values else base
 
 
 def apply_fact_providers(
