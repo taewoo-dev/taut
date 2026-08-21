@@ -80,6 +80,9 @@ _OPERATIONS = frozenset(
         "dict",
     }
 )
+_BASE_SYMBOLS = frozenset(SymbolId(value) for value in _BASES)
+_FIELD_SYMBOLS = frozenset(SymbolId(value) for value in _FIELD)
+_CONFIG_SYMBOLS = frozenset(SymbolId(value) for value in _CONFIG)
 
 
 def _contains(outer: SourceRange, inner: SourceRange) -> bool:
@@ -174,16 +177,14 @@ class PydanticProvider:
         item: ClassFact,
         written: str,
         symbols: tuple[SymbolId, ...],
+        base_edges: tuple[UseEdge, ...],
     ) -> SymbolRef:
         candidates = tuple(sorted(set(symbols)))
         edge = next(
             (
                 edge
-                for edge in snapshot.relations.use_edges
-                if edge.module_id == item.module_id
-                and edge.purpose.value == "base"
-                and edge.ref.written_name == written
-                and _contains(item.location, edge.location)
+                for edge in base_edges
+                if edge.ref.written_name == written and _contains(item.location, edge.location)
             ),
             None,
         )
@@ -202,7 +203,15 @@ class PydanticProvider:
     def _models(
         self, snapshot: AnalysisSnapshot, classes: tuple[ClassFact, ...]
     ) -> tuple[PydanticModelFact, ...]:
-        known = {SymbolId(value) for value in _BASES}
+        known = set(_BASE_SYMBOLS)
+        base_edges_by_module = {
+            module_id: tuple(
+                edge
+                for edge in snapshot.relations.use_edges
+                if edge.module_id == module_id and edge.purpose.value == "base"
+            )
+            for module_id in snapshot.modules
+        }
         result: list[PydanticModelFact] = []
         pending = list(classes)
         while pending:
@@ -210,7 +219,13 @@ class PydanticProvider:
             progress = False
             for item in pending:
                 refs = tuple(
-                    self._base_ref(snapshot, item, base.written, base.symbols)
+                    self._base_ref(
+                        snapshot,
+                        item,
+                        base.written,
+                        base.symbols,
+                        base_edges_by_module.get(item.module_id, ()),
+                    )
                     for base in item.bases
                 )
                 relevant = tuple(
@@ -271,7 +286,7 @@ class PydanticProvider:
                 field.value is not None
                 and field.value.kind == "Call"
                 and (
-                    bool(set(field.value.symbols).intersection(SymbolId(value) for value in _FIELD))
+                    bool(set(field.value.symbols).intersection(_FIELD_SYMBOLS))
                     or any(
                         call.module_id == field.module_id
                         and _contains(field.location, call.location)
@@ -345,9 +360,7 @@ class PydanticProvider:
                 field.value is not None
                 and field.value.kind == "Call"
                 and (
-                    bool(
-                        set(field.value.symbols).intersection(SymbolId(value) for value in _CONFIG)
-                    )
+                    bool(set(field.value.symbols).intersection(_CONFIG_SYMBOLS))
                     or any(
                         call.module_id == field.module_id
                         and _contains(field.location, call.location)

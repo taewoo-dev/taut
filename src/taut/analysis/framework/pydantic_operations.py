@@ -16,18 +16,18 @@ def extract_operations(
     snapshot: AnalysisSnapshot, calls: tuple[CallFact, ...], models: set[SymbolId]
 ) -> tuple[PydanticOperationFact, ...]:
     result: list[PydanticOperationFact] = []
+    models_by_value = {model.value: model for model in models}
     for call in calls:
         operation = call.ref.written_name.rsplit(".", 1)[-1]
-        selected = tuple(
-            model
-            for model in models
-            if (call.ref.symbol is not None and call.ref.symbol == model)
-            or any(
-                candidate == model or candidate.value.startswith(model.value + ".")
-                for candidate in call.ref.candidates
-            )
-            or (call.ref.symbol is not None and call.ref.symbol.value.startswith(model.value + "."))
-        )
+        selected_set: set[SymbolId] = set()
+        refs = call.ref.candidates + ((call.ref.symbol,) if call.ref.symbol else ())
+        for ref in refs:
+            parts = ref.value.split(".")
+            for end in range(1, len(parts) + 1):
+                model = models_by_value.get(".".join(parts[:end]))
+                if model is not None:
+                    selected_set.add(model)
+        selected = tuple(sorted(selected_set))
         uncertain = call.ref.state in (ResolutionState.AMBIGUOUS, ResolutionState.CONDITIONAL)
         model_ref: SymbolRef | None = None
         if len(selected) == 1 and not uncertain:

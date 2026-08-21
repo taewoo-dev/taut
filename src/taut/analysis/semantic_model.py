@@ -54,6 +54,12 @@ class SnapshotSemanticModel:
         self._calls = {
             call.id: call for module in snapshot.modules.values() for call in module.calls
         }
+        self._bindings_by_module = {}
+        for binding in snapshot.relations.bindings:
+            self._bindings_by_module.setdefault(binding.module_id, []).append(binding)
+        self._uses_by_module = {}
+        for edge in snapshot.relations.use_edges:
+            self._uses_by_module.setdefault(edge.module_id, []).append(edge)
 
     @property
     def snapshot_id(self) -> SnapshotId:
@@ -100,15 +106,9 @@ class SnapshotSemanticModel:
     def bindings(self, module_id: ModuleId | None = None) -> tuple[Binding, ...]:
         if module_id is None:
             return self._snapshot.relations.bindings
-        return tuple(
-            binding
-            for binding in self._snapshot.relations.bindings
-            if binding.module_id == module_id
-        )
+        return tuple(self._bindings_by_module.get(module_id, ()))
 
     def uses(self, module_id: ModuleId | None = None) -> tuple[UseEdge, ...]:
         if module_id is None:
             return self._snapshot.relations.use_edges
-        return tuple(
-            edge for edge in self._snapshot.relations.use_edges if edge.module_id == module_id
-        )
+        return tuple(self._uses_by_module.get(module_id, ()))
