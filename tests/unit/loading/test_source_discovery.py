@@ -21,6 +21,13 @@ def test_source_discovery_records_included_and_excluded_files(tmp_path: Path) ->
     assert result.issues == ()
 
 
+def test_source_discovery_normalizes_symlinked_temporary_root(tmp_path: Path) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "service.py").write_text("value = 1")
+    result = discover_sources(Path(str(tmp_path)), default_project_configuration())
+    assert [source.path.value for source in result.sources] == ["app/service.py"]
+
+
 def test_source_discovery_reports_missing_source_root(tmp_path: Path) -> None:
     base = default_project_configuration()
     config = ProjectConfiguration(

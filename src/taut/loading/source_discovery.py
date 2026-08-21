@@ -42,7 +42,8 @@ def discover_sources(
     issues: list[EngineIssue] = []
     seen_paths: set[str] = set()
     seen_modules: set[ModuleId] = set()
-    resolved_project_root = project_root.resolve()
+    project_root = project_root.resolve()
+    resolved_project_root = project_root
     candidates = _included_python_paths(project_root, config.include)
 
     for source_root in config.source_roots:

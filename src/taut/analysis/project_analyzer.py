@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from taut.analysis.contracts import AnalysisRequest, LanguageAdapter
+from taut.analysis.contracts import AnalysisRequest, LanguageAdapter, ModuleAnalysisResult
 from taut.analysis.project_index import build_project_index
 from taut.analysis.project_relations import build_project_relations
 from taut.domain.facts import CompletenessState, ModuleFacts, ResolutionState
@@ -26,10 +26,16 @@ class ProjectAnalyzer:
     def analyze(self, request: AnalysisRequest, *, workers: int = 1) -> AnalysisSnapshot:
         if workers < 1:
             raise ValueError("analysis workers must be positive")
+        results = self._adapter.analyze_modules(request.sources, request.resolver, workers)
+        return self.assemble(request, results)
+
+    @staticmethod
+    def assemble(
+        request: AnalysisRequest, results: tuple[ModuleAnalysisResult, ...]
+    ) -> AnalysisSnapshot:
         modules: list[ModuleFacts] = []
         module_relations: list[ModuleRelations] = []
         issues: list[EngineIssue] = []
-        results = self._adapter.analyze_modules(request.sources, request.resolver, workers)
         for result in results:
             modules.append(result.facts)
             module_relations.append(result.relations)
