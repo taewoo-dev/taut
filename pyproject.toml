@@ -119,6 +119,7 @@ finding_processing = [
   "src/taut/finding_processing/**/*.py",
 ]
 incremental = ["src/taut/incremental/*.py", "src/taut/incremental/**/*.py"]
+cache = ["src/taut/cache/*.py", "src/taut/cache/**/*.py"]
 loading = ["src/taut/loading/*.py", "src/taut/loading/**/*.py"]
 reporting = ["src/taut/reporting/*.py", "src/taut/reporting/**/*.py"]
 composition = [
@@ -135,6 +136,7 @@ configuration = ["domain", "configuration"]
 policy = ["domain", "analysis", "configuration", "policy"]
 finding_processing = ["domain", "configuration", "finding_processing"]
 incremental = ["domain", "analysis", "policy", "incremental"]
+cache = ["domain", "analysis", "cache"]
 loading = ["domain", "analysis", "configuration", "loading"]
 reporting = ["domain", "reporting"]
 composition = [
