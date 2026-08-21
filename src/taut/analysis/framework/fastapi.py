@@ -84,6 +84,22 @@ def _provenance(fact: CallFact | DecoratorFact) -> Provenance:
     return fact.provenance
 
 
+def _incremental_sort_key(item: object) -> tuple[object, ...]:
+    """Match the canonical ordering used by each full extraction stage."""
+    if isinstance(item, FastAPIRouterFact):
+        return item.module_id, item.creation.location, item.symbol
+    if isinstance(item, FastAPIEndpointFact):
+        return item.module_id, item.decorator.location, item.symbol
+    if isinstance(item, FastAPIDependencyFact):
+        return item.module_id, item.call.location, item.function
+    if isinstance(item, FastAPIResponseModelFact):
+        location = item.provenance.location
+        if location is None:
+            raise ValueError("FastAPI response model provenance requires a source location")
+        return item.module_id, location, item.endpoint
+    raise TypeError(f"unsupported FastAPI capability fact: {type(item).__name__}")
+
+
 def _path(call: CallFact) -> str | None:
     argument = next((item for item in call.arguments if item.position == 0), None)
     if argument is None or argument.value.literal_kind != "str":
@@ -202,7 +218,7 @@ class FastAPIProvider:
         global_routers = tuple(
             sorted(
                 tuple(item for item in old_routers if item.module_id not in selected) + routers,
-                key=repr,
+                key=_incremental_sort_key,
             )
         )
         endpoints = self._endpoints(snapshot, functions, global_routers, edges, selected)
@@ -219,7 +235,9 @@ class FastAPIProvider:
             recalculated = tuple(
                 item for item in values if getattr(item, "module_id", None) in impacted
             )
-            merged.append((capability, tuple(sorted((*kept, *recalculated), key=repr))))
+            merged.append(
+                (capability, tuple(sorted((*kept, *recalculated), key=_incremental_sort_key)))
+            )
         return FrozenMap(tuple(sorted(merged)))
 
     def _routers(
