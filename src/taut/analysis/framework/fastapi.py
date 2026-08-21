@@ -174,11 +174,35 @@ class FastAPIProvider:
         self,
         snapshot: AnalysisSnapshot,
         previous: FrozenMap[str, tuple[object, ...]],
-        impacted: frozenset[object],
+        impacted: frozenset[ModuleId],
     ) -> FrozenMap[str, tuple[object, ...]]:
-        # Recognition depends on global router/function/relation indexes; re-extract
-        # deterministically from the new full snapshot while preserving the contract.
-        return self.analyze(snapshot)
+        functions = {
+            f.symbol_id: f for module in snapshot.modules.values() for f in module.functions
+        }
+        bindings = dict(grouped(snapshot.relations.bindings, lambda item: item.module_id))
+        edges = dict(
+            grouped(
+                snapshot.relations.use_edges,
+                lambda item: (item.location.path, item.location.start_line),
+            )
+        )
+        routers = self._routers(snapshot, bindings)
+        endpoints = self._endpoints(snapshot, functions, routers, edges)
+        fresh: dict[str, tuple[object, ...]] = {
+            FASTAPI_ROUTERS: routers,
+            FASTAPI_ENDPOINTS: endpoints,
+            FASTAPI_DEPENDENCIES: self._dependencies(snapshot, functions, edges),
+            FASTAPI_RESPONSE_MODELS: self._response_models(endpoints),
+        }
+        merged: list[tuple[str, tuple[object, ...]]] = []
+        for capability, values in fresh.items():
+            old = previous.get(capability, ())
+            kept = tuple(item for item in old if getattr(item, "module_id", None) not in impacted)
+            recalculated = tuple(
+                item for item in values if getattr(item, "module_id", None) in impacted
+            )
+            merged.append((capability, tuple(sorted((*kept, *recalculated), key=repr))))
+        return FrozenMap(tuple(sorted(merged)))
 
     def _routers(
         self, snapshot: AnalysisSnapshot, bindings_by_module: dict[ModuleId, tuple[Binding, ...]]

@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from typing import Protocol, TypeVar, runtime_checkable
 
 from taut.domain.frozen import FrozenMap
+from taut.domain.ids import ModuleId
 from taut.domain.provenance import Provenance
 from taut.domain.snapshot import AnalysisSnapshot, UnavailableCapability
 
@@ -82,7 +83,7 @@ class IncrementalFactProviderV1(FactProviderV1, Protocol):
         self,
         snapshot: AnalysisSnapshot,
         previous: FrozenMap[str, tuple[object, ...]],
-        impacted: frozenset[object],
+        impacted: frozenset[ModuleId],
     ) -> FrozenMap[str, tuple[object, ...]]: ...
 
 
@@ -90,17 +91,22 @@ def apply_fact_providers_incremental(
     snapshot: AnalysisSnapshot,
     providers: tuple[FactProviderV1, ...],
     previous_snapshot: AnalysisSnapshot,
-    impacted: frozenset[object],
+    impacted: frozenset[ModuleId],
 ) -> AnalysisSnapshot:
     """Apply providers with an optional incremental hook; V1 providers safely fall back."""
-    values = dict(previous_snapshot.capabilities.items())
-    base = replace(snapshot, capabilities=FrozenMap(values.items()))
+    values: dict[str, tuple[object, ...]] = {}
+    base = replace(snapshot, capabilities=FrozenMap())
     ordered = _order_providers(providers)
     for provider in ordered:
         if isinstance(provider, IncrementalFactProviderV1):
             method = provider.analyze_incremental
-            supplied = method(base, previous_snapshot.capabilities, impacted)
             declared = frozenset(spec.id for spec in provider.provides)
+            previous = FrozenMap(
+                (name, value)
+                for name, value in previous_snapshot.capabilities.items()
+                if name in declared
+            )
+            supplied = method(base, previous, frozenset(impacted))
             if frozenset(supplied) != declared:
                 raise ValueError(f"incremental provider result does not match {provider.id}")
             base = replace(base, capabilities=FrozenMap({**values, **supplied}.items()))
@@ -110,7 +116,24 @@ def apply_fact_providers_incremental(
             supplied = provider.analyze(base)
             values.update(supplied)
             base = replace(base, capabilities=FrozenMap(values.items()))
-    return apply_fact_providers(snapshot, providers) if not values else base
+    return replace(
+        base,
+        capabilities=FrozenMap(values.items()),
+        capability_provenance=FrozenMap(
+            (
+                spec.id,
+                Provenance(
+                    provider=p.id,
+                    provider_version=p.version,
+                    source_hash=snapshot.inputs.value,
+                    location=None,
+                ),
+            )
+            for p in ordered
+            for spec in p.provides
+            if spec.id in values
+        ),
+    )
 
 
 def apply_fact_providers(
