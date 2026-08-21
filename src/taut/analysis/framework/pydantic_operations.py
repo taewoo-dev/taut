@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from taut.analysis.framework.pydantic_facts import PydanticOperationFact
 from taut.domain.facts import CallFact, ResolutionState, SymbolRef
-from taut.domain.ids import SymbolId
+from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.snapshot import AnalysisSnapshot
 
 _OPERATIONS = frozenset(
@@ -13,11 +13,16 @@ _OPERATIONS = frozenset(
 
 
 def extract_operations(
-    snapshot: AnalysisSnapshot, calls: tuple[CallFact, ...], models: set[SymbolId]
+    snapshot: AnalysisSnapshot,
+    calls: tuple[CallFact, ...],
+    models: set[SymbolId],
+    module_ids: frozenset[ModuleId] | None = None,
 ) -> tuple[PydanticOperationFact, ...]:
     result: list[PydanticOperationFact] = []
     models_by_value = {model.value: model for model in models}
     for call in calls:
+        if module_ids is not None and call.module_id not in module_ids:
+            continue
         operation = call.ref.written_name.rsplit(".", 1)[-1]
         selected_set: set[SymbolId] = set()
         refs = call.ref.candidates + ((call.ref.symbol,) if call.ref.symbol else ())

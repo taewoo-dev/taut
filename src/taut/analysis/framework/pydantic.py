@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from taut.analysis.framework.indexes import grouped
 from taut.analysis.framework.pydantic_facts import (
     PYDANTIC_CONFIGS,
@@ -171,6 +173,89 @@ class PydanticProvider:
             )
         )
 
+    def analyze_incremental(
+        self,
+        snapshot: AnalysisSnapshot,
+        previous: FrozenMap[str, tuple[object, ...]],
+        impacted: frozenset[ModuleId],
+    ) -> FrozenMap[str, tuple[object, ...]]:
+        """Recompute only module-owned facts; model lineage is the global index."""
+        if not impacted:
+            return FrozenMap(previous.items())
+        classes = tuple(item for module in snapshot.modules.values() for item in module.classes)
+        new_models = self._models(snapshot, classes)
+        old_models = cast(tuple[PydanticModelFact, ...], previous.get(PYDANTIC_MODELS, ()))
+        old_model_by_symbol = {item.symbol: item for item in old_models}
+        changed_symbols = {
+            item.symbol for item in new_models if old_model_by_symbol.get(item.symbol) != item
+        } | {
+            item.symbol
+            for item in old_models
+            if item.symbol not in {model.symbol for model in new_models}
+        }
+        # A changed base/model symbol invalidates descendants and consumers whose use edge
+        # resolves to it.  This is relation/index metadata, not semantic fact scanning.
+        affected = set(impacted)
+        affected.update(item.module_id for item in new_models if item.symbol in changed_symbols)
+        affected.update(
+            edge.module_id
+            for edge in snapshot.relations.use_edges
+            if edge.ref.symbol in changed_symbols
+            or bool(set(edge.ref.candidates) & changed_symbols)
+        )
+        affected_ids = frozenset(affected)
+        selected = tuple(
+            snapshot.modules[mid] for mid in sorted(affected_ids) if mid in snapshot.modules
+        )
+        fields = tuple(item for module in selected for item in module.fields)
+        calls = tuple(item for module in selected for item in module.calls)
+        classes_selected = tuple(item for module in selected for item in module.classes)
+        calls_by_module = dict(grouped(calls, lambda item: item.module_id))
+        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+        model_ids = {item.symbol for item in new_models}
+        fresh = {
+            PYDANTIC_FIELDS: self._fields(
+                snapshot, fields, calls_by_module, edges_by_module, model_ids
+            ),
+            PYDANTIC_CONFIGS: self._configs(
+                snapshot, classes_selected, fields, calls_by_module, edges_by_module, model_ids
+            ),
+            PYDANTIC_VALIDATORS: self._decorated(snapshot, new_models, False, affected_ids),
+            PYDANTIC_SERIALIZERS: self._decorated(snapshot, new_models, True, affected_ids),
+            PYDANTIC_OPERATIONS: extract_operations(snapshot, calls, model_ids, affected_ids),
+        }
+        merged: list[tuple[str, tuple[object, ...]]] = []
+        for capability in self.provides:
+            name = capability.id
+            if name == PYDANTIC_MODELS:
+                # Lineage is the one global context allowed to be rebuilt; retaining
+                # its complete deterministic result also handles removed symbols.
+                value = new_models
+            else:
+                value = self._merge(previous.get(name, ()), fresh[name], affected_ids)
+            merged.append((name, value))
+        return FrozenMap(merged)
+
+    @staticmethod
+    def _merge(
+        old: tuple[object, ...], fresh: tuple[object, ...], affected: frozenset[ModuleId]
+    ) -> tuple[object, ...]:
+        kept = tuple(item for item in old if getattr(item, "module_id", None) not in affected)
+        return tuple(sorted((*kept, *fresh), key=PydanticProvider._fact_key))
+
+    @staticmethod
+    def _fact_key(item: object) -> tuple[ModuleId, SourceRange]:
+        value = cast(Any, item)
+        if hasattr(value, "location"):
+            location = value.location
+        elif hasattr(value, "class_fact"):
+            location = value.class_fact.location
+        elif hasattr(value, "field"):
+            location = value.field.location
+        else:
+            location = value.call.location
+        return value.module_id, location
+
     def _base_ref(
         self,
         snapshot: AnalysisSnapshot,
@@ -264,9 +349,12 @@ class PydanticProvider:
         calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
         edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
+        module_ids: frozenset[ModuleId] | None = None,
     ) -> tuple[PydanticFieldFact, ...]:
         result: list[PydanticFieldFact] = []
         for field in fields:
+            if module_ids is not None and field.module_id not in module_ids:
+                continue
             if field.owner_symbol not in models or not field.is_annotated:
                 continue
             calls = calls_by_module.get(field.module_id, ())
@@ -349,9 +437,12 @@ class PydanticProvider:
         calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
         edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
+        module_ids: frozenset[ModuleId] | None = None,
     ) -> tuple[PydanticConfigFact, ...]:
         result: list[PydanticConfigFact] = []
         for field in fields:
+            if module_ids is not None and field.module_id not in module_ids:
+                continue
             if field.owner_symbol not in models or field.name not in {"Config", "model_config"}:
                 continue
             calls = calls_by_module.get(field.module_id, ())
@@ -413,6 +504,8 @@ class PydanticProvider:
                 )
             )
         for config in classes:
+            if module_ids is not None and config.module_id not in module_ids:
+                continue
             if config.name != "Config" or config.context.lexical_owner not in models:
                 continue
             ref = next(
@@ -451,12 +544,18 @@ class PydanticProvider:
         return tuple(result)
 
     def _decorated(
-        self, snapshot: AnalysisSnapshot, models: tuple[PydanticModelFact, ...], serializers: bool
+        self,
+        snapshot: AnalysisSnapshot,
+        models: tuple[PydanticModelFact, ...],
+        serializers: bool,
+        module_ids: frozenset[ModuleId] | None = None,
     ) -> tuple[PydanticSerializerFact | PydanticValidatorFact, ...]:
         wanted = _SERIALIZERS if serializers else _VALIDATORS
         result: list[PydanticSerializerFact | PydanticValidatorFact] = []
         model_ids = {model.symbol for model in models}
         for module in snapshot.modules.values():
+            if module_ids is not None and module.module.id not in module_ids:
+                continue
             for dec in module.decorators:
                 if dec.context.lexical_owner not in model_ids:
                     continue
