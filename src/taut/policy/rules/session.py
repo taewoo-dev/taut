@@ -138,6 +138,9 @@ class ServiceSessionParameterRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SESSION003 requires a module target")
+        incomplete = target_uncertainty(PARAMETER_RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         role = context.classification.get(target.module_id).role
         if role is None or role not in context.policy.boundaries.service_roles:
             return RuleEvaluation(PARAMETER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())

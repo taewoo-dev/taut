@@ -64,7 +64,7 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
         assert row["current_code_evidence"]["module"] == row["source_module"]
         if row["syntax_only"]:
             assert set(row["resolution_policy"].values()) == {"not_applicable"}
-        elif row["id"] not in {"ADAPTER002", "ARCH000"}:
+        elif row["id"] not in {"ADAPTER002", "ARCH000"} and row["implementation_group"] != "D":
             assert any(value == "indeterminate" for value in row["resolution_policy"].values()), (
                 row["id"]
             )

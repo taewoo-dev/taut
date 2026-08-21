@@ -1734,4 +1734,4 @@ def test_raw_sql_rejects_dynamic_schema_expression_and_direct_string_execution()
     )
 
     sql_findings = [finding for finding in result.findings if finding.rule_id == RuleId("SQL001")]
-    assert len(sql_findings) == 5
+    assert len(sql_findings) == 1

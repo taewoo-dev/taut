@@ -113,8 +113,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -271,8 +271,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -321,8 +321,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -425,8 +425,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -476,8 +476,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -528,8 +528,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -580,8 +580,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -632,8 +632,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -684,8 +684,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -795,10 +795,10 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -854,8 +854,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -906,8 +906,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -955,8 +955,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1005,8 +1005,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1319,8 +1319,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },
@@ -1483,8 +1483,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },
@@ -1540,8 +1540,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },
@@ -1648,8 +1648,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },
@@ -2075,8 +2075,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },
@@ -2238,8 +2238,8 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
         "unresolved": "indeterminate",
         "dynamic": "indeterminate"
       },

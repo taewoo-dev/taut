@@ -96,7 +96,7 @@ def _code_policy() -> CodeConventionPolicy:
         request_config_symbols=frozenset({SymbolId("app.config.REQUEST_CONFIG")}),
         response_config_symbols=frozenset({SymbolId("app.config.RESPONSE_CONFIG")}),
         shared_enum_modules=(ModuleId("app.fixture"),),
-        forbidden_runtime_calls=("*.delay",),
+        forbidden_runtime_calls=("*.delay", "httpx.AsyncClient.get"),
         exception_base_symbols=frozenset({SymbolId("app.errors.AppException")}),
         abstract_exception_symbols=frozenset({SymbolId("app.errors.AppException")}),
         error_code_enum_symbols=frozenset({SymbolId("app.errors.ErrorCode")}),
@@ -250,7 +250,9 @@ def _run_regular_fixture(
         fact_candidates=(
             tuple(
                 SymbolId(value)
-                for value in (GROUP_B_RELEVANT_SYMBOLS | GROUP_C_RELEVANT_SYMBOLS).get(rule_id, ())
+                for value in (
+                    GROUP_B_RELEVANT_SYMBOLS | GROUP_C_RELEVANT_SYMBOLS | GROUP_D_RELEVANT_SYMBOLS
+                ).get(rule_id, ())
             )
             if inject_relevant
             else ()
@@ -357,6 +359,46 @@ GROUP_C_RELEVANT_SYMBOLS = {
         "app.errors.AppException.__init__",
         "app.fixture.UserNotFoundError.__init__",
     ),
+}
+GROUP_D_RULES = (
+    "CAT001",
+    "DB001",
+    "IMPORT002",
+    "ORM001",
+    "ORM002",
+    "RUNTIME001",
+    "SESSION001",
+    "SESSION002",
+    "SESSION003",
+    "SQL001",
+    "TIME001",
+    "TX001",
+    "TX002",
+    "ASYNC001",
+)
+GROUP_D_STATE_SENSITIVE = {
+    "CAT001",
+    "SESSION001",
+    "SESSION002",
+    "TIME001",
+    "TX001",
+    "ASYNC001",
+}
+GROUP_D_RELEVANT_SYMBOLS = {
+    "CAT001": ("requests.custom_call",),
+    "DB001": ("sqlalchemy.DateTime",),
+    "IMPORT002": ("builtins.__import__",),
+    "ORM001": ("sqlalchemy.orm.relationship",),
+    "ORM002": ("sqlalchemy.Enum",),
+    "RUNTIME001": ("httpx.AsyncClient.get",),
+    "SESSION001": ("app.database.get_async_session",),
+    "SESSION002": ("app.database.get_async_session",),
+    "SESSION003": ("sqlalchemy.ext.asyncio.AsyncSession",),
+    "SQL001": ("sqlalchemy.Connection.execute",),
+    "TIME001": ("datetime.datetime.now",),
+    "TX001": ("sqlalchemy.ext.asyncio.AsyncSession.commit",),
+    "TX002": ("app.clients.payment_client",),
+    "ASYNC001": ("time.sleep",),
 }
 GROUP_C_UNRELATED_EXPECTED = {
     rule: (RuleVerdict.NOT_APPLICABLE if rule in {"HTTP001", "LOG001"} else RuleVerdict.PASS)
@@ -561,6 +603,66 @@ def test_group_c_all_resolution_states_execute_evaluators(
     if rule_id not in GROUP_C_SEMANTIC_RULES:
         expected = RuleVerdict.PASS
     assert {item.verdict for item in evaluations} == {expected}
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_D_RULES)
+@pytest.mark.parametrize("state", tuple(ResolutionState))
+def test_group_d_matrix_exact_state_contract(rule_id: str, state: ResolutionState) -> None:
+    result = _run_regular_fixture(
+        rule_id,
+        "compliant",
+        fact_state=state,
+        inject_relevant=rule_id in GROUP_D_STATE_SENSITIVE,
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    expected = (
+        RuleVerdict.NOT_APPLICABLE
+        if (rule_id == "ASYNC001" and state is ResolutionState.RESOLVED)
+        or (
+            rule_id in GROUP_D_STATE_SENSITIVE
+            and state in {ResolutionState.UNRESOLVED, ResolutionState.DYNAMIC}
+        )
+        else RuleVerdict.INDETERMINATE
+        if rule_id in GROUP_D_STATE_SENSITIVE
+        and state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS}
+        else RuleVerdict.PASS
+    )
+    assert {item.verdict for item in evaluations} == {expected}
+    if expected is RuleVerdict.INDETERMINATE:
+        assert {item.reason.code for item in evaluations if item.reason is not None} <= {
+            "uncertain_effect",
+            "uncertain_symbol",
+        }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_D_RULES)
+def test_group_d_unrelated_candidates_do_not_propagate(rule_id: str) -> None:
+    result = _run_regular_fixture(
+        rule_id, "compliant", fact_state=ResolutionState.CONDITIONAL, inject_relevant=False
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    expected = (
+        RuleVerdict.NOT_APPLICABLE if rule_id in GROUP_D_STATE_SENSITIVE else RuleVerdict.PASS
+    )
+    assert {item.verdict for item in evaluations} == {expected}
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_D_RULES)
+def test_group_d_incomplete_module_facts_are_indeterminate(rule_id: str) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", incomplete=True)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    assert {item.reason.code for item in evaluations if item.reason is not None} <= {
+        "incomplete_module",
+        "incomplete_project",
+        "insufficient_analysis",
+    }
 
 
 @pytest.mark.contract

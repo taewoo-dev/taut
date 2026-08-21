@@ -314,16 +314,9 @@ class RawSqlRule:
         first = next((argument.value for argument in call.arguments if argument.name is None), None)
         if first is None or not (first.literal_kind == "str" or first.is_dynamic_string):
             return False
-        if call.ref.symbol.value.startswith("sqlalchemy."):
-            return True
-        parts = call.ref.symbol.value.rsplit(".", maxsplit=1)
-        if len(parts) != 2:
-            return False
-        receiver = parts[0].rsplit(".", maxsplit=1)[-1].lower()
-        return any(
-            receiver == owner or receiver.endswith(f"_{owner}")
-            for owner in boundaries.database_owner_names
-        )
+        # SQL execution is recognized only through the resolved SQLAlchemy
+        # symbol contract; receiver spelling is not a semantic signal.
+        return call.ref.symbol.value.startswith("sqlalchemy.")
 
 
 def _range_contains(outer: SourceRange, inner: SourceRange) -> bool:

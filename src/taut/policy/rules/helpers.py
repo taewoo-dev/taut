@@ -171,7 +171,7 @@ def unresolved_effect_evaluation(
     context: PolicyContext,
     call_id: FactId,
     effects: frozenset[Effect],
-) -> RuleEvaluation | None:  # pragma: no cover
+) -> RuleEvaluation | None:
     """Propagate uncertainty only from resolver-owned effect candidates.
 
     Written call text is deliberately not consulted: unresolved and dynamic
