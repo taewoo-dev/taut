@@ -4,6 +4,7 @@ from tests.utils.builders import make_source
 
 from taut.analysis.contracts import AdapterIdentity
 from taut.analysis.module_cache import (
+    MAX_PAYLOAD_BYTES,
     CacheMetadata,
     decode_module_result,
     encode_module_result,
@@ -51,5 +52,5 @@ def test_module_cache_schema_and_size_misses_are_typed() -> None:
     payload[0] = 0x81
     assert decode_module_result(payload).error_code is CacheErrorCode.DECODE
     assert (
-        decode_module_result(payload + b"x" * (8 * 1024 * 1024)).error_code is CacheErrorCode.LIMIT
+        decode_module_result(payload + b"x" * MAX_PAYLOAD_BYTES).error_code is CacheErrorCode.LIMIT
     )

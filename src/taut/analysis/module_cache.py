@@ -27,9 +27,9 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.issues import CacheErrorCode
 
 CACHE_SCHEMA_VERSION = 1
-MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
 MAX_NODES = 500_000
-MAX_DEPTH = 128
+MAX_DEPTH = 1024
 
 
 @dataclasses.dataclass(frozen=True)
