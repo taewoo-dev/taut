@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 from scripts.benchmark_performance import (
@@ -7,6 +8,7 @@ from scripts.benchmark_performance import (
     TimedProvider,
     compare,
     measure,
+    real_checkout,
     request_for,
     rss_bytes,
 )
@@ -118,9 +120,25 @@ def test_timed_provider_preserves_contract_and_records_duration() -> None:
     assert provider.id in timings and timings[provider.id] >= 0
 
 
-def test_timing_schema_keys_are_stable() -> None:
-    assert {"wall_seconds", "rss_bytes", "phase_timings"} >= {
-        "wall_seconds",
-        "rss_bytes",
-        "phase_timings",
+def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.taut]\nschema_version=3\ninclude=["app/*.py"]\nsource_roots=["."]\n'
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app/main.py").write_text("value = 1\n")
+    result = real_checkout(tmp_path, requested=1)
+    measurement = cast(dict[str, object], result["measurement"])
+    assert set(cast(dict[str, float], measurement["phase_timings"])) == {
+        "config_discovery",
+        "ast_analysis",
+        "configured_providers",
+        "classification_policy",
+        "ignore_finding_processing",
     }
+    assert set(cast(dict[str, float], measurement["provider_timings"])) == {
+        "taut.python-core",
+        "taut.fastapi",
+        "taut.pydantic",
+        "taut.sqlalchemy",
+    }
+    assert result["status"] == "complete" and result["engine_issues"] == 0

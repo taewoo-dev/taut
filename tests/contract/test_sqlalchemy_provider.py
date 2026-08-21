@@ -20,6 +20,8 @@ from taut.analysis.framework.sqlalchemy import (
     SQLAlchemyTransactionFact,
 )
 from taut.analysis.providers import apply_fact_providers
+from taut.domain.facts import ResolutionState
+from taut.plugins.v1 import SQLAlchemyProvider as PublicSQLAlchemyProvider
 
 
 def test_sqlalchemy_unrelated_module_does_not_leak_models() -> None:
@@ -39,17 +41,21 @@ def test_sqlalchemy_transaction_query_and_raw_sql_facts() -> None:
     snapshot = analyze(
         make_source(
             "app/db.py",
-            "from sqlalchemy import text\ndef run(session):\n    with session.begin():\n        session.execute(text('select 1'))",  # noqa: E501
+            "from sqlalchemy import text\nfrom sqlalchemy.ext.asyncio import AsyncSession\nasync def run(session: AsyncSession):\n    await session.execute(text('select 1'))\n    await session.commit()",  # noqa: E501
         )
     )
     result = apply_fact_providers(snapshot, (SQLAlchemyProvider(),))
-    assert result.capabilities[SQLALCHEMY_TRANSACTIONS] is not None
-    assert result.capabilities[SQLALCHEMY_QUERIES] is not None
-    assert result.capabilities[SQLALCHEMY_RAW_SQL] is not None
-
-
-from taut.domain.facts import ResolutionState  # noqa: E402
-from taut.plugins.v1 import SQLAlchemyProvider as PublicSQLAlchemyProvider  # noqa: E402
+    transactions = cast(
+        tuple[SQLAlchemyTransactionFact, ...], result.capabilities[SQLALCHEMY_TRANSACTIONS]
+    )
+    queries = cast(tuple[SQLAlchemyQueryFact, ...], result.capabilities[SQLALCHEMY_QUERIES])
+    raw_sql = cast(tuple[SQLAlchemyRawSQLFact, ...], result.capabilities[SQLALCHEMY_RAW_SQL])
+    assert {item.operation for item in transactions} == {"commit"}
+    assert {item.operation for item in queries} == {"execute"}
+    assert len(raw_sql) == 1 and raw_sql[0].operation == "text"
+    assert all(
+        item.confidence is ResolutionState.RESOLVED for item in transactions + queries + raw_sql
+    )
 
 
 def test_sqlalchemy_provider_extracts_14_and_20_declarative_and_runtime_facts() -> None:
