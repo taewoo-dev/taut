@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from taut.analysis.framework.indexes import grouped
 from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import (
     CallFact,
@@ -149,15 +150,13 @@ class FastAPIProvider:
             for module in snapshot.modules.values()
             for function in module.functions
         }
-        bindings_mut: dict[ModuleId, list[Binding]] = {}
-        edges_mut: dict[tuple[ProjectPath, int], list[UseEdge]] = {}
-        for binding in snapshot.relations.bindings:
-            bindings_mut.setdefault(binding.module_id, []).append(binding)
-        for edge in snapshot.relations.use_edges:
-            key = (edge.location.path, edge.location.start_line)
-            edges_mut.setdefault(key, []).append(edge)
-        bindings_by_module = {key: tuple(value) for key, value in bindings_mut.items()}
-        edges_by_path_line = {key: tuple(value) for key, value in edges_mut.items()}
+        bindings_by_module = dict(grouped(snapshot.relations.bindings, lambda item: item.module_id))
+        edges_by_path_line = dict(
+            grouped(
+                snapshot.relations.use_edges,
+                lambda item: (item.location.path, item.location.start_line),
+            )
+        )
         routers = self._routers(snapshot, bindings_by_module)
         endpoints = self._endpoints(snapshot, functions, routers, edges_by_path_line)
         dependencies = self._dependencies(snapshot, functions, edges_by_path_line)

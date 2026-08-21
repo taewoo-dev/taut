@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 
@@ -13,6 +14,7 @@ from scripts.benchmark_performance import (
     rss_bytes,
 )
 
+from taut.analysis.framework.indexes import grouped
 from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import FactProviderV1, apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
@@ -142,3 +144,56 @@ def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path)
         "taut.sqlalchemy",
     }
     assert result["status"] == "complete" and result["engine_issues"] == 0
+
+
+def test_real_checkout_aggregates_inline_ignore_issue(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.taut]\nschema_version=3\ninclude=["app/*.py"]\nsource_roots=["."]\n'
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app/main.py").write_text("value = 1  # taut: ignore\n")
+    result = real_checkout(tmp_path, requested=1)
+    assert cast(int, result["complete"]) == 1 and cast(int, result["engine_issues"]) >= 1
+    assert result["status"] != "complete"
+
+
+def test_pydantic_index_builder_is_one_pass() -> None:
+    class Counting:
+        def __init__(self, items: list[tuple[int, int]]) -> None:
+            self.items, self.visits = items, 0
+
+        def __iter__(self) -> Iterator[tuple[int, int]]:
+            for item in self.items:
+                self.visits += 1
+                yield item
+
+    items = Counting([(i % 3, i) for i in range(150)])
+    assert len(grouped(items, lambda item: item[0])) == 3 and items.visits == 150
+
+
+def test_fastapi_index_builder_is_one_pass() -> None:
+    class Counting:
+        def __init__(self, items: list[tuple[int, int]]) -> None:
+            self.items, self.visits = items, 0
+
+        def __iter__(self) -> Iterator[tuple[int, int]]:
+            for item in self.items:
+                self.visits += 1
+                yield item
+
+    items = Counting([(i % 5, i) for i in range(125)])
+    assert len(grouped(items, lambda item: item[0])) == 5 and items.visits == 125
+
+
+def test_sqlalchemy_index_builder_is_one_pass() -> None:
+    class Counting:
+        def __init__(self, items: list[tuple[int, int]]) -> None:
+            self.items, self.visits = items, 0
+
+        def __iter__(self) -> Iterator[tuple[int, int]]:
+            for item in self.items:
+                self.visits += 1
+                yield item
+
+    items = Counting([(i % 7, i) for i in range(140)])
+    assert len(grouped(items, lambda item: item[0])) == 7 and items.visits == 140

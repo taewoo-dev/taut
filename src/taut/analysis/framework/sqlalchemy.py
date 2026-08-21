@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from taut.analysis.framework.indexes import grouped
 from taut.analysis.framework.sqlalchemy_facts import (
     COLUMN_CALLS,
     MODEL_BASES,
@@ -32,7 +33,6 @@ from taut.domain.facts import CallFact, ClassFact, FieldFact, ResolutionState, S
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import SourceRange
-from taut.domain.relations import UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 __all__ = [
@@ -135,12 +135,8 @@ class SQLAlchemyProvider:
         calls: tuple[CallFact, ...],
         fields: tuple[FieldFact, ...],
     ) -> tuple[SQLAlchemyModelFact, ...]:
-        calls_by_module: dict[ModuleId, list[CallFact]] = {}
-        edges_by_module: dict[ModuleId, list[UseEdge]] = {}
-        for call in calls:
-            calls_by_module.setdefault(call.module_id, []).append(call)
-        for edge in snapshot.relations.use_edges:
-            edges_by_module.setdefault(edge.module_id, []).append(edge)
+        calls_by_module = dict(grouped(calls, lambda item: item.module_id))
+        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
         declarative_bases = {
             binding.target.symbol
             for binding in snapshot.relations.bindings
@@ -237,17 +233,14 @@ class SQLAlchemyProvider:
         calls: tuple[CallFact, ...],
         models: set[SymbolId],
     ) -> tuple[tuple[SQLAlchemyMappedColumnFact, ...], tuple[SQLAlchemyRelationshipFact, ...]]:
-        calls_by_module: dict[ModuleId, list[CallFact]] = {}
-        calls_by_parent: dict[tuple[ModuleId, object], list[CallFact]] = {}
-        edges_by_module: dict[ModuleId, list[UseEdge]] = {}
-        for call in calls:
-            calls_by_module.setdefault(call.module_id, []).append(call)
-            if call.context.parent_fact_id is not None:
-                calls_by_parent.setdefault(
-                    (call.module_id, call.context.parent_fact_id), []
-                ).append(call)
-        for edge in snapshot.relations.use_edges:
-            edges_by_module.setdefault(edge.module_id, []).append(edge)
+        calls_by_module = dict(grouped(calls, lambda item: item.module_id))
+        calls_by_parent = dict(
+            grouped(
+                (call for call in calls if call.context.parent_fact_id is not None),
+                lambda item: (item.module_id, item.context.parent_fact_id),
+            )
+        )
+        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
         columns: list[SQLAlchemyMappedColumnFact] = []
         relationships: list[SQLAlchemyRelationshipFact] = []
         for field in fields:
