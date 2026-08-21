@@ -112,6 +112,7 @@ _ENUMS = {
     for c in vars(m).values()
     if isinstance(c, type) and issubclass(c, Enum) and c.__module__ == m.__name__
 }
+_DECODER = msgspec.msgpack.Decoder(CacheEnvelope)
 
 
 def _pack(v: object, d: int = 0, n: list[int] | None = None) -> WireValue:
@@ -119,10 +120,10 @@ def _pack(v: object, d: int = 0, n: list[int] | None = None) -> WireValue:
     n[0] += 1
     if d > MAX_DEPTH or n[0] > MAX_NODES:
         raise ValueError("cache graph exceeds limits")
-    if v is None or isinstance(v, (str, int, bool)):
-        return v
     if isinstance(v, Enum):
         return EnumNode(f"{type(v).__module__}.{type(v).__name__}", str(v.value))
+    if v is None or isinstance(v, (str, bool, int)):
+        return v
     if is_dataclass(v) and not isinstance(v, type):
         return DataclassNode(
             f"{type(v).__module__}.{type(v).__name__}",
@@ -184,7 +185,7 @@ def decode_module_result(payload: bytes | bytearray | memoryview) -> CacheDecode
     try:
         if len(payload) > MAX_PAYLOAD_BYTES:
             raise ValueError("cache payload exceeds maximum size")
-        e = msgspec.msgpack.Decoder(CacheEnvelope).decode(payload)
+        e = _DECODER.decode(payload)
         if e.schema != CACHE_SCHEMA_VERSION:
             raise ValueError("unknown cache schema")
         m, r = _unpack(e.metadata), _unpack(e.result)
