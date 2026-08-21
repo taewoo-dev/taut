@@ -376,14 +376,6 @@ GROUP_D_RULES = (
     "TX002",
     "ASYNC001",
 )
-GROUP_D_STATE_SENSITIVE = {
-    "CAT001",
-    "SESSION001",
-    "SESSION002",
-    "TIME001",
-    "TX001",
-    "ASYNC001",
-}
 GROUP_D_RELEVANT_SYMBOLS = {
     "CAT001": ("requests.custom_call",),
     "DB001": ("sqlalchemy.DateTime",),
@@ -399,6 +391,18 @@ GROUP_D_RELEVANT_SYMBOLS = {
     "TX001": ("sqlalchemy.ext.asyncio.AsyncSession.commit",),
     "TX002": ("app.clients.payment_client",),
     "ASYNC001": ("time.sleep",),
+}
+_VERDICT_BY_MATRIX = {
+    "evaluate": RuleVerdict.PASS,
+    "indeterminate": RuleVerdict.INDETERMINATE,
+    "not_applicable": RuleVerdict.NOT_APPLICABLE,
+}
+GROUP_D_MATRIX_EXPECTED = {
+    row["id"]: {
+        state: _VERDICT_BY_MATRIX[verdict] for state, verdict in row["resolution_policy"].items()
+    }
+    for row in _MATRIX["rules"]
+    if row["id"] in GROUP_D_RULES
 }
 GROUP_C_UNRELATED_EXPECTED = {
     rule: (RuleVerdict.NOT_APPLICABLE if rule in {"HTTP001", "LOG001"} else RuleVerdict.PASS)
@@ -497,10 +501,8 @@ def test_group_b_evaluators_propagate_incomplete_module_facts(rule_id: str) -> N
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
-    assert {item.reason.code for item in evaluations if item.reason is not None} <= {
-        "incomplete_module",
-        "incomplete_project",
-        "insufficient_analysis",
+    assert {item.reason.code for item in evaluations if item.reason is not None} == {
+        "incomplete_module"
     }
 
 
@@ -613,28 +615,21 @@ def test_group_d_matrix_exact_state_contract(rule_id: str, state: ResolutionStat
         rule_id,
         "compliant",
         fact_state=state,
-        inject_relevant=rule_id in GROUP_D_STATE_SENSITIVE,
+        inject_relevant=(
+            GROUP_D_MATRIX_EXPECTED[rule_id][state.value] is RuleVerdict.INDETERMINATE
+        ),
     )
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
-    expected = (
-        RuleVerdict.NOT_APPLICABLE
-        if (rule_id == "ASYNC001" and state is ResolutionState.RESOLVED)
-        or (
-            rule_id in GROUP_D_STATE_SENSITIVE
-            and state in {ResolutionState.UNRESOLVED, ResolutionState.DYNAMIC}
-        )
-        else RuleVerdict.INDETERMINATE
-        if rule_id in GROUP_D_STATE_SENSITIVE
-        and state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS}
-        else RuleVerdict.PASS
-    )
+    expected = GROUP_D_MATRIX_EXPECTED[rule_id][state.value]
     assert {item.verdict for item in evaluations} == {expected}
     if expected is RuleVerdict.INDETERMINATE:
-        assert {item.reason.code for item in evaluations if item.reason is not None} <= {
-            "uncertain_effect",
-            "uncertain_symbol",
-        }
+        reason = (
+            "uncertain_effect"
+            if rule_id in {"TIME001", "TX001", "ASYNC001"}
+            else "uncertain_symbol"
+        )
+        assert {item.reason.code for item in evaluations if item.reason is not None} == {reason}
 
 
 @pytest.mark.contract
@@ -646,7 +641,9 @@ def test_group_d_unrelated_candidates_do_not_propagate(rule_id: str) -> None:
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     expected = (
-        RuleVerdict.NOT_APPLICABLE if rule_id in GROUP_D_STATE_SENSITIVE else RuleVerdict.PASS
+        RuleVerdict.NOT_APPLICABLE
+        if GROUP_D_MATRIX_EXPECTED[rule_id]["unresolved"] is RuleVerdict.NOT_APPLICABLE
+        else RuleVerdict.PASS
     )
     assert {item.verdict for item in evaluations} == {expected}
 
@@ -662,6 +659,19 @@ def test_group_d_incomplete_module_facts_are_indeterminate(rule_id: str) -> None
         "incomplete_module",
         "incomplete_project",
         "insufficient_analysis",
+    }
+
+
+@pytest.mark.contract
+def test_sql001_missing_sqlalchemy_provider_is_indeterminate() -> None:
+    result = _run_regular_fixture(
+        "SQL001", "violation", missing_capability="taut.sqlalchemy.raw_sql@1"
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId("SQL001"))
+    assert evaluations
+    assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    assert {item.reason.code for item in evaluations if item.reason is not None} == {
+        "missing_capability"
     }
 
 

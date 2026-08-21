@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from taut.analysis.framework.sqlalchemy_facts import SQLALCHEMY_RAW_SQL, SQLAlchemyRawSQLFact
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
@@ -12,7 +13,11 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding, module_fact_uncertainty
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    uncertain_provider_evaluation,
+)
 
 RELATIONSHIP_RULE_ID = RuleId("ORM001")
 DB_ENUM_RULE_ID = RuleId("ORM002")
@@ -191,8 +196,49 @@ class RawSqlRule:
             return uncertain
         role = context.classification.get(target.module_id).role
         boundaries = context.policy.boundaries
+        if SQLALCHEMY_RAW_SQL not in context.model.capabilities() and any(
+            call.ref.symbol is not None and call.ref.symbol.value.startswith("sqlalchemy.")
+            for call in module.calls
+        ):
+            provider_uncertain = uncertain_provider_evaluation(
+                RAW_SQL_RULE_ID,
+                target,
+                context,
+                (SQLALCHEMY_RAW_SQL,),
+                target.module_id,
+                require_capabilities=True,
+            )
+            if provider_uncertain is not None:
+                return provider_uncertain
+        provider_calls = {
+            fact.call.id: fact
+            for fact in context.model.capability_values(SQLALCHEMY_RAW_SQL)
+            if isinstance(fact, SQLAlchemyRawSQLFact) and fact.module_id == target.module_id
+        }
         findings: list[Finding] = []
         for call in module.calls:
+            provider_fact = provider_calls.get(call.id)
+            if (
+                provider_fact is not None
+                and provider_fact.operation
+                in {
+                    "execute",
+                    "exec_driver_sql",
+                }
+                and (provider_fact.is_literal or provider_fact.is_dynamic)
+            ):
+                findings.append(
+                    _finding(
+                        RAW_SQL_RULE_ID,
+                        target.module_id,
+                        call.enclosing_symbol,
+                        call.id,
+                        call.location,
+                        "database.raw_sql_execution",
+                        provider_fact.operation,
+                    )
+                )
+                continue
             symbol = call.ref.symbol
             if (
                 symbol is not None
@@ -232,7 +278,7 @@ class RawSqlRule:
                     )
                 )
                 continue
-            if self._direct_string_execution(call, context):
+            if provider_fact is None and self._direct_string_execution(call, context):
                 findings.append(
                     _finding(
                         RAW_SQL_RULE_ID,

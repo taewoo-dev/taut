@@ -684,8 +684,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "evaluate",
-        "dynamic": "evaluate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1321,8 +1321,8 @@
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1485,8 +1485,8 @@
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1542,8 +1542,8 @@
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1650,8 +1650,8 @@
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1964,8 +1964,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2021,8 +2021,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2077,8 +2077,8 @@
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2235,13 +2235,13 @@
         "SQL call arguments",
         "literal/dynamic strings"
       ],
-      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_source": "taut.sqlalchemy.raw_sql@1 provider facts (call/ref/confidence/operation/argument metadata)",
       "resolution_policy": {
         "resolved": "evaluate",
         "conditional": "evaluate",
         "ambiguous": "evaluate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2407,8 +2407,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2465,8 +2465,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2519,10 +2519,10 @@
       "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2630,11 +2630,11 @@
       ],
       "resolution_source": "effect_resolution",
       "resolution_policy": {
-        "resolved": "evaluate",
+        "resolved": "not_applicable",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
