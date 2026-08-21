@@ -12,9 +12,9 @@ from taut.domain.facts import (
 )
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
-from taut.domain.location import SourceRange
+from taut.domain.location import ProjectPath, SourceRange
 from taut.domain.provenance import Provenance
-from taut.domain.relations import UseEdge
+from taut.domain.relations import Binding, UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 FastAPIConfidence = ResolutionState
@@ -149,9 +149,19 @@ class FastAPIProvider:
             for module in snapshot.modules.values()
             for function in module.functions
         }
-        routers = self._routers(snapshot)
-        endpoints = self._endpoints(snapshot, functions, routers)
-        dependencies = self._dependencies(snapshot, functions)
+        bindings_by_module: dict[ModuleId, tuple[Binding, ...]] = {}
+        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]] = {}
+        for binding in snapshot.relations.bindings:
+            bindings_by_module[binding.module_id] = (
+                *bindings_by_module.get(binding.module_id, ()),
+                binding,
+            )
+        for edge in snapshot.relations.use_edges:
+            key = (edge.location.path, edge.location.start_line)
+            edges_by_path_line[key] = (*edges_by_path_line.get(key, ()), edge)
+        routers = self._routers(snapshot, bindings_by_module)
+        endpoints = self._endpoints(snapshot, functions, routers, edges_by_path_line)
+        dependencies = self._dependencies(snapshot, functions, edges_by_path_line)
         models = self._response_models(endpoints)
         return FrozenMap(
             (
@@ -162,7 +172,9 @@ class FastAPIProvider:
             )
         )
 
-    def _routers(self, snapshot: AnalysisSnapshot) -> tuple[FastAPIRouterFact, ...]:
+    def _routers(
+        self, snapshot: AnalysisSnapshot, bindings_by_module: dict[ModuleId, tuple[Binding, ...]]
+    ) -> tuple[FastAPIRouterFact, ...]:
         result: list[FastAPIRouterFact] = []
         for module in snapshot.modules.values():
             for call in module.calls:
@@ -175,7 +187,7 @@ class FastAPIProvider:
                     continue
                 candidates = [
                     binding
-                    for binding in snapshot.relations.bindings
+                    for binding in bindings_by_module.get(call.module_id, ())
                     if binding.module_id == call.module_id
                     and binding.location.start_line == call.location.start_line
                     and binding.location.start_column <= call.location.start_column
@@ -202,6 +214,7 @@ class FastAPIProvider:
         snapshot: AnalysisSnapshot,
         functions: dict[SymbolId, FunctionFact],
         routers: tuple[FastAPIRouterFact, ...],
+        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
     ) -> tuple[FastAPIEndpointFact, ...]:
         router_symbols = {item.symbol for item in routers}
         result: list[FastAPIEndpointFact] = []
@@ -222,10 +235,10 @@ class FastAPIProvider:
                     continue
                 receiver_edges = tuple(
                     edge
-                    for edge in snapshot.relations.use_edges
-                    if edge.location.path == decorator.location.path
-                    and edge.location.start_line == decorator.location.start_line
-                    and edge.ref.written_name == receiver_name
+                    for edge in edges_by_path_line.get(
+                        (decorator.location.path, decorator.location.start_line), ()
+                    )
+                    if edge.ref.written_name == receiver_name
                 )
                 if method_ref.symbol is not None and not (
                     receiver_symbol
@@ -251,7 +264,9 @@ class FastAPIProvider:
                 router = next(
                     (
                         edge.ref.symbol
-                        for edge in snapshot.relations.use_edges
+                        for edge in edges_by_path_line.get(
+                            (decorator.location.path, decorator.location.start_line), ()
+                        )
                         if edge.location == decorator.location and edge.ref.symbol in router_symbols
                     ),
                     None,
@@ -278,10 +293,10 @@ class FastAPIProvider:
                 response_ref = next(
                     (
                         edge.ref
-                        for edge in snapshot.relations.use_edges
-                        if edge.location.path == decorator.location.path
-                        and edge.location.start_line == decorator.location.start_line
-                        and edge.context.argument_name == "response_model"
+                        for edge in edges_by_path_line.get(
+                            (decorator.location.path, decorator.location.start_line), ()
+                        )
+                        if edge.context.argument_name == "response_model"
                     ),
                     None,
                 )
@@ -306,7 +321,10 @@ class FastAPIProvider:
         )
 
     def _dependencies(
-        self, snapshot: AnalysisSnapshot, functions: dict[SymbolId, FunctionFact]
+        self,
+        snapshot: AnalysisSnapshot,
+        functions: dict[SymbolId, FunctionFact],
+        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
     ) -> tuple[FastAPIDependencyFact, ...]:
         result: list[FastAPIDependencyFact] = []
         for module in snapshot.modules.values():
@@ -338,7 +356,9 @@ class FastAPIProvider:
                 provider_ref = next(
                     (
                         edge.ref
-                        for edge in snapshot.relations.use_edges
+                        for edge in edges_by_path_line.get(
+                            (call.location.path, call.location.start_line), ()
+                        )
                         if _contains(call.location, edge.location)
                         and edge.context.position.value == "argument"
                         and edge.context.argument_position == 0
