@@ -99,7 +99,7 @@ class CacheStore:
             (key.source_hash, key.adapter.name, key.adapter.version, key.resolver_identity)
         )
 
-    def put_module(self, key: CacheKey, result: ModuleAnalysisResult) -> None:
+    def put_module(self, key: CacheKey, result: ModuleAnalysisResult) -> bool:
         payload = encode_module_result(result, CacheMetadata(key.adapter, key.resolver_identity))
         now = time.time()
         conn = self._conn()
@@ -121,10 +121,15 @@ class CacheStore:
             )
             self._cleanup(conn)
             conn.execute("COMMIT")
+        except (sqlite3.DatabaseError, OSError):
+            with suppress(sqlite3.DatabaseError):
+                conn.execute("ROLLBACK")
+            return False
         except Exception:
             with suppress(sqlite3.DatabaseError):
                 conn.execute("ROLLBACK")
             raise
+        return True
 
     def get_module(self, key: CacheKey) -> ModuleAnalysisResult | None:
         try:
@@ -148,7 +153,7 @@ class CacheStore:
         except (sqlite3.DatabaseError, OSError, ValueError, TypeError):
             return None
 
-    def put_report(self, fingerprint: str, payload: bytes) -> None:
+    def put_report(self, fingerprint: str, payload: bytes) -> bool:
         if not _HASH.fullmatch(fingerprint):
             raise ValueError("report fingerprint must be lowercase sha256")
         payload = b"RPT1" + hashlib.sha256(payload).digest() + payload
@@ -160,11 +165,17 @@ class CacheStore:
                 "INSERT OR REPLACE INTO report_entries VALUES (?,?,?,?,?)",
                 (fingerprint, payload, len(payload), now, now),
             )
+            self._cleanup(conn)
             conn.execute("COMMIT")
+        except (sqlite3.DatabaseError, OSError):
+            with suppress(sqlite3.DatabaseError):
+                conn.execute("ROLLBACK")
+            return False
         except Exception:
             with suppress(sqlite3.DatabaseError):
                 conn.execute("ROLLBACK")
             raise
+        return True
 
     def get_report(self, fingerprint: str) -> bytes | None:
         try:
@@ -193,16 +204,45 @@ class CacheStore:
             return None
 
     def stats(self) -> CacheStats:
-        conn = self._conn()
-        modules, reports, total = conn.execute(
-            "SELECT (SELECT count(*) FROM module_entries), "
-            "(SELECT count(*) FROM report_entries), "
-            "(SELECT coalesce(sum(size),0) FROM module_entries) + "
-            "(SELECT coalesce(sum(size),0) FROM report_entries)"
-        ).fetchone()
-        return CacheStats(int(modules), int(reports), int(total))
+        try:
+            conn = self._conn()
+            modules, reports, total = conn.execute(
+                "SELECT (SELECT count(*) FROM module_entries), "
+                "(SELECT count(*) FROM report_entries), "
+                "(SELECT coalesce(sum(size),0) FROM module_entries) + "
+                "(SELECT coalesce(sum(size),0) FROM report_entries)"
+            ).fetchone()
+            return CacheStats(int(modules), int(reports), int(total))
+        except (sqlite3.DatabaseError, OSError):
+            return CacheStats(0, 0, 0)
 
-    def _cleanup(self, conn: sqlite3.Connection) -> None:
+    def cleanup(self, force: bool = False) -> CacheStats:
+        try:
+            conn = self._conn()
+            conn.execute("BEGIN IMMEDIATE")
+            self._cleanup(conn, force=force)
+            conn.execute("COMMIT")
+            if force:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("VACUUM")
+            return self.stats()
+        except (sqlite3.DatabaseError, OSError):
+            with suppress(sqlite3.DatabaseError):
+                self._conn().execute("ROLLBACK")
+            return CacheStats(0, 0, 0)
+
+    def clean(self) -> None:
+        try:
+            conn = self._conn()
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DELETE FROM module_entries")
+            conn.execute("DELETE FROM report_entries")
+            conn.execute("COMMIT")
+        except (sqlite3.DatabaseError, OSError):
+            with suppress(sqlite3.DatabaseError):
+                self._conn().execute("ROLLBACK")
+
+    def _cleanup(self, conn: sqlite3.Connection, *, force: bool = False) -> None:
         cutoff = time.time() - MAX_AGE_SECONDS
         conn.execute("DELETE FROM module_entries WHERE accessed<?", (cutoff,))
         conn.execute("DELETE FROM report_entries WHERE accessed<?", (cutoff,))
@@ -211,15 +251,16 @@ class CacheStore:
             + int(conn.execute("SELECT coalesce(sum(size),0) FROM report_entries").fetchone()[0])
             > MAX_TOTAL_BYTES
         ):
-            conn.execute(
-                "DELETE FROM module_entries WHERE key=(SELECT key FROM module_entries "
-                "ORDER BY accessed,created,key LIMIT 1)"
-            )
-            if conn.execute("SELECT changes()").fetchone()[0] == 0:
-                conn.execute(
-                    "DELETE FROM report_entries WHERE key=(SELECT key FROM report_entries "
-                    "ORDER BY accessed,created,key LIMIT 1)"
-                )
+            candidate = conn.execute(
+                "SELECT kind,key FROM ("
+                "SELECT 'module' kind,key,accessed,created FROM module_entries UNION ALL "
+                "SELECT 'report',key,accessed,created FROM report_entries) "
+                "ORDER BY accessed,created,kind,key LIMIT 1"
+            ).fetchone()
+            if candidate is None:
+                break
+            table = "module_entries" if candidate[0] == "module" else "report_entries"
+            conn.execute(f"DELETE FROM {table} WHERE key=?", (candidate[1],))
 
     def _close_and_quarantine(self) -> None:
         if self._connection is not None:

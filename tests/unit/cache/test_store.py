@@ -115,3 +115,32 @@ def test_concurrent_independent_stores(tmp_path: Path) -> None:
         assert all(pool.map(write, range(4)))
     with CacheStore(tmp_path) as store:
         assert store.stats().module_entries == 4
+
+
+def test_public_cleanup_clean_and_report_rollback(tmp_path: Path) -> None:
+    result = _result()
+    fingerprint = hashlib.sha256(b"report").hexdigest()
+    with CacheStore(tmp_path) as store:
+        store.put_module(_key(), result)
+        store.put_report(fingerprint, b"data")
+        assert store.cleanup().total_bytes > 0
+        store.clean()
+        assert store.stats().module_entries == 0
+        assert store.stats().report_entries == 0
+        assert store.cleanup(force=True).total_bytes == 0
+
+
+def test_cleanup_empty_and_context_close(tmp_path: Path) -> None:
+    store = CacheStore(tmp_path)
+    with store:
+        assert store.cleanup().total_bytes == 0
+        store.clean()
+    with pytest.raises(RuntimeError):
+        store.clean()
+
+
+def test_report_invalid_and_stats_error_degrade(tmp_path: Path) -> None:
+    with CacheStore(tmp_path) as store:
+        assert store.get_report("bad") is None
+        store._connection.close()  # type: ignore[union-attr]
+        assert store.stats().total_bytes == 0
