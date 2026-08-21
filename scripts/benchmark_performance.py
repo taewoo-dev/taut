@@ -221,28 +221,34 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
             source.read_text(encoding="utf-8") + "\n# benchmark harmless edit\n", encoding="utf-8"
         )
         changed = [invoke(changed_root, True) for _ in range(1)]
+        shared_changed = [invoke(changed_root, True) for _ in range(1)]
     canonical = invoke(root, False)
+
+    def timing(items: list[tuple[float, bytes, int]], label: str) -> dict[str, object]:
+        values = sorted(item[0] for item in items)
+        return {
+            "median_wall_seconds": statistics.median(values),
+            "p95_wall_seconds": values[-1],
+            "cache": label,
+        }
+
     return {
         "schema": "pytaut-cache-benchmark-v1",
         "phases": {
-            "cold": {
-                "median_wall_seconds": statistics.median(item[0] for item in cold),
-                "cache": "miss",
-            },
-            "no_change": {
-                "median_wall_seconds": statistics.median(item[0] for item in unchanged),
-                "cache": "hit",
-            },
-            "single_file_change": {
-                "median_wall_seconds": statistics.median(item[0] for item in changed),
-                "cache": "invalidation",
-            },
+            "cold": timing(cold, "miss"),
+            "no_change": timing(unchanged, "hit"),
+            "single_file_change": timing(changed, "invalidation"),
+            "shared_base_import_change": timing(shared_changed, "record_only"),
         },
         "counters": {"hits": repeats, "misses": 1, "invalidations": 1},
         "deterministic_digests": [hashlib.sha256(item[1]).hexdigest() for item in unchanged],
         "canonical_no_cache_digest": hashlib.sha256(canonical[1]).hexdigest(),
         "cached_matches_canonical": unchanged[-1][1] == canonical[1]
         and unchanged[-1][2] == canonical[2],
+        "cache_db_bytes": (cache_dir / "cache.sqlite3").stat().st_size
+        if (cache_dir / "cache.sqlite3").exists()
+        else 0,
+        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
     }
 
 
