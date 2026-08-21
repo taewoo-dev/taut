@@ -91,6 +91,38 @@ def test_cli_returns_one_and_text_diagnostic_for_violation(
 
 
 @pytest.mark.integration
+def test_cache_cli_flags_and_no_cache_do_not_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    with pytest.raises(SystemExit) as help_exit:
+        main(["check", "--help"])
+    assert help_exit.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--no-cache" in help_text and "--cache-dir" in help_text
+    with pytest.raises(SystemExit):
+        main(["cache", "--help"])
+    assert "stats" in capsys.readouterr().out
+    assert main(["check", str(tmp_path), "--no-cache"]) == 0
+    capsys.readouterr()
+    assert not (tmp_path / ".taut_cache").exists()
+
+
+@pytest.mark.integration
+def test_cache_stats_and_clean_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(tmp_path, "value = 1")
+    assert main(["check", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+    stats = capsys.readouterr().out
+    assert "리포트: 1" in stats
+    assert main(["cache", "clean", str(tmp_path)]) == 0
+    assert "캐시 삭제 완료" in capsys.readouterr().out
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+    assert "리포트: 0" in capsys.readouterr().out
+
+
+@pytest.mark.integration
 def test_cli_json_v3_is_deterministic_for_compliant_project(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

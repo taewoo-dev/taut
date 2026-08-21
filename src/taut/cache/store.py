@@ -69,18 +69,36 @@ class CacheStore:
 
     def __enter__(self) -> CacheStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-            # DELETE journaling avoids macOS SQLite WAL-index races under concurrent CLI runs.
-            self._connection.execute("PRAGMA journal_mode=DELETE")
-            self._connection.execute("PRAGMA synchronous=NORMAL")
-            self._connection.execute("PRAGMA busy_timeout=5000")
-            self._schema()
-        except (sqlite3.DatabaseError, OSError):
-            self._close_and_quarantine()
-            self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-            self._schema()
-        return self
+        for attempt in range(4):
+            try:
+                self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+                self._connection.execute("PRAGMA busy_timeout=30000")
+                self._connection.execute("PRAGMA journal_mode=WAL")
+                self._connection.execute("PRAGMA synchronous=NORMAL")
+                self._schema()
+                return self
+            except (sqlite3.OperationalError, sqlite3.DatabaseError, OSError) as error:
+                if self._is_lock_error(error) and attempt < 3:
+                    self.__exit__(None, None, None)
+                    time.sleep(0.02 * (attempt + 1))
+                    continue
+                self.__exit__(None, None, None)
+                if isinstance(error, sqlite3.OperationalError) and self._is_lock_error(error):
+                    raise
+                self._close_and_quarantine()
+                self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+                self._connection.execute("PRAGMA busy_timeout=30000")
+                self._connection.execute("PRAGMA journal_mode=WAL")
+                self._schema()
+                return self
+        raise RuntimeError("cache open retries exhausted")
+
+    @staticmethod
+    def _is_lock_error(error: BaseException) -> bool:
+        code = getattr(error, "sqlite_errorcode", None)
+        return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or any(
+            token in str(error).lower() for token in ("locked", "busy")
+        )
 
     def __exit__(self, *_: object) -> None:
         if self._connection is not None:
