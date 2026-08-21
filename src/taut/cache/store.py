@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -14,6 +16,7 @@ from taut.analysis.module_cache import CacheMetadata, decode_module_result, enco
 SCHEMA_VERSION = 1
 MAX_TOTAL_BYTES = 1 << 30
 MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 class CacheMiss(Exception):
@@ -26,6 +29,12 @@ class CacheKey:
     adapter: AdapterIdentity
     resolver_identity: str
 
+    def __post_init__(self) -> None:
+        if not _HASH.fullmatch(self.source_hash):
+            raise ValueError("source_hash must be lowercase sha256")
+        if not all((self.adapter.name, self.adapter.version, self.resolver_identity)):
+            raise ValueError("cache identity components must be nonempty")
+
 
 @dataclass(frozen=True)
 class CacheStats:
@@ -37,7 +46,7 @@ class CacheStats:
 class CacheStore:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
-        self.path = directory / ".taut_cache" / "cache.sqlite3"
+        self.path = directory / "cache.sqlite3"
         self._connection: sqlite3.Connection | None = None
 
     def __enter__(self) -> CacheStore:
@@ -72,6 +81,11 @@ class CacheStore:
               created REAL NOT NULL, accessed REAL NOT NULL);
             INSERT OR IGNORE INTO cache_meta(key,value) VALUES ('schema','1');"""
         )
+        value = self._connection.execute(
+            "SELECT value FROM cache_meta WHERE key='schema'"
+        ).fetchone()
+        if value != (str(SCHEMA_VERSION),):
+            raise sqlite3.DatabaseError("incompatible cache schema")
 
     def _conn(self) -> sqlite3.Connection:
         if self._connection is None:
@@ -123,28 +137,57 @@ class CacheStore:
             if decoded.value is None or decoded.metadata != CacheMetadata(
                 key.adapter, key.resolver_identity
             ):
+                self._conn().execute("DELETE FROM module_entries WHERE key=?", (self._key(key),))
                 return None
             self._conn().execute(
                 "UPDATE module_entries SET accessed=? WHERE key=?", (time.time(), self._key(key))
             )
             return decoded.value
-        except (sqlite3.DatabaseError, ValueError, TypeError):
+        except (sqlite3.DatabaseError, OSError, ValueError, TypeError):
             return None
 
     def put_report(self, fingerprint: str, payload: bytes) -> None:
+        if not _HASH.fullmatch(fingerprint):
+            raise ValueError("report fingerprint must be lowercase sha256")
+        payload = b"RPT1" + hashlib.sha256(payload).digest() + payload
         now = time.time()
-        self._conn().execute(
-            "INSERT OR REPLACE INTO report_entries VALUES (?,?,?,?,?)",
-            (fingerprint, payload, len(payload), now, now),
-        )
+        conn = self._conn()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO report_entries VALUES (?,?,?,?,?)",
+                (fingerprint, payload, len(payload), now, now),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
     def get_report(self, fingerprint: str) -> bytes | None:
-        row = (
-            self._conn()
-            .execute("SELECT payload FROM report_entries WHERE key=?", (fingerprint,))
-            .fetchone()
-        )
-        return None if row is None else bytes(row[0])
+        try:
+            if not _HASH.fullmatch(fingerprint):
+                return None
+            row = (
+                self._conn()
+                .execute("SELECT payload FROM report_entries WHERE key=?", (fingerprint,))
+                .fetchone()
+            )
+            if row is None:
+                return None
+            value = bytes(row[0])
+            if (
+                len(value) < 36
+                or value[:4] != b"RPT1"
+                or hashlib.sha256(value[36:]).digest() != value[4:36]
+            ):
+                self._conn().execute("DELETE FROM report_entries WHERE key=?", (fingerprint,))
+                return None
+            self._conn().execute(
+                "UPDATE report_entries SET accessed=? WHERE key=?", (time.time(), fingerprint)
+            )
+            return value[36:]
+        except (sqlite3.DatabaseError, OSError):
+            return None
 
     def stats(self) -> CacheStats:
         conn = self._conn()
@@ -160,14 +203,24 @@ class CacheStore:
         cutoff = time.time() - MAX_AGE_SECONDS
         conn.execute("DELETE FROM module_entries WHERE accessed<?", (cutoff,))
         conn.execute("DELETE FROM report_entries WHERE accessed<?", (cutoff,))
-        while self.stats().total_bytes > MAX_TOTAL_BYTES:
+        while (
+            int(conn.execute("SELECT coalesce(sum(size),0) FROM module_entries").fetchone()[0])
+            + int(conn.execute("SELECT coalesce(sum(size),0) FROM report_entries").fetchone()[0])
+            > MAX_TOTAL_BYTES
+        ):
             conn.execute(
-                "DELETE FROM module_entries WHERE key=(SELECT key FROM module_entries "
-                "ORDER BY accessed LIMIT 1)"
+                "DELETE FROM module_entries WHERE key=(SELECT key FROM module_entries ORDER BY accessed,created,key LIMIT 1)"
             )
+            if conn.execute("SELECT changes()").fetchone()[0] == 0:
+                conn.execute(
+                    "DELETE FROM report_entries WHERE key=(SELECT key FROM report_entries ORDER BY accessed,created,key LIMIT 1)"
+                )
 
     def _close_and_quarantine(self) -> None:
         if self._connection is not None:
             self._connection.close()
-        if self.path.exists():
-            os.replace(self.path, self.path.with_suffix(".corrupt"))
+            self._connection = None
+        suffix = f".corrupt.{time.time_ns()}"
+        for path in (self.path, Path(f"{self.path}-wal"), Path(f"{self.path}-shm")):
+            if path.exists():
+                os.replace(path, Path(f"{path}{suffix}"))
