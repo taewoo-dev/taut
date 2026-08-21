@@ -13,6 +13,10 @@ class ChangeSet:
     changed: frozenset[ModuleId]
     removed: frozenset[ModuleId]
 
+    @property
+    def touched(self) -> frozenset[ModuleId]:
+        return self.added | self.changed | self.removed
+
     @classmethod
     def compare(cls, old: tuple[SourceInput, ...], new: tuple[SourceInput, ...]) -> ChangeSet:
         before = {item.module_id: item for item in old}
@@ -20,9 +24,7 @@ class ChangeSet:
         return cls(
             frozenset(after.keys() - before.keys()),
             frozenset(
-                module
-                for module in before.keys() & after.keys()
-                if before[module].content_hash != after[module].content_hash
+                module for module in before.keys() & after.keys() if before[module] != after[module]
             ),
             frozenset(before.keys() - after.keys()),
         )

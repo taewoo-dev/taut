@@ -33,6 +33,16 @@ class ProjectAnalyzer:
     def assemble(
         request: AnalysisRequest, results: tuple[ModuleAnalysisResult, ...]
     ) -> AnalysisSnapshot:
+        expected = tuple(source.module_id for source in request.sources)
+        actual = tuple(result.facts.module.id for result in results)
+        if len(results) != len(expected):
+            raise ValueError(
+                f"analysis result count mismatch: expected {len(expected)}, got {len(results)}"
+            )
+        if actual != expected:
+            raise ValueError(
+                f"analysis result module order mismatch: expected {expected}, got {actual}"
+            )
         modules: list[ModuleFacts] = []
         module_relations: list[ModuleRelations] = []
         issues: list[EngineIssue] = []
