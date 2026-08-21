@@ -96,8 +96,6 @@ def _constructor_error_code(
     constructor = SymbolId(f"{class_fact.symbol_id.value}.__init__")
     candidates: list[tuple[CallFact, ExpressionSummary]] = []
     for call in calls_by_enclosing.get(constructor, ()):
-        if call.ref.written_name.rsplit(".", maxsplit=1)[-1] != "__init__":
-            continue
         error_code = next(
             (argument.value for argument in call.arguments if argument.name == "error_code"),
             None,
@@ -152,8 +150,8 @@ class ExceptionRegistryRule:
             SymbolId(f"{class_fact.symbol_id.value}.__init__") for class_fact in domains
         )
         if any(
-            call.ref.symbol in exception_constructors
-            or set(call.ref.candidates).intersection(exception_constructors)
+            call.enclosing_symbol in exception_constructors
+            and any(argument.name == "error_code" for argument in call.arguments)
             for call in uncertain_calls
         ):
             return RuleEvaluation(

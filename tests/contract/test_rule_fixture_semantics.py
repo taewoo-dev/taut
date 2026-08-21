@@ -244,7 +244,10 @@ def _run_regular_fixture(
         else frozenset(),
         fact_state=fact_state,
         fact_candidates=(
-            tuple(SymbolId(value) for value in GROUP_B_RELEVANT_SYMBOLS.get(rule_id, ()))
+            tuple(
+                SymbolId(value)
+                for value in (GROUP_B_RELEVANT_SYMBOLS | GROUP_C_RELEVANT_SYMBOLS).get(rule_id, ())
+            )
             if inject_relevant
             else ()
         ),
@@ -324,6 +327,29 @@ GROUP_B_RELEVANT_SYMBOLS = {
     "QUERY001": ("sqlalchemy.select",),
     "MODEL001": ("httpx.AsyncClient",),
 }
+GROUP_C_RULES = (
+    "ADAPTER002",
+    "ARCH000",
+    "CONFIG001",
+    "EXC001",
+    "HTTP001",
+    "IMPORT001",
+    "LOG001",
+    "SEC001",
+    "SIZE001",
+    "TEST001",
+    "TEST002",
+    "WIRING001",
+)
+GROUP_C_RELEVANT_SYMBOLS = {
+    "CONFIG001": ("app.settings.Settings",),
+    "HTTP001": ("httpx.AsyncClient",),
+    "LOG001": ("httpx",),
+    "SEC001": ("os.getenv",),
+    "TEST002": ("httpx.AsyncClient",),
+    "WIRING001": ("httpx.AsyncClient",),
+}
+EXPECTED_GROUP_C_RESOLVED = {rule: "pass" for rule in GROUP_C_RULES}
 GROUP_B_EXPECTED = {
     rule: {
         state: (
@@ -441,6 +467,81 @@ def test_group_b_unrelated_uncertainty_does_not_propagate(rule_id: str) -> None:
     assert evaluations
     expected = "not_applicable" if rule_id == "DEPENDS001" else "pass"
     assert {item.verdict.value for item in evaluations} == {expected}
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_C_RULES)
+def test_group_c_resolved_fixtures_execute_evaluators(rule_id: str) -> None:
+    result = _run_regular_fixture(rule_id, "compliant")
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert not result.engine_issues
+    assert {item.verdict.value for item in evaluations} == {EXPECTED_GROUP_C_RESOLVED[rule_id]}
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_C_RULES)
+def test_group_c_incomplete_facts_are_indeterminate(rule_id: str) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", incomplete=True)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    assert all(item.reason is not None for item in evaluations)
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", tuple(GROUP_C_RELEVANT_SYMBOLS))
+@pytest.mark.parametrize("state", (ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS))
+def test_group_c_relevant_candidates_are_indeterminate(
+    rule_id: str, state: ResolutionState
+) -> None:
+    result = _run_regular_fixture(
+        rule_id,
+        "compliant",
+        fact_state=state,
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    assert {item.reason.code for item in evaluations if item.reason is not None} == {
+        "uncertain_symbol"
+    }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", tuple(GROUP_C_RELEVANT_SYMBOLS))
+def test_group_c_unrelated_unresolved_facts_keep_compatible_verdict(rule_id: str) -> None:
+    result = _run_regular_fixture(
+        rule_id,
+        "compliant",
+        fact_state=ResolutionState.CONDITIONAL,
+        inject_relevant=False,
+    )
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert all(
+        item.verdict in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE} for item in evaluations
+    )
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("rule_id", GROUP_C_RULES)
+@pytest.mark.parametrize("state", tuple(ResolutionState))
+def test_group_c_all_resolution_states_execute_evaluators(
+    rule_id: str, state: ResolutionState
+) -> None:
+    result = _run_regular_fixture(rule_id, "compliant", fact_state=state)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
+    assert evaluations
+    assert not result.engine_issues
+    if state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS} and (
+        rule_id in GROUP_C_RELEVANT_SYMBOLS
+    ):
+        assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    else:
+        assert all(
+            item.verdict in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE} for item in evaluations
+        )
 
 
 @pytest.mark.contract

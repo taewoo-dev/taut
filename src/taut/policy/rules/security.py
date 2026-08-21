@@ -69,8 +69,7 @@ class DirectSecurityAccessRule:
             findings.append(_call_finding(call, role.value, effects))
         for reference in module.references:
             if reference.ref.state is not ResolutionState.RESOLVED and (
-                reference.ref.written_name == "os.environ"
-                or SymbolId("os.environ") in reference.ref.candidates
+                SymbolId("os.environ") in reference.ref.candidates
             ):
                 return RuleEvaluation(
                     RULE_ID,
