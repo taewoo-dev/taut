@@ -75,33 +75,10 @@ def _symbol_in_modules(call: CallFact, modules: tuple[ModuleId, ...]) -> ModuleI
     return matches_module_prefix(symbol.value, modules)
 
 
-def _written_owner_and_method(call: CallFact) -> tuple[str, str] | None:
-    parts = call.ref.written_name.split(".")
-    if len(parts) < 2:
-        return None
-    return parts[-2], parts[-1]
-
-
 def _database_primitive(call: CallFact, context: PolicyContext) -> str | None:
     statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls)
     if statement is not None:
         return statement.value
-    owner_method = _written_owner_and_method(call)
-    if owner_method is None:
-        return None
-    owner, method = owner_method
-    if (
-        owner in context.policy.boundaries.database_owner_names
-        and method in context.policy.boundaries.database_primitive_methods
-    ):
-        return call.ref.written_name
-    symbol = call.ref.symbol
-    if (
-        symbol is not None
-        and method in context.policy.boundaries.database_primitive_methods
-        and "Session" in symbol.value.rsplit(".", maxsplit=1)[0]
-    ):
-        return symbol.value
     return None
 
 
@@ -293,12 +270,6 @@ class _RoleBoundaryRule:
             provider = _argument_uses_symbol(call, context.policy.transaction_session_providers)
             if provider is not None:
                 return "session", provider.value
-            owner_method = _written_owner_and_method(call)
-            if owner_method is not None and (
-                owner_method[0] in boundaries.database_owner_names
-                and owner_method[1] in _ENTRY_TRANSACTION_METHODS
-            ):
-                return "transaction", call.ref.written_name
             exception = _matches_symbol(call, boundaries.transport_exception_calls)
             if exception is not None:
                 return "transport_exception", exception.value
@@ -320,16 +291,6 @@ class _RoleBoundaryRule:
                 and matches_module_prefix(symbol.value, boundaries.database_modules) is not None
             ):
                 return "write", symbol.value
-            owner_method = _written_owner_and_method(call)
-            if owner_method is not None:
-                owner, method = owner_method
-                if owner in boundaries.database_owner_names and method in _QUERY_WRITE_METHODS:
-                    return "write", call.ref.written_name
-                owner_written = call.ref.written_name.rsplit(".", maxsplit=1)[0]
-                if owner_written.rsplit(".", maxsplit=1)[-1][:1].isupper() and any(
-                    method.startswith(prefix) for prefix in boundaries.query_write_method_prefixes
-                ):
-                    return "model_write", call.ref.written_name
             if (
                 _matches_symbol(call, tuple(context.policy.transaction_session_providers))
                 is not None

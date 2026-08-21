@@ -383,8 +383,11 @@ class ResponseMappingRule:
                     if call.enclosing_symbol == method_symbol
                     and (
                         call.has_keyword_unpack
-                        or call.ref.written_name.rsplit(".", maxsplit=1)[-1]
-                        in {"asdict", "model_dump", "model_validate", "vars"}
+                        or (
+                            call.ref.symbol is not None
+                            and call.ref.symbol.value.rsplit(".", maxsplit=1)[-1]
+                            in {"asdict", "model_dump", "model_validate", "vars"}
+                        )
                     )
                 )
                 findings.extend(
