@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from taut.analysis.framework.indexes import grouped
 from taut.analysis.providers import CapabilitySpec
@@ -176,8 +177,12 @@ class FastAPIProvider:
         previous: FrozenMap[str, tuple[object, ...]],
         impacted: frozenset[ModuleId],
     ) -> FrozenMap[str, tuple[object, ...]]:
+        selected = frozenset(impacted)
         functions = {
-            f.symbol_id: f for module in snapshot.modules.values() for f in module.functions
+            f.symbol_id: f
+            for module in snapshot.modules.values()
+            if module.module.id in selected
+            for f in module.functions
         }
         bindings = dict(grouped(snapshot.relations.bindings, lambda item: item.module_id))
         edges = dict(
@@ -186,12 +191,19 @@ class FastAPIProvider:
                 lambda item: (item.location.path, item.location.start_line),
             )
         )
-        routers = self._routers(snapshot, bindings)
-        endpoints = self._endpoints(snapshot, functions, routers, edges)
+        routers = self._routers(snapshot, bindings, selected)
+        old_routers = cast(tuple[FastAPIRouterFact, ...], previous.get(FASTAPI_ROUTERS, ()))
+        global_routers = tuple(
+            sorted(
+                tuple(item for item in old_routers if item.module_id not in selected) + routers,
+                key=repr,
+            )
+        )
+        endpoints = self._endpoints(snapshot, functions, global_routers, edges, selected)
         fresh: dict[str, tuple[object, ...]] = {
-            FASTAPI_ROUTERS: routers,
+            FASTAPI_ROUTERS: global_routers,
             FASTAPI_ENDPOINTS: endpoints,
-            FASTAPI_DEPENDENCIES: self._dependencies(snapshot, functions, edges),
+            FASTAPI_DEPENDENCIES: self._dependencies(snapshot, functions, edges, selected),
             FASTAPI_RESPONSE_MODELS: self._response_models(endpoints),
         }
         merged: list[tuple[str, tuple[object, ...]]] = []
@@ -205,10 +217,15 @@ class FastAPIProvider:
         return FrozenMap(tuple(sorted(merged)))
 
     def _routers(
-        self, snapshot: AnalysisSnapshot, bindings_by_module: dict[ModuleId, tuple[Binding, ...]]
+        self,
+        snapshot: AnalysisSnapshot,
+        bindings_by_module: dict[ModuleId, tuple[Binding, ...]],
+        selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIRouterFact, ...]:
         result: list[FastAPIRouterFact] = []
         for module in snapshot.modules.values():
+            if selected is not None and module.module.id not in selected:
+                continue
             for call in module.calls:
                 if call.ref.symbol not in {
                     SymbolId("fastapi.APIRouter"),
@@ -247,10 +264,13 @@ class FastAPIProvider:
         functions: dict[SymbolId, FunctionFact],
         routers: tuple[FastAPIRouterFact, ...],
         edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
+        selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIEndpointFact, ...]:
         router_symbols = {item.symbol for item in routers}
         result: list[FastAPIEndpointFact] = []
         for module in snapshot.modules.values():
+            if selected is not None and module.module.id not in selected:
+                continue
             for decorator in module.decorators:
                 method_ref = decorator.ref
                 if method_ref.state is ResolutionState.DYNAMIC:
@@ -357,9 +377,12 @@ class FastAPIProvider:
         snapshot: AnalysisSnapshot,
         functions: dict[SymbolId, FunctionFact],
         edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
+        selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIDependencyFact, ...]:
         result: list[FastAPIDependencyFact] = []
         for module in snapshot.modules.values():
+            if selected is not None and module.module.id not in selected:
+                continue
             for call in module.calls:
                 if call.ref.symbol not in {
                     SymbolId("fastapi.Depends"),
