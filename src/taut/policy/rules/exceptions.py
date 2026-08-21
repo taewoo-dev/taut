@@ -4,20 +4,27 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 
 from taut.configuration.manifest import Zone
-from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.domain.evaluations import (
+    ChangeImpact,
+    EvaluationReason,
+    RuleTarget,
+    RuleTargetRef,
+    RuleVerdict,
+)
 from taut.domain.facts import (
     AnalysisStage,
     CallFact,
     ClassFact,
     ExpressionSummary,
     FieldFact,
+    ResolutionState,
 )
 from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, project_fact_uncertainty
 
 RULE_ID = RuleId("EXC001")
 RULE_VERSION = 3
@@ -104,6 +111,9 @@ class ExceptionRegistryRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.kind is not RuleTarget.PROJECT:
             raise ValueError("EXC001 requires a project target")
+        uncertainty = project_fact_uncertainty(RULE_ID, target, context)
+        if uncertainty is not None:
+            return uncertainty
         classes: dict[SymbolId, ClassFact] = {}
         fields: list[FieldFact] = []
         calls_by_enclosing: dict[SymbolId, list[CallFact]] = defaultdict(list)
@@ -125,12 +135,36 @@ class ExceptionRegistryRule:
                 ):
                     referenced_codes.add(symbol)
         policy = context.policy.code
+        uncertain_calls = tuple(
+            call
+            for module_id in context.model.modules()
+            if context.classification.get(module_id).zone == Zone("prod")
+            for call in context.model.module(module_id).calls
+            if call.ref.state is not ResolutionState.RESOLVED
+        )
         domains = tuple(
             class_fact
             for symbol, class_fact in classes.items()
             if symbol not in policy.abstract_exception_symbols
             and _is_domain_exception(symbol, classes, policy.exception_base_symbols)
         )
+        exception_constructors = tuple(
+            SymbolId(f"{class_fact.symbol_id.value}.__init__") for class_fact in domains
+        )
+        if any(
+            call.ref.symbol in exception_constructors
+            or set(call.ref.candidates).intersection(exception_constructors)
+            for call in uncertain_calls
+        ):
+            return RuleEvaluation(
+                RULE_ID,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                EvaluationReason(
+                    "uncertain_symbol", "규칙에 필요한 exception constructor를 확정하지 못했습니다."
+                ),
+            )
         direct_fields = {(field.owner_symbol, field.name): field for field in fields}
         findings: list[Finding] = []
         code_owners: dict[SymbolId, list[tuple[ClassFact, FieldFact | CallFact]]] = defaultdict(

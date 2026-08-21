@@ -12,7 +12,11 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 
 HTTP_RULE_ID = RuleId("HTTP001")
 LOG_RULE_ID = RuleId("LOG001")
@@ -23,7 +27,15 @@ class HttpTimeoutRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("HTTP001 requires a module target")
+        uncertainty = module_fact_uncertainty(HTTP_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         configured = frozenset(context.policy.boundaries.http_timeout_calls)
+        uncertainty = unresolved_call_evaluation(
+            HTTP_RULE_ID, target, context, target.module_id, tuple(configured)
+        )
+        if uncertainty is not None:
+            return uncertainty
         relevant = tuple(
             call
             for call in context.model.module(target.module_id).calls
@@ -69,7 +81,19 @@ class ExternalCallLoggingRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("LOG001 requires a module target")
+        uncertainty = module_fact_uncertainty(LOG_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         boundaries = context.policy.boundaries
+        uncertainty = unresolved_call_evaluation(
+            LOG_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            tuple(boundaries.logged_external_calls),
+        )
+        if uncertainty is not None:
+            return uncertainty
         relevant = tuple(
             call
             for call in context.model.module(target.module_id).calls

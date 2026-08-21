@@ -8,7 +8,7 @@ from taut.domain.ids import RuleId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, module_fact_uncertainty
 
 RULE_ID = RuleId("ARCH000")
 RULE_VERSION = 1
@@ -19,6 +19,9 @@ class AssignedRoleRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ARCH000 requires a module target")
+        uncertainty = module_fact_uncertainty(RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         classification = context.classification.get(target.module_id)
         if classification.role is not None:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())

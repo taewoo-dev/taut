@@ -8,6 +8,7 @@ from taut.domain.ids import RuleId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
+from taut.policy.rules.helpers import module_fact_uncertainty, unresolved_call_evaluation
 from taut.policy.rules.layer_boundaries import (
     RULE_VERSION,
     boundary_result,
@@ -23,6 +24,11 @@ class TestFixtureLayoutRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("TEST001 requires a module target")
+        uncertainty = module_fact_uncertainty(
+            TEST_LAYOUT_RULE_ID, target, context, target.module_id
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id).module
         path = module.path.value
         if path.rsplit("/", maxsplit=1)[-1] != "conftest.py":
@@ -52,12 +58,20 @@ class TestRawHttpRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("TEST002 requires a module target")
+        uncertainty = module_fact_uncertainty(TEST_HTTP_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         role = context.classification.get(target.module_id).role
         if role in context.policy.code.test_http_fixture_roles:
             return RuleEvaluation(TEST_HTTP_RULE_ID, target, RuleVerdict.PASS, ())
         forbidden = set(context.policy.code.raw_test_http_calls).union(
             context.policy.code.raw_test_http_client_constructors
         )
+        uncertainty = unresolved_call_evaluation(
+            TEST_HTTP_RULE_ID, target, context, target.module_id, tuple(forbidden)
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol

@@ -2,13 +2,23 @@ from __future__ import annotations
 
 from taut.configuration.catalog import AccessPath, Effect, EffectResolutionState
 from taut.configuration.manifest import Zone
-from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.domain.evaluations import (
+    ChangeImpact,
+    EvaluationReason,
+    RuleTarget,
+    RuleTargetRef,
+    RuleVerdict,
+)
 from taut.domain.facts import AnalysisStage, CallFact, ReferenceFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding
-from taut.domain.ids import RuleId
+from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 
 RULE_ID = RuleId("SEC001")
 RULE_VERSION = 2
@@ -26,10 +36,23 @@ class DirectSecurityAccessRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SEC001 requires a module target")
+        uncertainty = module_fact_uncertainty(RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         role = context.classification.get(target.module_id).role
         if role is None:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         module = context.model.module(target.module_id)
+        security_symbols = tuple(
+            symbol
+            for symbol, entry in context.catalog.entries.items()
+            if entry.effects.intersection(_SECURITY_EFFECTS)
+        )
+        uncertainty = unresolved_call_evaluation(
+            RULE_ID, target, context, target.module_id, security_symbols
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for call in module.calls:
             resolution = context.effect_of(call)
@@ -45,6 +68,20 @@ class DirectSecurityAccessRule:
                 continue
             findings.append(_call_finding(call, role.value, effects))
         for reference in module.references:
+            if reference.ref.state is not ResolutionState.RESOLVED and (
+                reference.ref.written_name == "os.environ"
+                or SymbolId("os.environ") in reference.ref.candidates
+            ):
+                return RuleEvaluation(
+                    RULE_ID,
+                    target,
+                    RuleVerdict.INDETERMINATE,
+                    (),
+                    EvaluationReason(
+                        "uncertain_symbol",
+                        "규칙에 필요한 environment reference를 확정하지 못했습니다.",
+                    ),
+                )
             if not _is_direct_environ_reference(reference, module.calls):
                 continue
             effect = Effect.SECURITY_ENVIRONMENT
