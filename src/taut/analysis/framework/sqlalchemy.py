@@ -140,6 +140,54 @@ class SQLAlchemyProvider:
             )
         )
 
+    def analyze_incremental(
+        self,
+        snapshot: AnalysisSnapshot,
+        previous: FrozenMap[str, tuple[object, ...]],
+        impacted: frozenset[ModuleId],
+    ) -> FrozenMap[str, tuple[object, ...]]:
+        affected = set(impacted)
+        classes = tuple(
+            i for m in snapshot.modules.values() for i in m.classes if i.module_id in affected
+        )
+        fields = tuple(
+            i for m in snapshot.modules.values() for i in m.fields if i.module_id in affected
+        )
+        calls = tuple(
+            i for m in snapshot.modules.values() for i in m.calls if i.module_id in affected
+        )
+        models = self._models(snapshot, classes, calls, fields)
+        model_symbols = {item.symbol for item in models}
+        columns, relationships = self._mapped(snapshot, fields, calls, model_symbols)
+        recomputed = dict(
+            zip(
+                (
+                    SQLALCHEMY_MODELS,
+                    SQLALCHEMY_MAPPED_COLUMNS,
+                    SQLALCHEMY_RELATIONSHIPS,
+                    SQLALCHEMY_SESSIONS,
+                    SQLALCHEMY_TRANSACTIONS,
+                    SQLALCHEMY_QUERIES,
+                    SQLALCHEMY_RAW_SQL,
+                ),
+                (
+                    models,
+                    columns,
+                    relationships,
+                    self._sessions(fields, calls),
+                    self._transactions(calls),
+                    self._queries(calls),
+                    self._raw_sql(calls),
+                ),
+            )
+        )
+        result: dict[str, tuple[object, ...]] = {}
+        for capability in (spec.id for spec in self.provides):
+            old = previous.get(capability, ())
+            kept = tuple(item for item in old if getattr(item, "module_id", None) not in affected)
+            result[capability] = tuple(sorted((*kept, *recomputed[capability]), key=repr))
+        return FrozenMap(result)
+
     def _models(
         self,
         snapshot: AnalysisSnapshot,
