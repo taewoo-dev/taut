@@ -235,6 +235,8 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
     with tempfile.TemporaryDirectory(prefix="pytaut-benchmark-") as copied:
         changed_root = Path(copied) / "project"
         shutil.copytree(root, changed_root)
+        # macOS /var -> /private/var symlink requires a resolved root for discovery.
+        changed_root = changed_root.resolve()
         changed_config = load_project_configuration(changed_root)
         discovered = discover_sources(changed_root, changed_config).sources
         source_by_path = {item.path.value: changed_root / item.path.value for item in discovered}
