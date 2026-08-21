@@ -28,6 +28,7 @@ from taut.analysis.framework.sqlalchemy_facts import (
     SQLAlchemySessionFact,
     SQLAlchemyTransactionFact,
 )
+from taut.analysis.framework.sqlalchemy_incremental import analyze_incremental_sqlalchemy
 from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import CallFact, ClassFact, FieldFact, ResolutionState, SymbolRef
 from taut.domain.frozen import FrozenMap
@@ -146,47 +147,17 @@ class SQLAlchemyProvider:
         previous: FrozenMap[str, tuple[object, ...]],
         impacted: frozenset[ModuleId],
     ) -> FrozenMap[str, tuple[object, ...]]:
-        affected = set(impacted)
-        classes = tuple(
-            i for m in snapshot.modules.values() for i in m.classes if i.module_id in affected
+        return analyze_incremental_sqlalchemy(
+            snapshot,
+            previous,
+            impacted,
+            models_from=self._models,
+            mapped_from=self._mapped,
+            sessions_from=self._sessions,
+            transactions_from=self._transactions,
+            queries_from=self._queries,
+            raw_sql_from=self._raw_sql,
         )
-        fields = tuple(
-            i for m in snapshot.modules.values() for i in m.fields if i.module_id in affected
-        )
-        calls = tuple(
-            i for m in snapshot.modules.values() for i in m.calls if i.module_id in affected
-        )
-        models = self._models(snapshot, classes, calls, fields)
-        model_symbols = {item.symbol for item in models}
-        columns, relationships = self._mapped(snapshot, fields, calls, model_symbols)
-        recomputed = dict(
-            zip(
-                (
-                    SQLALCHEMY_MODELS,
-                    SQLALCHEMY_MAPPED_COLUMNS,
-                    SQLALCHEMY_RELATIONSHIPS,
-                    SQLALCHEMY_SESSIONS,
-                    SQLALCHEMY_TRANSACTIONS,
-                    SQLALCHEMY_QUERIES,
-                    SQLALCHEMY_RAW_SQL,
-                ),
-                (
-                    models,
-                    columns,
-                    relationships,
-                    self._sessions(fields, calls),
-                    self._transactions(calls),
-                    self._queries(calls),
-                    self._raw_sql(calls),
-                ),
-            )
-        )
-        result: dict[str, tuple[object, ...]] = {}
-        for capability in (spec.id for spec in self.provides):
-            old = previous.get(capability, ())
-            kept = tuple(item for item in old if getattr(item, "module_id", None) not in affected)
-            result[capability] = tuple(sorted((*kept, *recomputed[capability]), key=repr))
-        return FrozenMap(result)
 
     def _models(
         self,
@@ -194,6 +165,7 @@ class SQLAlchemyProvider:
         classes: tuple[ClassFact, ...],
         calls: tuple[CallFact, ...],
         fields: tuple[FieldFact, ...],
+        inherited_models: frozenset[SymbolId] = frozenset(),
     ) -> tuple[SQLAlchemyModelFact, ...]:
         calls_by_module = dict(grouped(calls, lambda item: item.module_id))
         edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
@@ -224,7 +196,7 @@ class SQLAlchemyProvider:
             and call.ref.symbol is not None
             and call.ref.symbol.value in MODEL_BASES
         )
-        direct_bases = _MODEL_BASE_SYMBOLS | declarative_bases
+        direct_bases = _MODEL_BASE_SYMBOLS | declarative_bases | inherited_models
         result: list[SQLAlchemyModelFact] = []
         known: set[SymbolId] = set(direct_bases)
         pending = list(classes)
