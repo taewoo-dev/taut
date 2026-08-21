@@ -4,19 +4,15 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.2 adds occurrence-aware symbol relations, capability-gated rule packs, and explicit
-analysis coverage. Install directly from GitHub while the next PyPI release is prepared:
+Version 0.2.0 adds occurrence-aware symbol relations, capability-gated rule packs, and explicit
+analysis coverage. It supports Python 3.12 or newer on platforms supported by Python:
 
 ```bash
-uv add --dev "pytaut @ git+https://github.com/taewoo-dev/taut.git"
+uv add --dev pytaut==0.2.0
 uv run taut check .
 ```
 
-After the PyPI release, installation becomes:
-
-```bash
-uv add --dev pytaut
-```
+For a reproducible source checkout, use `uv add --dev "pytaut @ git+https://github.com/taewoo-dev/taut.git"`.
 
 ## Configuration
 
@@ -185,4 +181,5 @@ bash scripts/test.sh --only tests/unit/policy/test_builtin_rules.py -x
 The full check runs the repository's own policy rules, Ruff, mypy strict, Pyright strict, pytest
 with at least 90% branch coverage, package builds, and an isolated wheel installation.
 
-See [`docs/README.md`](docs/README.md) for the current design documents.
+See [`MIGRATION.md`](MIGRATION.md) for the 0.1.x upgrade checklist and [`docs/VALIDATION_REPORT.md`](docs/VALIDATION_REPORT.md)
+for reproducible release checks. See [`docs/README.md`](docs/README.md) for current design documents.
