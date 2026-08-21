@@ -1,21 +1,41 @@
 """Provider-neutral semantic contracts."""
 
 from .v1 import (
+    AnalysisStage,
     Binding,
     BindingKind,
+    CompletenessState,
+    ExecutionPhase,
+    FactKind,
+    GuardKind,
     ImportEdge,
+    IncompleteReason,
+    ModuleCompleteness,
     ProjectRelations,
+    ResolutionState,
+    ScopeKind,
     SyntaxContext,
+    SyntaxPosition,
     UseEdge,
     UsePurpose,
 )
 
 __all__ = [
+    "AnalysisStage",
     "Binding",
     "BindingKind",
+    "CompletenessState",
+    "ExecutionPhase",
+    "FactKind",
+    "GuardKind",
     "ImportEdge",
+    "IncompleteReason",
+    "ModuleCompleteness",
     "ProjectRelations",
+    "ResolutionState",
+    "ScopeKind",
     "SyntaxContext",
+    "SyntaxPosition",
     "UseEdge",
     "UsePurpose",
 ]

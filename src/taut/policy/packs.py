@@ -25,6 +25,18 @@ USE_CAPABILITY = "taut.uses@1"
 _PLUGIN_ID = re.compile(r"^[a-z][a-z0-9_.-]+$")
 
 
+def _entry_points(group: str):
+    """Return a stable tuple across Python metadata API generations."""
+    points = entry_points()
+    if isinstance(points, tuple):
+        selected = points
+    elif hasattr(points, "select"):
+        selected = points.select(group=group)
+    else:
+        selected = points.get(group, ())
+    return tuple(sorted(selected, key=lambda point: (point.name, point.value)))
+
+
 @dataclass(frozen=True)
 class RulePackV1:
     id: str
@@ -97,11 +109,14 @@ def load_rule_pack(pack_id: str) -> RulePackV1:
     if pack_id == BACKEND_PACK_ID:
         return builtin_backend_pack()
     matches = tuple(
-        point for point in entry_points(group="taut.rule_packs.v1") if point.name == pack_id
+        point for point in _entry_points("taut.rule_packs.v1") if point.name == pack_id
     )
     if len(matches) != 1:
         raise ValueError(f"unknown or ambiguous rule pack: {pack_id}")
-    value = matches[0].load()()
+    try:
+        value = matches[0].load()()
+    except Exception as error:
+        raise ValueError(f"failed to load rule pack entry point: {pack_id}: {error}") from error
     if not isinstance(value, RulePackV1) or value.id != pack_id:
         raise ValueError(f"invalid rule pack entry point: {pack_id}")
     return value
@@ -117,11 +132,16 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
     if provider_id == PYDANTIC_PROVIDER_ID:
         return PydanticProvider()
     matches = tuple(
-        point for point in entry_points(group="taut.fact_providers.v1") if point.name == provider_id
+        point for point in _entry_points("taut.fact_providers.v1") if point.name == provider_id
     )
     if len(matches) != 1:
         raise ValueError(f"unknown or ambiguous fact provider: {provider_id}")
-    provider = matches[0].load()()
+    try:
+        provider = matches[0].load()()
+    except Exception as error:
+        raise ValueError(
+            f"failed to load fact provider entry point: {provider_id}: {error}"
+        ) from error
     if provider.id != provider_id:
         raise ValueError(f"invalid fact provider entry point: {provider_id}")
     return cast(FactProviderV1, provider)
