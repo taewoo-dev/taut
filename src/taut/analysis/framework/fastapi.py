@@ -177,6 +177,12 @@ class FastAPIProvider:
         previous: FrozenMap[str, tuple[object, ...]],
         impacted: frozenset[ModuleId],
     ) -> FrozenMap[str, tuple[object, ...]]:
+        if not impacted:
+            return FrozenMap(
+                (name, previous[name])
+                for name in sorted(spec.id for spec in self.provides)
+                if name in previous
+            )
         selected = frozenset(impacted)
         functions = {
             f.symbol_id: f
