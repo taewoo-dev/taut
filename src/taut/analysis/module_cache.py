@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import fields, is_dataclass
 from enum import Enum, StrEnum
-from typing import Literal, cast
+from typing import cast
 
 import msgspec
 
@@ -54,29 +54,24 @@ class CacheDecodeResult:
 
 
 class DataclassNode(msgspec.Struct, tag="dataclass", tag_field="kind", forbid_unknown_fields=True):
-    kind: Literal["dataclass"]
     type_id: str
     fields: tuple[tuple[str, WireValue], ...]
 
 
 class EnumNode(msgspec.Struct, tag="enum", tag_field="kind", forbid_unknown_fields=True):
-    kind: Literal["enum"]
     type_id: str
     value: str
 
 
 class TupleNode(msgspec.Struct, tag="tuple", tag_field="kind", forbid_unknown_fields=True):
-    kind: Literal["tuple"]
     items: tuple[WireValue, ...]
 
 
 class FrozenSetNode(msgspec.Struct, tag="frozenset", tag_field="kind", forbid_unknown_fields=True):
-    kind: Literal["frozenset"]
     items: tuple[WireValue, ...]
 
 
 class FrozenMapNode(msgspec.Struct, tag="frozen_map", tag_field="kind", forbid_unknown_fields=True):
-    kind: Literal["frozen_map"]
     items: tuple[tuple[WireValue, WireValue], ...]
 
 
@@ -127,23 +122,19 @@ def _pack(v: object, d: int = 0, n: list[int] | None = None) -> WireValue:
     if v is None or isinstance(v, (str, int, bool)):
         return v
     if isinstance(v, Enum):
-        return EnumNode("enum", f"{type(v).__module__}.{type(v).__name__}", str(v.value))
+        return EnumNode(f"{type(v).__module__}.{type(v).__name__}", str(v.value))
     if is_dataclass(v) and not isinstance(v, type):
         return DataclassNode(
-            "dataclass",
             f"{type(v).__module__}.{type(v).__name__}",
             tuple((f.name, _pack(getattr(v, f.name), d + 1, n)) for f in fields(v)),
         )
     if isinstance(v, FrozenMap):
         items = cast(tuple[tuple[object, object], ...], v.items_tuple())
-        return FrozenMapNode(
-            "frozen_map", tuple((_pack(k, d + 1, n), _pack(x, d + 1, n)) for k, x in items)
-        )
+        return FrozenMapNode(tuple((_pack(k, d + 1, n), _pack(x, d + 1, n)) for k, x in items))
     if isinstance(v, tuple):
-        return TupleNode("tuple", tuple(_pack(x, d + 1, n) for x in cast(tuple[object, ...], v)))
+        return TupleNode(tuple(_pack(x, d + 1, n) for x in cast(tuple[object, ...], v)))
     if isinstance(v, frozenset):
         return FrozenSetNode(
-            "frozenset",
             tuple(_pack(x, d + 1, n) for x in sorted(cast(frozenset[object], v), key=repr)),
         )
     raise TypeError(type(v).__name__)
