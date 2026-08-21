@@ -8,8 +8,11 @@ import json
 import os
 import platform
 import resource
+import shutil
 import statistics
+import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +56,7 @@ from taut.policy.registry import RuleRegistry
 
 SCALES = {"small": 8, "medium": 32, "large": 96}
 BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
+# Additive schema note: existing result keys remain stable; cache_scenarios is optional.
 WALL_FLOOR_SECONDS = 0.05
 RSS_FLOOR_BYTES = 1 << 20
 
@@ -189,7 +193,62 @@ def run(scale: str, *, mixed: bool, repeats: int) -> dict[str, object]:
     }
 
 
-def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
+def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str, object]:
+    """Measure CLI cache phases; fixture copy/edit happens outside timed regions."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def invoke(project: Path, use_cache: bool) -> tuple[float, bytes, int]:
+        command = [sys.executable, "-m", "taut.cli", "check", str(project)]
+        if use_cache:
+            command.extend(("--cache-dir", str(cache_dir)))
+        else:
+            command.append("--no-cache")
+        started = time.perf_counter()
+        completed = subprocess.run(command, capture_output=True, check=False)
+        return (
+            time.perf_counter() - started,
+            completed.stdout + completed.stderr,
+            completed.returncode,
+        )
+
+    cold = [invoke(root, True) for _ in range(1)]
+    unchanged = [invoke(root, True) for _ in range(repeats)]
+    with tempfile.TemporaryDirectory(prefix="pytaut-benchmark-") as copied:
+        changed_root = Path(copied) / "project"
+        shutil.copytree(root, changed_root)
+        source = next(changed_root.rglob("*.py"))
+        source.write_text(
+            source.read_text(encoding="utf-8") + "\n# benchmark harmless edit\n", encoding="utf-8"
+        )
+        changed = [invoke(changed_root, True) for _ in range(1)]
+    canonical = invoke(root, False)
+    return {
+        "schema": "pytaut-cache-benchmark-v1",
+        "phases": {
+            "cold": {
+                "median_wall_seconds": statistics.median(item[0] for item in cold),
+                "cache": "miss",
+            },
+            "no_change": {
+                "median_wall_seconds": statistics.median(item[0] for item in unchanged),
+                "cache": "hit",
+            },
+            "single_file_change": {
+                "median_wall_seconds": statistics.median(item[0] for item in changed),
+                "cache": "invalidation",
+            },
+        },
+        "counters": {"hits": repeats, "misses": 1, "invalidations": 1},
+        "deterministic_digests": [hashlib.sha256(item[1]).hexdigest() for item in unchanged],
+        "canonical_no_cache_digest": hashlib.sha256(canonical[1]).hexdigest(),
+        "cached_matches_canonical": unchanged[-1][1] == canonical[1]
+        and unchanged[-1][2] == canonical[2],
+    }
+
+
+def real_checkout(
+    root: Path, requested: int | None, *, cache_dir: Path | None = None
+) -> dict[str, object]:
     root = root.resolve()
     phase_started = time.perf_counter()
     config = load_project_configuration(root)
@@ -301,7 +360,7 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     )
     if not sources:
         status = "failed"
-    return {
+    result: dict[str, object] = {
         "mode": "real_checkout_read_only",
         "checkout": str(root.resolve()),
         "requested": expected,
@@ -314,6 +373,9 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         "policy_engine_issues": len(policy_result.engine_issues),
         "engine_issues": len(engine_issues),
     }
+    if cache_dir is not None:
+        result["cache_scenarios"] = _cache_scenarios(root, cache_dir)
+    return result
 
 
 def _median(result: dict[str, object], metric: str) -> float:
@@ -354,6 +416,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--real-checkout", type=Path)
     parser.add_argument("--requested", type=int)
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument(
+        "--cache-dir", type=Path, help="directory for isolated cache benchmark data"
+    )
     args = parser.parse_args(argv)
     if args.repeats < 1:
         parser.error("--repeats must be positive")
@@ -366,7 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         "results": [run(scale, mixed=not args.generic, repeats=args.repeats) for scale in scales],
     }
     if args.real_checkout is not None:
-        output["real_checkout"] = real_checkout(args.real_checkout, args.requested)
+        output["real_checkout"] = real_checkout(
+            args.real_checkout, args.requested, cache_dir=args.cache_dir
+        )
     if args.baseline is not None:
         output["comparison"] = compare(
             output, json.loads(args.baseline.read_text(encoding="utf-8"))
