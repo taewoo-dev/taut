@@ -45,6 +45,26 @@ def test_fastapi_unresolved_dependency_is_local_to_call_module() -> None:
     assert len(dependencies) == 1 and dependencies[0].provider is None
 
 
+def test_fastapi_response_model_fact_preserves_unresolved_reference() -> None:
+    result = apply_fact_providers(
+        analyze(
+            make_source(
+                "app/api.py",
+                "from fastapi import APIRouter\nr = APIRouter()\n@r.get('/', response_model=Missing)\ndef x(): pass",  # noqa: E501
+            )
+        ),
+        (FastAPIProvider(),),
+    )
+    models = cast(
+        tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
+    )
+    assert (
+        models
+        and models[0].model is None
+        and models[0].model_ref.state is FastAPIConfidence.UNRESOLVED
+    )
+
+
 def test_fastapi_provider_extracts_alias_reexported_router_and_typed_contracts() -> None:
     snapshot = analyze(
         make_source("app/routes.py", "from fastapi import APIRouter as Router\nrouter = Router()"),

@@ -53,6 +53,14 @@ def test_pydantic_inherited_field_metadata_and_config() -> None:
     assert next(field for field in fields if field.name == "id").alias is not None
 
 
+def test_pydantic_unresolved_base_does_not_make_model() -> None:
+    result = apply_fact_providers(
+        analyze(make_source("app/model.py", "class Unknown(UnknownBase):\n    value: int")),
+        (PydanticProvider(),),
+    )
+    assert result.capabilities[PYDANTIC_MODELS] == ()
+
+
 def test_pydantic_provider_extracts_v1_v2_semantics_and_operations() -> None:
     snapshot = analyze(
         make_source(
