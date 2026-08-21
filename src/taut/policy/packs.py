@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from importlib.metadata import entry_points, version
-from typing import cast
+from typing import Any, cast
 
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
 from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvider
@@ -25,7 +25,7 @@ USE_CAPABILITY = "taut.uses@1"
 _PLUGIN_ID = re.compile(r"^[a-z][a-z0-9_.-]+$")
 
 
-def _entry_points(group: str):
+def _entry_points(group: str) -> tuple[Any, ...]:
     """Return a stable tuple across Python metadata API generations."""
     points = entry_points()
     if isinstance(points, tuple):
