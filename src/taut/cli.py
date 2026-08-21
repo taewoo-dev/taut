@@ -23,6 +23,7 @@ from taut.analysis.providers import apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.cache import CacheStore
+from taut.cache.store import ReportEnvelope
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.validation import validate_classification_for_policy
 from taut.domain.frozen import FrozenMap
@@ -107,6 +108,12 @@ def _parser() -> argparse.ArgumentParser:
     explain.add_argument("project_root", nargs="?", default=".")
     explain.add_argument("--config", help="설명할 별도 TOML 설정 파일입니다.")
     explain.add_argument("--format", choices=("text", "json"), default="text")
+    cache = subparsers.add_parser("cache", help="persistent report cache 관리")
+    cache_commands = cache.add_subparsers(dest="cache_command", required=True)
+    for name, help_text in (("stats", "캐시 통계"), ("clean", "캐시 비우기")):
+        command_parser = cache_commands.add_parser(name, help=help_text)
+        command_parser.add_argument("project_root", nargs="?", default=".")
+        command_parser.add_argument("--cache-dir")
     return parser
 
 
@@ -155,8 +162,15 @@ def run_check(options: CheckOptions) -> int:
     if not options.no_cache and config.cache_enabled:
         directory = options.cache_dir or (options.project_root / config.cache_directory.value)
         cache_store = CacheStore(directory)
-        cache_store.__enter__()
-        fingerprint = hashlib.sha256(
+        try:
+            cache_store.__enter__()
+        except (OSError, RuntimeError):
+            cache_store = None
+        if cache_store is None:
+            if options.verbose:
+                print("taut cache: error (disabled)", file=sys.stderr)
+        else:
+            fingerprint = hashlib.sha256(
             (
                 config.digest()
                 + options.output_format
@@ -166,14 +180,17 @@ def run_check(options: CheckOptions) -> int:
                 + str(options.width)
                 + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
             ).encode()
-        ).hexdigest()
-        cache_key = fingerprint
-        cached = cache_store.get_report(fingerprint)
-        if cached is not None:
-            exit_code, cached_output = cached.split(b"\n", 1)
-            sys.stdout.buffer.write(cached_output)
-            cache_store.__exit__(None, None, None)
-            return int(exit_code)
+            ).hexdigest()
+            cache_key = fingerprint
+            cached = cache_store.get_report_envelope(fingerprint)
+            if cached is not None:
+                sys.stdout.buffer.write(cached.stdout)
+                if cached.stderr:
+                    sys.stderr.buffer.write(cached.stderr)
+                cache_store.__exit__(None, None, None)
+                return cached.exit_code
+            if options.verbose:
+                print("taut cache: miss", file=sys.stderr)
     adapter = PythonAstAdapter()
     context_manager_providers = {
         ContextManagerProvider(symbol, _ASYNC_SESSION_TYPE)
@@ -256,9 +273,15 @@ def run_check(options: CheckOptions) -> int:
             )
             + "\n"
         )
+    output_bytes = output.encode()
     print(output, end="")
     if cache_store is not None and cache_key is not None:
-        cache_store.put_report(cache_key, f"{report.exit_decision.code}\n{output}".encode())
+        cache_store.put_report_envelope(
+            cache_key,
+            ReportEnvelope(
+                1, output_bytes, b"", report.exit_decision.code, {"format": options.output_format}
+            ),
+        )
         cache_store.__exit__(None, None, None)
     return report.exit_decision.code
 
@@ -334,6 +357,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser.error("unknown config command")
             config = load_project_configuration(root, config_path)
             print(f"설정 정상: {config.manifest.source.path} ({config.digest()})")
+            return 0
+        if command == "cache":
+            root = Path(namespace.project_root).resolve()
+            directory = (
+                Path(namespace.cache_dir).resolve()
+                if namespace.cache_dir
+                else root / ".taut_cache"
+            )
+            with CacheStore(directory) as store:
+                if namespace.cache_command == "clean":
+                    store.clean()
+                    print("캐시 삭제 완료")
+                else:
+                    stats = store.stats()
+                    print(f"모듈: {stats.module_entries}")
+                    print(f"리포트: {stats.report_entries}")
+                    print(f"바이트: {stats.total_bytes}")
             return 0
         if command != "check":
             parser.error("unknown command")

@@ -11,6 +11,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+import msgspec
+
 from taut.analysis.contracts import AdapterIdentity, ModuleAnalysisResult
 from taut.analysis.module_cache import CacheMetadata, decode_module_result, encode_module_result
 
@@ -42,6 +44,20 @@ class CacheStats:
     module_entries: int
     report_entries: int
     total_bytes: int
+
+
+class ReportEnvelope(msgspec.Struct, forbid_unknown_fields=True):
+    """Versioned, byte-preserving report payload; only deterministic reports use it."""
+
+    schema: int
+    stdout: bytes
+    stderr: bytes
+    exit_code: int
+    metadata: dict[str, str]
+
+
+_REPORT_ENCODER = msgspec.msgpack.Encoder()
+_REPORT_DECODER = msgspec.msgpack.Decoder(ReportEnvelope)
 
 
 class CacheStore:
@@ -177,6 +193,9 @@ class CacheStore:
             raise
         return True
 
+    def put_report_envelope(self, fingerprint: str, envelope: ReportEnvelope) -> bool:
+        return self.put_report(fingerprint, _REPORT_ENCODER.encode(envelope))
+
     def get_report(self, fingerprint: str) -> bytes | None:
         try:
             if not _HASH.fullmatch(fingerprint):
@@ -201,6 +220,16 @@ class CacheStore:
             )
             return value[36:]
         except (sqlite3.DatabaseError, OSError):
+            return None
+
+    def get_report_envelope(self, fingerprint: str) -> ReportEnvelope | None:
+        payload = self.get_report(fingerprint)
+        if payload is None:
+            return None
+        try:
+            envelope = _REPORT_DECODER.decode(payload)
+            return envelope if envelope.schema == 1 else None
+        except (msgspec.DecodeError, TypeError, ValueError):
             return None
 
     def stats(self) -> CacheStats:
