@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, cast, runtime_checkable
 
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId
@@ -93,56 +93,32 @@ def apply_fact_providers_incremental(
     previous_snapshot: AnalysisSnapshot,
     impacted: frozenset[ModuleId],
 ) -> AnalysisSnapshot:
-    """Apply providers with an optional incremental hook; V1 providers safely fall back."""
-    values: dict[str, tuple[object, ...]] = {}
-    base = replace(snapshot, capabilities=FrozenMap())
-    ordered = _order_providers(providers)
-    for provider in ordered:
-        if isinstance(provider, IncrementalFactProviderV1):
-            method = provider.analyze_incremental
-            declared = frozenset(spec.id for spec in provider.provides)
-            previous = FrozenMap(
-                (name, value)
-                for name, value in previous_snapshot.capabilities.items()
-                if name in declared
-            )
-            supplied = method(base, previous, frozenset(impacted))
-            if frozenset(supplied) != declared:
-                raise ValueError(f"incremental provider result does not match {provider.id}")
-            base = replace(base, capabilities=FrozenMap({**values, **supplied}.items()))
-            values.update(supplied)
-        else:
-            # Unknown V1 providers cannot prove reuse safety.
-            supplied = provider.analyze(base)
-            values.update(supplied)
-            base = replace(base, capabilities=FrozenMap(values.items()))
-    return replace(
-        base,
-        capabilities=FrozenMap(values.items()),
-        capability_provenance=FrozenMap(
-            (
-                spec.id,
-                Provenance(
-                    provider=p.id,
-                    provider_version=p.version,
-                    source_hash=snapshot.inputs.value,
-                    location=None,
-                ),
-            )
-            for p in ordered
-            for spec in p.provides
-            if spec.id in values
-        ),
-    )
+    return _execute_providers(snapshot, providers, previous_snapshot, impacted)
 
 
 def apply_fact_providers(
     snapshot: AnalysisSnapshot,
     providers: tuple[FactProviderV1, ...],
 ) -> AnalysisSnapshot:
-    values: dict[str, tuple[object, ...]] = dict(snapshot.capabilities.items())
-    provenance = dict(snapshot.capability_provenance.items())
-    unavailable = list(snapshot.coverage.unavailable_capabilities)
+    return _execute_providers(snapshot, providers)
+
+
+def _execute_providers(
+    snapshot: AnalysisSnapshot,
+    providers: tuple[FactProviderV1, ...],
+    previous_snapshot: AnalysisSnapshot | None = None,
+    impacted: frozenset[ModuleId] = frozenset(),
+) -> AnalysisSnapshot:
+    incremental = previous_snapshot is not None
+    prior = cast(AnalysisSnapshot, previous_snapshot)
+    values: dict[str, tuple[object, ...]] = (
+        {} if incremental else dict(snapshot.capabilities.items())
+    )
+    provenance: dict[str, Provenance] = (
+        {} if incremental else dict(snapshot.capability_provenance.items())
+    )
+    unavailable = [] if incremental else list(snapshot.coverage.unavailable_capabilities)
+    base = replace(snapshot, capabilities=FrozenMap(values.items()))
     ordered = _order_providers(providers)
     provider_ids = [provider.id for provider in ordered]
     if len(provider_ids) != len(set(provider_ids)):
@@ -175,7 +151,31 @@ def apply_fact_providers(
             )
             continue
         try:
-            supplied = provider.analyze(snapshot)
+            method = getattr(provider, "analyze_incremental", None)
+            declared_specs = tuple(provider.provides)
+            declared = frozenset(spec.id for spec in declared_specs)
+            can_increment = (
+                incremental
+                and callable(method)
+                and all(
+                    name in prior.capabilities
+                    and prior.capability_provenance.get(name)
+                    == Provenance(
+                        provider=provider.id,
+                        provider_version=provider.version,
+                        source_hash=prior.inputs.value,
+                        location=None,
+                    )
+                    for name in declared
+                )
+            )
+            if can_increment:
+                previous = FrozenMap((name, prior.capabilities[name]) for name in sorted(declared))
+                supplied = cast(IncrementalFactProviderV1, provider).analyze_incremental(
+                    base, previous, impacted
+                )
+            else:
+                supplied = provider.analyze(base)
             unexpected = set(supplied).difference(declared)
             missing = declared.difference(supplied)
             if unexpected or missing:
@@ -187,14 +187,14 @@ def apply_fact_providers(
             if overlap:
                 raise ValueError(f"capability has more than one provider: {sorted(overlap)}")
             values.update(supplied.items())
-            for spec in provider.provides:
+            for spec in declared_specs:
                 provenance[spec.id] = Provenance(
                     provider=provider.id,
                     provider_version=provider.version,
                     source_hash=snapshot.inputs.value,
                     location=None,
                 )
-            snapshot = replace(snapshot, capabilities=FrozenMap(values.items()))
+            base = replace(base, capabilities=FrozenMap(values.items()))
         except Exception as error:
             unavailable.extend(
                 UnavailableCapability(
@@ -205,12 +205,12 @@ def apply_fact_providers(
                 for spec in provider.provides
             )
     coverage = replace(
-        snapshot.coverage,
+        base.coverage,
         unavailable_capabilities=tuple(sorted(set(unavailable))),
         capability_provenance=tuple(sorted(provenance.items())),
     )
     return replace(
-        snapshot,
+        base,
         capabilities=FrozenMap(values.items()),
         capability_provenance=FrozenMap(provenance.items()),
         coverage=coverage,
