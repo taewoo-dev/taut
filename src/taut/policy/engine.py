@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import (
+    ChangeImpact,
     EvaluationReason,
     RuleLevel,
     RuleTarget,
@@ -12,14 +15,28 @@ from taut.domain.evaluations import (
 )
 from taut.domain.facts import AnalysisStage, CompletenessState, ResolutionState
 from taut.domain.findings import Finding
+from taut.domain.ids import ModuleId, RuleId
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.reports import CoverageIssue, CoverageReport
 from taut.policy.context import PolicyContext
 from taut.policy.registry import RuleRegistry
 from taut.policy.rule import RuleEvaluation, RuleRequirements
 from taut.policy.scheduler import RuleScheduler
-from taut.incremental.changes import ChangeSet, ImpactGraph
-from taut.domain.evaluations import ChangeImpact
+
+_EvaluationKey = tuple[RuleId, RuleTargetRef]
+_RegistryEntry = tuple[object, ...]
+_RegistryIdentity = tuple[_RegistryEntry, ...]
+
+
+class ChangeView(Protocol):
+    @property
+    def touched(self) -> frozenset[ModuleId]: ...
+
+
+class ImpactView(Protocol):
+    @property
+    def impacted(self) -> frozenset[ModuleId]: ...
+
 
 _STAGE_ORDER = {
     AnalysisStage.DISCOVERED: 0,
@@ -41,12 +58,10 @@ class PolicyRunResult:
 
 @dataclass(frozen=True)
 class IncrementalState:
-    """Transparent accounting for an incremental evaluation."""
-    reused: int
-    evaluated: int
+    reused_evaluations: int
+    evaluated_evaluations: int
     full_rerun: bool
-    registry_fingerprint: tuple = ()
-    context_fingerprint: tuple = ()
+    registry_identity: _RegistryIdentity
 
 
 @dataclass(frozen=True)
@@ -55,71 +70,144 @@ class IncrementalPolicyResult:
     state: IncrementalState
 
 
+@dataclass(frozen=True)
+class _Execution:
+    result: PolicyRunResult
+    reused: int
+    evaluated: int
+
+
 class PolicyEngine:
     def __init__(self, registry: RuleRegistry, scheduler: RuleScheduler | None = None) -> None:
         self._registry = registry
         self._scheduler = scheduler or RuleScheduler()
 
     def run(self, context: PolicyContext) -> PolicyRunResult:
-        return self._run(context)
+        return self._execute(context, {}).result
+
+    def run_tracked(self, context: PolicyContext) -> IncrementalPolicyResult:
+        execution = self._execute(context, {})
+        return IncrementalPolicyResult(
+            execution.result,
+            IncrementalState(
+                0,
+                execution.evaluated,
+                True,
+                self._registry_identity(),
+            ),
+        )
 
     def run_incremental(
         self,
         context: PolicyContext,
         prior_context: PolicyContext,
         prior_result: PolicyRunResult | IncrementalPolicyResult,
-        changes: ChangeSet,
-        impact_graph: ImpactGraph,
+        changes: ChangeView,
+        impact_graph: ImpactView,
     ) -> IncrementalPolicyResult:
-        previous = prior_result.result if isinstance(prior_result, IncrementalPolicyResult) else prior_result
-        prior_state = prior_result.state if isinstance(prior_result, IncrementalPolicyResult) else None
-        # Configuration, registry, capabilities, completeness, or prior failures
-        # can alter skipped evaluations and therefore invalidate all reuse.
-        complete_now = self._context_fingerprint(context)
-        complete_before = self._context_fingerprint(prior_context)
-        registry_fingerprint = self._registry_fingerprint()
-        safe = (
-            context.policy == prior_context.policy
-            and complete_now == complete_before
-            and context.model.capabilities() == prior_context.model.capabilities()
-            and (prior_state is None or prior_state.registry_fingerprint == registry_fingerprint)
-            and not previous.engine_issues
-        )
-        if not safe:
-            return IncrementalPolicyResult(self.run(context), IncrementalState(0, -1, True, registry_fingerprint, complete_now))
-        old = {(e.rule_id, e.target): e for e in previous.evaluations}
-        reuse: dict[tuple[object, RuleTargetRef], RuleEvaluation] = {}
+        if not isinstance(prior_result, IncrementalPolicyResult):
+            return self.run_tracked(context)
+        previous = prior_result.result
+        identity = self._registry_identity()
+        if (
+            prior_result.state.registry_identity != identity
+            or previous.engine_issues
+            or not self._safe_context(context, prior_context, changes)
+        ):
+            return self.run_tracked(context)
+        old: dict[_EvaluationKey, RuleEvaluation] = {
+            (evaluation.rule_id, evaluation.target): evaluation
+            for evaluation in previous.evaluations
+        }
+        reuse: dict[_EvaluationKey, RuleEvaluation] = {}
         for rule_id, definition in self._registry.definitions.items():
-            if definition.change_impact is ChangeImpact.PROJECT:
-                continue
             for key, evaluation in old.items():
-                if key[0] != rule_id or evaluation.verdict is RuleVerdict.INDETERMINATE:
+                if key[0] != rule_id:
+                    continue
+                if not changes.touched:
+                    reuse[key] = evaluation
                     continue
                 module = evaluation.target.module_id
                 if module is None:
                     continue
-                impacted = changes.touched if definition.change_impact is ChangeImpact.SELF else impact_graph.impacted
-                if module not in impacted:
+                if definition.change_impact is ChangeImpact.PROJECT:
+                    continue
+                invalidated = (
+                    changes.touched
+                    if definition.change_impact is ChangeImpact.SELF
+                    else impact_graph.impacted
+                )
+                if module not in invalidated:
                     reuse[key] = evaluation
-        result, reused, evaluated = self._run(context, reuse)
-        return IncrementalPolicyResult(result, IncrementalState(reused, evaluated, False, registry_fingerprint, complete_now))
+        execution = self._execute(context, reuse)
+        return IncrementalPolicyResult(
+            execution.result,
+            IncrementalState(
+                execution.reused,
+                execution.evaluated,
+                False,
+                identity,
+            ),
+        )
 
     # Explicit alias for callers that name the operation after its evaluation
     # semantics rather than the ordinary ``run`` API.
     evaluate_incremental = run_incremental
 
-    @staticmethod
-    def _complete(context: PolicyContext) -> bool:
-        return all(context.model.module(m).completeness.state is CompletenessState.COMPLETE for m in context.model.modules())
+    def _safe_context(
+        self,
+        context: PolicyContext,
+        prior: PolicyContext,
+        changes: ChangeView,
+    ) -> bool:
+        if (
+            context.policy != prior.policy
+            or context.catalog != prior.catalog
+            or context.model.capabilities() != prior.model.capabilities()
+            or self._project_complete(context) != self._project_complete(prior)
+        ):
+            return False
+        current_modules = set(context.model.modules())
+        prior_modules = set(prior.model.modules())
+        if (current_modules ^ prior_modules).difference(changes.touched):
+            return False
+        for module_id in (current_modules & prior_modules).difference(changes.touched):
+            if (
+                context.classification.get(module_id) != prior.classification.get(module_id)
+                or context.model.module(module_id).completeness
+                != prior.model.module(module_id).completeness
+            ):
+                return False
+        return True
 
     @staticmethod
-    def _context_fingerprint(context: PolicyContext) -> tuple:
-        return tuple((m, context.model.module(m).completeness) for m in sorted(context.model.modules(), key=lambda x: x.value))
+    def _project_complete(context: PolicyContext) -> bool:
+        return all(
+            context.model.module(module_id).completeness.state is CompletenessState.COMPLETE
+            for module_id in context.model.modules()
+        )
 
-    def _registry_fingerprint(self) -> tuple:
-        return tuple((rid, definition.behavior_version, definition.change_impact, definition.requirements) for rid, definition in self._registry.definitions.items())
+    def _registry_identity(self) -> _RegistryIdentity:
+        return tuple(
+            (
+                rule_id,
+                definition.behavior_version,
+                definition.target,
+                definition.change_impact,
+                definition.requirements,
+                definition.applies_to_zones,
+                definition.default_level,
+                definition.implementation.__class__.__module__,
+                definition.implementation.__class__.__qualname__,
+            )
+            for rule_id, definition in self._registry.definitions.items()
+        )
 
-    def _run(self, context: PolicyContext, reuse: dict | None = None):
+    def _execute(
+        self,
+        context: PolicyContext,
+        reuse: Mapping[_EvaluationKey, RuleEvaluation],
+    ) -> _Execution:
         evaluations: list[RuleEvaluation] = []
         issues: list[EngineIssue] = []
         enabled_rules = 0
@@ -142,7 +230,7 @@ class PolicyEngine:
                 targets = self._scheduler.targets_for(definition, context)
                 target_cache[target_key] = targets
             for target in targets:
-                cached = reuse.get((rule_id, target)) if reuse is not None else None
+                cached = reuse.get((rule_id, target))
                 if cached is not None:
                     evaluations.append(cached)
                     continue
@@ -206,9 +294,8 @@ class PolicyEngine:
         )
         coverage = _coverage(enabled_rules, ordered, context)
         result = PolicyRunResult(ordered, findings, tuple(issues), coverage)
-        if reuse is None:
-            return result
-        return result, sum((e.rule_id, e.target) in reuse for e in ordered), len(ordered) - sum((e.rule_id, e.target) in reuse for e in ordered)
+        reused = sum((item.rule_id, item.target) in reuse for item in ordered)
+        return _Execution(result, reused, len(ordered) - reused)
 
     def _missing_requirement(
         self,
