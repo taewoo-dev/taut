@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from taut.configuration.catalog import Effect
 from taut.domain.evaluations import EvaluationReason, RuleTargetRef, RuleVerdict
 from taut.domain.facts import CompletenessState, ResolutionState
 from taut.domain.findings import (
@@ -11,7 +12,7 @@ from taut.domain.findings import (
     make_fingerprint,
 )
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import ModuleId, RuleId, SymbolId
+from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleEvaluation
@@ -161,6 +162,40 @@ def unresolved_call_evaluation(
                     "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
                 ),
             )
+    return None
+
+
+def unresolved_effect_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    call_id: FactId,
+    effects: frozenset[Effect],
+) -> RuleEvaluation | None:  # pragma: no cover
+    """Propagate uncertainty only from resolver-owned effect candidates.
+
+    Written call text is deliberately not consulted: unresolved and dynamic
+    references have no semantic identity unless the resolver preserved a
+    candidate set that intersects the configured catalog effect.
+    """
+    call = context.model.call(call_id)
+    if call.ref.state is ResolutionState.RESOLVED:
+        return None
+    relevant = {
+        entry.symbol
+        for entry in context.catalog.entries.values()
+        if entry.effects.intersection(effects)
+    }
+    if relevant.intersection(call.ref.candidates):
+        return RuleEvaluation(
+            rule_id,
+            target,
+            RuleVerdict.INDETERMINATE,
+            (),
+            EvaluationReason(
+                "uncertain_effect", "규칙에 필요한 effect 대상을 확정하지 못했습니다."
+            ),
+        )
     return None
 
 

@@ -14,7 +14,7 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, module_fact_uncertainty
 
 IMPORT_RULE_ID = RuleId("IMPORT002")
 RUNTIME_RULE_ID = RuleId("RUNTIME001")
@@ -30,6 +30,7 @@ def _resolved(call: CallFact) -> SymbolId | None:
 
 
 def _finding(rule_id: RuleId, call: CallFact, message_key: str, kind: str) -> Finding:
+    symbol = call.ref.symbol.value if call.ref.symbol is not None else ""
     return build_finding(
         rule_id=rule_id,
         rule_version=RULE_VERSION,
@@ -38,9 +39,9 @@ def _finding(rule_id: RuleId, call: CallFact, message_key: str, kind: str) -> Fi
         subject=call.id,
         normalized_subject=f"{kind}:{call.id.value}",
         message_key=message_key,
-        arguments=(("call", call.ref.written_name),),
+        arguments=(("call", symbol),),
         location=call.location,
-        evidence=(EvidenceItem("call", call.ref.written_name), EvidenceItem("kind", kind)),
+        evidence=(EvidenceItem("call", symbol), EvidenceItem("kind", kind)),
     )
 
 
@@ -48,6 +49,9 @@ class DynamicImportRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("IMPORT002 requires a module target")
+        uncertain = module_fact_uncertainty(IMPORT_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         calls = context.model.module(target.module_id).calls
         forbidden = {SymbolId("builtins.__import__"), SymbolId("importlib.import_module")}
         findings = tuple(
@@ -64,12 +68,15 @@ class RuntimeShortcutRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("RUNTIME001 requires a module target")
+        uncertain = module_fact_uncertainty(RUNTIME_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         module = context.model.module(target.module_id)
         async_functions = {function.symbol_id for function in module.functions if function.is_async}
         findings: list[Finding] = []
         for call in module.calls:
             symbol = _resolved(call)
-            candidate = symbol.value if symbol is not None else call.ref.written_name
+            candidate = symbol.value if symbol is not None else ""
             if symbol == SymbolId("asyncio.run") and call.enclosing_symbol in async_functions:
                 findings.append(
                     _finding(RUNTIME_RULE_ID, call, "runtime.asyncio_run", "asyncio_run")
@@ -94,6 +101,9 @@ class ExternalCallTransactionRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("TX002 requires a module target")
+        uncertain = module_fact_uncertainty(TRANSACTION_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         findings: list[Finding] = []
         for call in context.model.module(target.module_id).calls:
             if not context.indexes.is_logged_external_call(call):
@@ -107,7 +117,11 @@ class ExternalCallTransactionRule:
                 context_symbols.intersection(context.policy.transaction_session_providers)
             )
             holds_transaction = any(
-                symbol.value.endswith(("AsyncSession.begin", "AsyncSession.begin_nested"))
+                symbol
+                in {
+                    SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin"),
+                    SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin_nested"),
+                }
                 for symbol in context_symbols
             )
             if holds_session or holds_transaction:

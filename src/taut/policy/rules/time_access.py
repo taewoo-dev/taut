@@ -3,7 +3,6 @@ from __future__ import annotations
 from taut.configuration.catalog import AccessPath, Effect, EffectResolutionState
 from taut.domain.evaluations import (
     ChangeImpact,
-    EvaluationReason,
     RuleTarget,
     RuleTargetRef,
     RuleVerdict,
@@ -13,33 +12,32 @@ from taut.domain.findings import EvidenceItem
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    target_uncertainty,
+    unresolved_effect_evaluation,
+)
 
 RULE_ID = RuleId("TIME001")
 RULE_VERSION = 2
 TIME_EFFECT = Effect.TIME_NOW
-_RISKY_NAMES = frozenset({"now", "today", "utcnow"})
 
 
 class TimeAccessRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None:
             raise ValueError("TIME001 requires a call target")
+        incomplete = target_uncertainty(RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
+        uncertain = unresolved_effect_evaluation(
+            RULE_ID, target, context, call.id, frozenset({TIME_EFFECT})
+        )
+        if uncertain is not None:
+            return uncertain
         resolution = context.effect_of(call)
         if resolution.state is EffectResolutionState.SYMBOL_UNRESOLVED:
-            final_name = call.ref.written_name.rsplit(".", maxsplit=1)[-1]
-            if final_name in _RISKY_NAMES:
-                return RuleEvaluation(
-                    RULE_ID,
-                    target,
-                    RuleVerdict.INDETERMINATE,
-                    (),
-                    EvaluationReason(
-                        "unresolved_time_call",
-                        "시간 조회일 수 있는 호출 대상을 확인하지 못했습니다.",
-                    ),
-                )
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if resolution.state is not EffectResolutionState.MATCHED:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -55,7 +53,9 @@ class TimeAccessRule:
                 and TIME_EFFECT in enclosing_entry.effects
             ):
                 return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
-        symbol = call.ref.symbol.value if call.ref.symbol else call.ref.written_name
+        if call.ref.symbol is None:
+            return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        symbol = call.ref.symbol.value
         finding = build_finding(
             rule_id=RULE_ID,
             rule_version=RULE_VERSION,

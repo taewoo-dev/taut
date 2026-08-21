@@ -12,7 +12,7 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, module_fact_uncertainty
 
 RELATIONSHIP_RULE_ID = RuleId("ORM001")
 DB_ENUM_RULE_ID = RuleId("ORM002")
@@ -45,7 +45,7 @@ def _finding(
 
 
 def _call_symbol(call: CallFact) -> str:
-    return call.ref.symbol.value if call.ref.symbol is not None else call.ref.written_name
+    return call.ref.symbol.value if call.ref.symbol is not None else ""
 
 
 def _keyword(call: CallFact, name: str) -> ExpressionSummary | None:
@@ -56,6 +56,9 @@ class RelationshipLoadingRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ORM001 requires a module target")
+        uncertain = module_fact_uncertainty(RELATIONSHIP_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.model_roles:
             return RuleEvaluation(RELATIONSHIP_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -101,6 +104,9 @@ class DatabaseEnumRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ORM002 requires a module target")
+        uncertain = module_fact_uncertainty(DB_ENUM_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.model_roles:
             return RuleEvaluation(DB_ENUM_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -146,6 +152,9 @@ class TimezoneColumnRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("DB001 requires a module target")
+        uncertain = module_fact_uncertainty(DATETIME_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.model_roles:
             return RuleEvaluation(DATETIME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -177,6 +186,9 @@ class RawSqlRule:
         if target.module_id is None:
             raise ValueError("SQL001 requires a module target")
         module = context.model.module(target.module_id)
+        uncertain = module_fact_uncertainty(RAW_SQL_RULE_ID, target, context, target.module_id)
+        if uncertain is not None:
+            return uncertain
         role = context.classification.get(target.module_id).role
         boundaries = context.policy.boundaries
         findings: list[Finding] = []
@@ -229,7 +241,7 @@ class RawSqlRule:
                         call.id,
                         call.location,
                         "database.raw_sql_execution",
-                        call.ref.written_name,
+                        call.ref.symbol.value if call.ref.symbol is not None else "",
                     )
                 )
         if findings:
@@ -294,15 +306,17 @@ class RawSqlRule:
     @staticmethod
     def _direct_string_execution(call: CallFact, context: PolicyContext) -> bool:
         boundaries = context.policy.boundaries
-        method = call.ref.written_name.rsplit(".", maxsplit=1)[-1]
+        if call.ref.symbol is None:
+            return False
+        method = call.ref.symbol.value.rsplit(".", maxsplit=1)[-1]
         if method not in boundaries.raw_sql_execution_methods:
             return False
         first = next((argument.value for argument in call.arguments if argument.name is None), None)
         if first is None or not (first.literal_kind == "str" or first.is_dynamic_string):
             return False
-        if call.ref.symbol is not None and call.ref.symbol.value.startswith("sqlalchemy."):
+        if call.ref.symbol.value.startswith("sqlalchemy."):
             return True
-        parts = call.ref.written_name.rsplit(".", maxsplit=1)
+        parts = call.ref.symbol.value.rsplit(".", maxsplit=1)
         if len(parts) != 2:
             return False
         receiver = parts[0].rsplit(".", maxsplit=1)[-1].lower()
