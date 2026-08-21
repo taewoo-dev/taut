@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Protocol
 
 from taut.domain.facts import (
@@ -54,12 +56,18 @@ class SnapshotSemanticModel:
         self._calls = {
             call.id: call for module in snapshot.modules.values() for call in module.calls
         }
-        self._bindings_by_module = {}
+        bindings_by_module: dict[ModuleId, list[Binding]] = {}
         for binding in snapshot.relations.bindings:
-            self._bindings_by_module.setdefault(binding.module_id, []).append(binding)
-        self._uses_by_module = {}
+            bindings_by_module.setdefault(binding.module_id, []).append(binding)
+        uses_by_module: dict[ModuleId, list[UseEdge]] = {}
         for edge in snapshot.relations.use_edges:
-            self._uses_by_module.setdefault(edge.module_id, []).append(edge)
+            uses_by_module.setdefault(edge.module_id, []).append(edge)
+        self._bindings_by_module: Mapping[ModuleId, tuple[Binding, ...]] = MappingProxyType(
+            {module: tuple(items) for module, items in bindings_by_module.items()}
+        )
+        self._uses_by_module: Mapping[ModuleId, tuple[UseEdge, ...]] = MappingProxyType(
+            {module: tuple(items) for module, items in uses_by_module.items()}
+        )
 
     @property
     def snapshot_id(self) -> SnapshotId:

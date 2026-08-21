@@ -87,6 +87,18 @@ def _is_async(ref: SymbolRef) -> bool:
     return any(name.startswith("sqlalchemy.ext.asyncio.") for name in _names(ref))
 
 
+_DECLARATIVE_BASE_CALLS = frozenset(
+    SymbolId(value)
+    for value in (
+        "sqlalchemy.orm.declarative_base",
+        "sqlalchemy.ext.declarative.declarative_base",
+    )
+)
+_MODEL_BASE_SYMBOLS = frozenset(SymbolId(value) for value in MODEL_BASES)
+_COLUMN_SYMBOLS = frozenset(SymbolId(value) for value in COLUMN_CALLS)
+_RELATIONSHIP_SYMBOL = SymbolId(RELATIONSHIP_CALL)
+
+
 class SQLAlchemyProvider:
     """Extract SQLAlchemy 1.4 and 2.x idioms from resolver-owned semantic facts."""
 
@@ -137,16 +149,16 @@ class SQLAlchemyProvider:
     ) -> tuple[SQLAlchemyModelFact, ...]:
         calls_by_module = dict(grouped(calls, lambda item: item.module_id))
         edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+        base_edges_by_module = {
+            module: tuple(edge for edge in edges if edge.purpose.value == "base")
+            for module, edges in edges_by_module.items()
+        }
         declarative_bases = {
             binding.target.symbol
             for binding in snapshot.relations.bindings
             if any(
                 call.module_id == binding.module_id
-                and call.ref.symbol
-                in {
-                    SymbolId("sqlalchemy.orm.declarative_base"),
-                    SymbolId("sqlalchemy.ext.declarative.declarative_base"),
-                }
+                and call.ref.symbol in _DECLARATIVE_BASE_CALLS
                 and call.context.parent_fact_id is None
                 and _contains(binding.location, call.location)
                 for call in calls_by_module.get(binding.module_id, ())
@@ -164,7 +176,7 @@ class SQLAlchemyProvider:
             and call.ref.symbol is not None
             and call.ref.symbol.value in MODEL_BASES
         )
-        direct_bases = {SymbolId(value) for value in MODEL_BASES} | declarative_bases
+        direct_bases = _MODEL_BASE_SYMBOLS | declarative_bases
         result: list[SQLAlchemyModelFact] = []
         known: set[SymbolId] = set(direct_bases)
         pending = list(classes)
@@ -176,10 +188,8 @@ class SQLAlchemyProvider:
                     next(
                         (
                             edge.ref
-                            for edge in edges_by_module.get(item.module_id, ())
-                            if edge.module_id == item.module_id
-                            and edge.purpose.value == "base"
-                            and _contains(item.location, edge.location)
+                            for edge in base_edges_by_module.get(item.module_id, ())
+                            if _contains(item.location, edge.location)
                             and edge.ref.written_name == base.written
                         ),
                         SymbolRef(
@@ -259,9 +269,9 @@ class SQLAlchemyProvider:
                 if _contains(field.location, call.location)
             )
             for call in nested:
-                if call.ref.symbol in {SymbolId(value) for value in COLUMN_CALLS} or _names(
-                    call.ref
-                ).intersection(COLUMN_CALLS):
+                if call.ref.symbol in _COLUMN_SYMBOLS or _names(call.ref).intersection(
+                    COLUMN_CALLS
+                ):
                     columns.append(
                         SQLAlchemyMappedColumnFact(
                             field.owner_symbol,
@@ -273,9 +283,7 @@ class SQLAlchemyProvider:
                             call.provenance,
                         )
                     )
-                if call.ref.symbol == SymbolId(RELATIONSHIP_CALL) or RELATIONSHIP_CALL in _names(
-                    call.ref
-                ):
+                if call.ref.symbol == _RELATIONSHIP_SYMBOL or RELATIONSHIP_CALL in _names(call.ref):
                     relationships.append(
                         SQLAlchemyRelationshipFact(
                             field.owner_symbol,
