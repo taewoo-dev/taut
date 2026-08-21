@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,7 +70,7 @@ class CheckOptions:
 
 
 @contextmanager
-def _cache_context(directory: Path, *, enabled: bool):
+def _cache_context(directory: Path, *, enabled: bool) -> Generator[CacheStore | None, None, None]:
     """Best-effort cache resource; cache failures never affect check output."""
     if not enabled:
         yield None
@@ -182,17 +182,26 @@ def run_check(options: CheckOptions) -> int:
     with _cache_context(
         directory, enabled=not options.no_cache and config.cache_enabled
     ) as cache_store:
+        if (
+            cache_store is None
+            and not options.no_cache
+            and config.cache_enabled
+            and options.verbose
+        ):
+            print("taut cache: error", file=sys.stderr)
         if cache_store is not None:
             fingerprint = hashlib.sha256(
                 (
-                __version__ + "|report-schema:1|" + config.digest()
-                + options.output_format
-                + str(options.show_inactive)
-                + str(options.verbose)
-                + options.color
-                + str(options.width)
-                + "python-target:3.11|adapter:python:1|"
-                + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
+                    __version__
+                    + "|report-schema:1|"
+                    + config.digest()
+                    + options.output_format
+                    + str(options.show_inactive)
+                    + str(options.verbose)
+                    + options.color
+                    + str(options.width)
+                    + "python-target:3.11|adapter:python:1|"
+                    + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
                 ).encode()
             ).hexdigest()
             cache_key = fingerprint
@@ -206,7 +215,7 @@ def run_check(options: CheckOptions) -> int:
                     sys.stderr.buffer.write(cached.stderr)
                 if options.verbose:
                     print("taut cache: hit", file=sys.stderr)
-                return cached.exit_code
+                return int(cached.exit_code)
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
     adapter = PythonAstAdapter()
@@ -300,14 +309,18 @@ def run_check(options: CheckOptions) -> int:
                     write_store.put_report_envelope(
                         cache_key,
                         ReportEnvelope(
-                            1, cache_key, output_bytes, b"", report.exit_decision.code,
+                            1,
+                            cache_key,
+                            output_bytes,
+                            b"",
+                            report.exit_decision.code,
                             {
                                 "format": options.output_format,
                                 "show_inactive": str(options.show_inactive),
                                 "verbose": str(options.verbose),
                                 "color": options.color,
                                 "width": str(options.width),
-                            }
+                            },
                         ),
                     )
         except Exception:
@@ -391,9 +404,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if command == "cache":
             root = Path(namespace.project_root).resolve()
             directory = (
-                Path(namespace.cache_dir).resolve()
-                if namespace.cache_dir
-                else root / ".taut_cache"
+                Path(namespace.cache_dir).resolve() if namespace.cache_dir else root / ".taut_cache"
             )
             with CacheStore(directory) as store:
                 if namespace.cache_command == "clean":

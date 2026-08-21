@@ -71,7 +71,8 @@ class CacheStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
-            self._connection.execute("PRAGMA journal_mode=WAL")
+            # DELETE journaling avoids macOS SQLite WAL-index races under concurrent CLI runs.
+            self._connection.execute("PRAGMA journal_mode=DELETE")
             self._connection.execute("PRAGMA synchronous=NORMAL")
             self._connection.execute("PRAGMA busy_timeout=5000")
             self._schema()

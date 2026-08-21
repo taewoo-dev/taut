@@ -187,6 +187,36 @@ def test_load_v3_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
     assert "Adapter" in config.policy.boundaries.adapter_implementation_suffixes
 
 
+def test_v3_cache_defaults_and_valid_override(tmp_path: Path) -> None:
+    _write(tmp_path)
+    config = load_project_configuration(tmp_path)
+    assert config.cache_enabled is True
+    assert config.cache_directory == ProjectPath(".taut_cache")
+    (tmp_path / ".policy" / "policy.toml").write_text(
+        _VALID + '\n[cache]\nenabled = false\ndirectory = "cache-data"'
+    )
+    config = load_project_configuration(tmp_path)
+    assert config.cache_enabled is False
+    assert config.cache_directory == ProjectPath("cache-data")
+
+
+@pytest.mark.parametrize(
+    "cache_text",
+    [
+        "[cache]\nunknown = true",
+        "[cache]\nenabled = 'yes'",
+        "[cache]\ndirectory = '../outside'",
+        "[cache]\ndirectory = '/tmp/cache'",
+    ],
+)
+def test_cache_configuration_rejects_unknown_type_and_unsafe_paths(
+    tmp_path: Path, cache_text: str
+) -> None:
+    _write(tmp_path, _VALID + "\n" + cache_text)
+    with pytest.raises((PolicyConfigError, ValueError)):
+        load_project_configuration(tmp_path)
+
+
 def test_missing_configuration_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(PolicyConfigError, match="missing"):
         load_project_configuration(tmp_path)
