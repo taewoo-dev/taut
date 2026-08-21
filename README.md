@@ -149,8 +149,9 @@ production code.
 Resolution-state applicability follows the resolver facts, not source spelling. Conditional and
 ambiguous references carry resolver candidates and can yield `indeterminate` when a configured
 symbol is a candidate; unresolved and dynamic references do not identify a configured target, so
-the group-C call rules record `not_applicable` for those states. This preserves unrelated-
-uncertainty behavior and avoids manufacturing relevance from written names.
+each group-C rule follows its matrix row (`evaluate`-compatible for rules that can continue,
+`not_applicable` where no target exists). This preserves unrelated-uncertainty behavior and avoids
+manufacturing relevance from written names.
 
 The built-in backend pack contains all 48 rules. It consumes versioned semantic capabilities from
 the built-in Python provider (`taut.syntax@1`, `taut.bindings@1`, `taut.imports@1`, and

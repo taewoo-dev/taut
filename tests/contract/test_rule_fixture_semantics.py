@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -27,6 +28,9 @@ from taut.policy.rules import builtin_rule_registry
 from taut.policy.rules.helpers import target_uncertainty
 
 _ROOT = Path(__file__).resolve().parents[2]
+_MATRIX = json.loads(
+    (_ROOT / "docs/refactoring/backend-taut/uncertainty-migration-matrix.json").read_text()
+)
 
 
 def _boundary_policy() -> BoundaryPolicy:
@@ -341,6 +345,7 @@ GROUP_C_RULES = (
     "TEST002",
     "WIRING001",
 )
+GROUP_C_SEMANTIC_RULES = set(GROUP_C_RULES) - {"IMPORT001", "SIZE001", "TEST001"}
 GROUP_C_RELEVANT_SYMBOLS = {
     "CONFIG001": ("app.settings.Settings",),
     "HTTP001": ("httpx.AsyncClient",),
@@ -348,10 +353,26 @@ GROUP_C_RELEVANT_SYMBOLS = {
     "SEC001": ("os.getenv",),
     "TEST002": ("httpx.AsyncClient",),
     "WIRING001": ("httpx.AsyncClient",),
+    "EXC001": (
+        "app.errors.AppException.__init__",
+        "app.fixture.UserNotFoundError.__init__",
+    ),
 }
 GROUP_C_UNRELATED_EXPECTED = {
     rule: (RuleVerdict.NOT_APPLICABLE if rule in {"HTTP001", "LOG001"} else RuleVerdict.PASS)
     for rule in GROUP_C_RELEVANT_SYMBOLS
+}
+GROUP_C_MATRIX_EXPECTED = {
+    item["id"]: {
+        state: {
+            "evaluate": RuleVerdict.PASS,
+            "indeterminate": RuleVerdict.INDETERMINATE,
+            "not_applicable": RuleVerdict.NOT_APPLICABLE,
+        }[verdict]
+        for state, verdict in item["resolution_policy"].items()
+    }
+    for item in _MATRIX["rules"]
+    if item["id"] in GROUP_C_SEMANTIC_RULES
 }
 EXPECTED_GROUP_C_RESOLVED = {rule: "pass" for rule in GROUP_C_RULES}
 GROUP_B_EXPECTED = {
@@ -536,16 +557,9 @@ def test_group_c_all_resolution_states_execute_evaluators(
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert not result.engine_issues
-    expected = (
-        RuleVerdict.INDETERMINATE
-        if rule_id in GROUP_C_RELEVANT_SYMBOLS
-        and state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS}
-        else (
-            RuleVerdict.PASS
-            if state is ResolutionState.RESOLVED
-            else GROUP_C_UNRELATED_EXPECTED.get(rule_id, RuleVerdict.PASS)
-        )
-    )
+    expected = GROUP_C_MATRIX_EXPECTED.get(rule_id, {}).get(state.value, RuleVerdict.PASS)
+    if rule_id not in GROUP_C_SEMANTIC_RULES:
+        expected = RuleVerdict.PASS
     assert {item.verdict for item in evaluations} == {expected}
 
 

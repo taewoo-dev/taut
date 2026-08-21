@@ -160,13 +160,13 @@
         "exported symbols",
         "annotations"
       ],
-      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_source": "analyzer-owned annotation symbols and module completeness; no confidence-bearing SymbolRef is consumed",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -182,7 +182,7 @@
         ],
         "current_uncertainty_behavior": "not_applicable"
       },
-      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "required_code_test_change": "preserve evaluator behavior for all resolution states; incomplete module facts remain INDETERMINATE",
       "heuristic_provider_migration": {
         "current_heuristics": "none observed in evaluator; verify derived facts are complete",
         "provider_opportunity": "typed provider fact with completeness/confidence"
@@ -221,8 +221,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -364,13 +364,13 @@
       "semantic_facts_consumed": [
         "module classification role"
       ],
-      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_source": "manifest classification and module completeness; no SymbolRef state is consumed",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -386,7 +386,7 @@
         ],
         "current_uncertainty_behavior": "not_applicable"
       },
-      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "required_code_test_change": "preserve evaluator behavior for all resolution states; incomplete module facts remain INDETERMINATE",
       "heuristic_provider_migration": {
         "current_heuristics": "none observed in evaluator; verify derived facts are complete",
         "provider_opportunity": "typed provider fact with completeness/confidence"
@@ -741,8 +741,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "not_applicable",
-        "dynamic": "not_applicable"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1107,8 +1107,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1122,9 +1122,9 @@
           "ExceptionRegistryRule.evaluate",
           "EXC001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate"
+      "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous relevant candidates=indeterminate; unresolved/dynamic without candidates=evaluate"
       },
-      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "required_code_test_change": "propagate only relevant conditional/ambiguous constructor candidates; unresolved/dynamic without candidates remain compatible evaluation",
       "heuristic_provider_migration": {
         "current_heuristics": "written-name __init__ suffix and enum symbol prefixes",
         "provider_opportunity": "resolved exception/error-code provider facts"
@@ -1856,8 +1856,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "not_applicable",
-        "dynamic": "not_applicable"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2351,8 +2351,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "not_applicable",
-        "dynamic": "not_applicable"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2577,8 +2577,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "not_applicable",
-        "dynamic": "not_applicable"
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",

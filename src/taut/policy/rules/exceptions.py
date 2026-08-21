@@ -152,6 +152,7 @@ class ExceptionRegistryRule:
         if any(
             call.enclosing_symbol in exception_constructors
             and any(argument.name == "error_code" for argument in call.arguments)
+            and set(call.ref.candidates).intersection(exception_constructors)
             for call in uncertain_calls
         ):
             return RuleEvaluation(

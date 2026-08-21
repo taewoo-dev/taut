@@ -62,12 +62,12 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
         assert required_missing <= row["missing_capability_completeness"].keys()
         assert set(row["missing_capability_completeness"].values()) == {"indeterminate"}
         assert row["current_code_evidence"]["module"] == row["source_module"]
-        if not row["syntax_only"]:
+        if row["syntax_only"]:
+            assert set(row["resolution_policy"].values()) == {"not_applicable"}
+        elif row["id"] not in {"ADAPTER002", "ARCH000"}:
             assert any(value == "indeterminate" for value in row["resolution_policy"].values()), (
                 row["id"]
             )
-        else:
-            assert set(row["resolution_policy"].values()) == {"not_applicable"}
 
 
 @pytest.mark.contract
