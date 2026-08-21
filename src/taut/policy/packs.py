@@ -108,9 +108,7 @@ def _capabilities_for(rule_id: str) -> frozenset[str]:
 def load_rule_pack(pack_id: str) -> RulePackV1:
     if pack_id == BACKEND_PACK_ID:
         return builtin_backend_pack()
-    matches = tuple(
-        point for point in _entry_points("taut.rule_packs.v1") if point.name == pack_id
-    )
+    matches = tuple(point for point in _entry_points("taut.rule_packs.v1") if point.name == pack_id)
     if len(matches) != 1:
         raise ValueError(f"unknown or ambiguous rule pack: {pack_id}")
     try:
