@@ -30,8 +30,9 @@ from taut.analysis.framework.sqlalchemy_facts import (
 from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import CallFact, ClassFact, FieldFact, ResolutionState, SymbolRef
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import SymbolId
+from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import SourceRange
+from taut.domain.relations import UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 __all__ = [
@@ -134,6 +135,12 @@ class SQLAlchemyProvider:
         calls: tuple[CallFact, ...],
         fields: tuple[FieldFact, ...],
     ) -> tuple[SQLAlchemyModelFact, ...]:
+        calls_by_module: dict[ModuleId, list[CallFact]] = {}
+        edges_by_module: dict[ModuleId, list[UseEdge]] = {}
+        for call in calls:
+            calls_by_module.setdefault(call.module_id, []).append(call)
+        for edge in snapshot.relations.use_edges:
+            edges_by_module.setdefault(edge.module_id, []).append(edge)
         declarative_bases = {
             binding.target.symbol
             for binding in snapshot.relations.bindings
@@ -146,14 +153,14 @@ class SQLAlchemyProvider:
                 }
                 and call.context.parent_fact_id is None
                 and _contains(binding.location, call.location)
-                for call in calls
+                for call in calls_by_module.get(binding.module_id, ())
             )
             if binding.target.symbol is not None
         }
         declarative_bases.update(
             field.symbol_id
             for field in fields
-            for call in calls
+            for call in calls_by_module.get(field.module_id, ())
             if field.module_id == call.module_id
             and field.value is not None
             and _contains(field.location, call.location)
@@ -173,7 +180,7 @@ class SQLAlchemyProvider:
                     next(
                         (
                             edge.ref
-                            for edge in snapshot.relations.use_edges
+                    for edge in edges_by_module.get(item.module_id, ())
                             if edge.module_id == item.module_id
                             and edge.purpose.value == "base"
                             and _contains(item.location, edge.location)
@@ -230,6 +237,12 @@ class SQLAlchemyProvider:
         calls: tuple[CallFact, ...],
         models: set[SymbolId],
     ) -> tuple[tuple[SQLAlchemyMappedColumnFact, ...], tuple[SQLAlchemyRelationshipFact, ...]]:
+        calls_by_module: dict[ModuleId, list[CallFact]] = {}
+        edges_by_module: dict[ModuleId, list[UseEdge]] = {}
+        for call in calls:
+            calls_by_module.setdefault(call.module_id, []).append(call)
+        for edge in snapshot.relations.use_edges:
+            edges_by_module.setdefault(edge.module_id, []).append(edge)
         columns: list[SQLAlchemyMappedColumnFact] = []
         relationships: list[SQLAlchemyRelationshipFact] = []
         for field in fields:
@@ -237,7 +250,7 @@ class SQLAlchemyProvider:
                 continue
             nested = tuple(
                 call
-                for call in calls
+                for call in calls_by_module.get(field.module_id, ())
                 if call.module_id == field.module_id
                 and _contains(field.location, call.location)
                 and (call.context.parent_fact_id == field.id or call.context.parent_fact_id is None)
@@ -281,7 +294,7 @@ class SQLAlchemyProvider:
                 annotation_ref = next(
                     (
                         edge.ref
-                        for edge in snapshot.relations.use_edges
+                        for edge in edges_by_module.get(field.module_id, ())
                         if edge.module_id == field.module_id
                         and edge.context.position.value == "annotation"
                         and _contains(field.location, edge.location)
@@ -316,10 +329,13 @@ class SQLAlchemyProvider:
     ) -> tuple[SQLAlchemySessionFact, ...]:
         result: list[SQLAlchemySessionFact] = []
         factory_origins: dict[SymbolId, tuple[SymbolRef, bool]] = {}
+        fields_by_module: dict[ModuleId, list[FieldFact]] = {}
+        for field in fields:
+            fields_by_module.setdefault(field.module_id, []).append(field)
         for call in calls:
             if not _names(call.ref).intersection(SESSION_FACTORIES):
                 continue
-            for field in fields:
+            for field in fields_by_module.get(call.module_id, ()):
                 if (
                     call.context.parent_fact_id is not None
                     or field.module_id != call.module_id

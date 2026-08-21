@@ -35,8 +35,10 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
 from taut.domain.snapshot import AnalysisSnapshot
+from taut.finding_processing.finding_processor import FindingProcessor
 from taut.loading.config_loader import load_project_configuration
 from taut.loading.default_configuration import default_project_configuration
+from taut.loading.inline_ignores import load_inline_ignores
 from taut.loading.source_discovery import discover_sources
 from taut.policy.context import PolicyContext
 from taut.policy.decision_digest import build_decision_digest
@@ -220,9 +222,24 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         definition for pack in packs for definition in pack.registry.definitions.values()
     )
     policy_result = PolicyEngine(registry).run(context)
+    ignore_result = load_inline_ignores(sources, frozenset(registry.definitions))
+    processing = FindingProcessor().process(
+        findings=policy_result.findings,
+        policy=config.policy,
+        help_by_rule=FrozenMap(
+            (rule_id, definition.help) for rule_id, definition in registry.definitions.items()
+        ),
+        ignores=ignore_result.directives,
+    )
     elapsed = time.perf_counter() - started
     after = rss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-    engine_issues = (*discovery.issues, *snapshot.issues, *policy_result.engine_issues)
+    engine_issues = (
+        *discovery.issues,
+        *snapshot.issues,
+        *policy_result.engine_issues,
+        *processing.engine_issues,
+        *ignore_result.issues,
+    )
     measurement = {
         "wall_seconds": elapsed,
         "rss_bytes": max(0, after - before),
