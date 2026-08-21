@@ -121,7 +121,10 @@ class CacheStore:
             self._cleanup(conn)
             conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.DatabaseError:
+                pass
             raise
 
     def get_module(self, key: CacheKey) -> ModuleAnalysisResult | None:
@@ -160,7 +163,10 @@ class CacheStore:
             )
             conn.execute("COMMIT")
         except Exception:
-            conn.execute("ROLLBACK")
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.DatabaseError:
+                pass
             raise
 
     def get_report(self, fingerprint: str) -> bytes | None:
@@ -209,11 +215,13 @@ class CacheStore:
             > MAX_TOTAL_BYTES
         ):
             conn.execute(
-                "DELETE FROM module_entries WHERE key=(SELECT key FROM module_entries ORDER BY accessed,created,key LIMIT 1)"
+                "DELETE FROM module_entries WHERE key=(SELECT key FROM module_entries "
+                "ORDER BY accessed,created,key LIMIT 1)"
             )
             if conn.execute("SELECT changes()").fetchone()[0] == 0:
                 conn.execute(
-                    "DELETE FROM report_entries WHERE key=(SELECT key FROM report_entries ORDER BY accessed,created,key LIMIT 1)"
+                    "DELETE FROM report_entries WHERE key=(SELECT key FROM report_entries "
+                    "ORDER BY accessed,created,key LIMIT 1)"
                 )
 
     def _close_and_quarantine(self) -> None:
