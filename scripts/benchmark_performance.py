@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -31,16 +32,24 @@ from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import FactProviderV1, apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
+from taut.check_service import CheckRequest, CheckResult
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.manifest import ProjectManifest, Role, RoleMatcher, Zone
 from taut.configuration.validation import validate_classification_for_policy
-from taut.domain.facts import SourceKind
+from taut.daemon_client import (
+    check_daemon,
+    daemon_status,
+    restart_daemon,
+    stop_daemon,
+)
+from taut.domain.facts import ProjectIndex, SourceKind
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.finding_processing.finding_processor import FindingProcessor
 from taut.loading.config_loader import load_project_configuration
+from taut.loading.configuration_document import read_configuration_document
 from taut.loading.default_configuration import default_project_configuration
 from taut.loading.inline_ignores import load_inline_ignores
 from taut.loading.source_discovery import discover_sources
@@ -60,6 +69,173 @@ BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
 # Additive schema note: existing result keys remain stable; cache_scenarios is optional.
 WALL_FLOOR_SECONDS = 0.05
 RSS_FLOOR_BYTES = 1 << 20
+
+
+def _digest(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _daemon_sample(check: CheckResult, elapsed: float) -> dict[str, object]:
+    return {
+        "wall_seconds": elapsed,
+        "stdout_sha256": _digest(check.stdout),
+        "stderr_sha256": _digest(check.stderr),
+        "exit_code": check.exit_code,
+        "counters": check.counters.__dict__,
+        "stage_timings": [item.__dict__ for item in check.timings],
+    }
+
+
+def _transitive_inbound(index: ProjectIndex, module: ModuleId) -> int:
+    imported_by = index.imported_by
+    seen: set[object] = set()
+    pending = list(imported_by.get(module, ()))
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        pending.extend(imported_by.get(current, ()))
+    return len(seen)
+
+
+def daemon_benchmark(
+    root: Path, *, timing_repeats: int = 5, memory_checks: int = 30
+) -> dict[str, object]:
+    """Benchmark one resident daemon against the never-daemon CLI, in a staged copy."""
+    if timing_repeats < 1 or memory_checks < 1:
+        raise ValueError("daemon repeats and memory checks must be positive")
+    root = root.resolve()
+    original_status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=root, capture_output=True, check=True
+    ).stdout
+    config = load_project_configuration(root)
+    discovered = discover_sources(root, config).sources
+    if not discovered:
+        raise RuntimeError("daemon benchmark discovered no project sources")
+    config_rel = read_configuration_document(root, None).path.value
+    with tempfile.TemporaryDirectory(prefix="pytaut-daemon-benchmark-") as temp:
+        staged = Path(temp) / "project"
+        for source in discovered:
+            destination = staged / source.path.value
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root / source.path.value, destination)
+        config_destination = staged / config_rel
+        config_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / config_rel, config_destination)
+        staged = staged.resolve()
+        request = CheckRequest(staged)
+        baseline = subprocess.run(
+            [sys.executable, "-m", "taut.cli", "check", str(staged), "--daemon", "never"],
+            capture_output=True,
+            check=False,
+        )
+        baseline_tuple = (baseline.stdout, baseline.stderr, baseline.returncode)
+        # Build the real ProjectIndex from the staged project, then choose deterministic targets.
+        staged_config = load_project_configuration(staged)
+        staged_sources = discover_sources(staged, staged_config).sources
+        analysis_request = AnalysisRequest(
+            ProjectRoot(staged),
+            staged_sources,
+            LanguageSettings(),
+            ResolverSettings(),
+            FrozenMap(((PythonAstAdapter().identity.name, PythonAstAdapter().identity.version),)),
+        )
+        index = ProjectAnalyzer(PythonAstAdapter()).analyze(analysis_request).project
+        eligible = [item for item in staged_sources if not item.path.value.endswith("__init__.py")]
+        if not eligible:
+            eligible = list(staged_sources)
+        ordinary = min(eligible, key=lambda item: item.path.value)
+        shared = max(
+            eligible, key=lambda item: (_transitive_inbound(index, item.module_id), item.path.value)
+        )
+        shared_impact = _transitive_inbound(index, shared.module_id)
+        if shared_impact <= 0:
+            raise RuntimeError("shared source has empty transitive inbound impact")
+        runtime = Path(temp) / "runtime"
+        old_runtime = os.environ.get("TAUT_RUNTIME_DIR")
+        os.environ["TAUT_RUNTIME_DIR"] = str(runtime)
+        samples: dict[str, list[dict[str, object]]] = {
+            name: []
+            for name in (
+                "cold",
+                "warm_unchanged",
+                "ordinary_edit",
+                "shared_edit",
+                "restart",
+                "concurrent_clients",
+            )
+        }
+        try:
+
+            def invoke() -> dict[str, object]:
+                started = time.perf_counter()
+                result = check_daemon(request)
+                return _daemon_sample(result, time.perf_counter() - started)
+
+            cold = invoke()
+            samples["cold"].append(cold)
+            for _ in range(timing_repeats):
+                samples["warm_unchanged"].append(invoke())
+            for label, source in (("ordinary_edit", ordinary), ("shared_edit", shared)):
+                path = staged / source.path.value
+                original = path.read_text(encoding="utf-8")
+                path.write_text(original + "\n# benchmark semantic-safe edit\n", encoding="utf-8")
+                for _ in range(timing_repeats):
+                    samples[label].append(invoke())
+                path.write_text(original, encoding="utf-8")
+            restart_daemon(staged)
+            for _ in range(timing_repeats):
+                samples["restart"].append(invoke())
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [pool.submit(invoke) for _ in range(4)]
+                samples["concurrent_clients"] = [future.result() for future in futures]
+            for _ in range(memory_checks):
+                samples.setdefault("memory", []).append(invoke())
+            daemon_stop_ok = stop_daemon(staged)
+            if daemon_status(staged) is not None or not daemon_stop_ok:
+                raise RuntimeError("daemon leaked status after benchmark")
+        finally:
+            if daemon_status(staged) is not None:
+                stop_daemon(staged)
+            if old_runtime is None:
+                os.environ.pop("TAUT_RUNTIME_DIR", None)
+            else:
+                os.environ["TAUT_RUNTIME_DIR"] = old_runtime
+        for group in samples.values():
+            for sample in group:
+                if (sample["stdout_sha256"], sample["stderr_sha256"], sample["exit_code"]) != (
+                    _digest(baseline_tuple[0]),
+                    _digest(baseline_tuple[1]),
+                    baseline_tuple[2],
+                ):
+                    raise RuntimeError("daemon output does not exactly match --daemon never")
+        final_status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=root, capture_output=True, check=True
+        ).stdout
+        if final_status != original_status:
+            raise RuntimeError("original checkout changed")
+
+    def summary(values: list[dict[str, object]]) -> dict[str, object]:
+        times = sorted(float(cast(float | int, item["wall_seconds"])) for item in values)
+        return {
+            "samples": values,
+            "median_wall_seconds": statistics.median(times),
+            "p95_wall_seconds": times[min(len(times) - 1, int(len(times) * 0.95))],
+            "max_wall_seconds": max(times),
+        }
+
+    return {
+        "schema": "pytaut-daemon-benchmark-v1",
+        "timing_repeats": timing_repeats,
+        "memory_checks": memory_checks,
+        "selected_paths": {
+            "ordinary": ordinary.path.value,
+            "shared": shared.path.value,
+            "shared_transitive_inbound": shared_impact,
+        },
+        "phases": {key: summary(value) for key, value in samples.items()},
+    }
 
 
 def _report_count(directory: Path) -> int:
@@ -489,6 +665,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--cache-dir", type=Path, help="directory for isolated cache benchmark data"
     )
+    parser.add_argument(
+        "--daemon-benchmark", type=Path, help="run the isolated resident-daemon benchmark"
+    )
+    parser.add_argument("--daemon-timing-repeats", type=int, default=5)
+    parser.add_argument("--daemon-memory-checks", type=int, default=30)
     args = parser.parse_args(argv)
     if args.repeats < 1:
         parser.error("--repeats must be positive")
@@ -503,6 +684,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.real_checkout is not None:
         output["real_checkout"] = real_checkout(
             args.real_checkout, args.requested, cache_dir=args.cache_dir
+        )
+    if args.daemon_benchmark is not None:
+        output["daemon_benchmark"] = daemon_benchmark(
+            args.daemon_benchmark,
+            timing_repeats=args.daemon_timing_repeats,
+            memory_checks=args.daemon_memory_checks,
         )
     if args.baseline is not None:
         output["comparison"] = compare(
