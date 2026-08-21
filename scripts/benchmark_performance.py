@@ -258,7 +258,7 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
         },
         "counters": {
             "hits": repeats,
-            "misses": repeats + 1,
+            "misses": repeats + 1 + len(ordinary) + len(shared),
             "invalidations": len(ordinary) + len(shared),
         },
         "stdout_digests": [hashlib.sha256(item[1]).hexdigest() for item in unchanged],
