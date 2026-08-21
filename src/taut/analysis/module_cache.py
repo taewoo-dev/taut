@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import fields, is_dataclass
 from enum import Enum
-from typing import Any
+from typing import TypeAlias, cast
 
 import msgspec.msgpack
 
@@ -61,31 +61,33 @@ _MODULES = (
     provenance,
     relations,
 )
-_TYPES: dict[str, type[Any]] = {
-    cls.__name__: cls
+WireValue: TypeAlias = str | int | bool | None | dict[str, object] | list[object]
+
+_TYPES: dict[str, type[object]] = {
+    f"{cls.__module__}.{cls.__name__}": cls
     for module in _MODULES
     for cls in vars(module).values()
     if isinstance(cls, type) and is_dataclass(cls) and cls.__module__ == module.__name__
 }
-_TYPES["CacheMetadata"] = CacheMetadata
+_TYPES[f"{CacheMetadata.__module__}.{CacheMetadata.__name__}"] = CacheMetadata
 _ENUMS: dict[str, type[Enum]] = {
-    cls.__name__: cls
+    f"{cls.__module__}.{cls.__name__}": cls
     for module in _MODULES
     for cls in vars(module).values()
     if isinstance(cls, type) and issubclass(cls, Enum) and cls.__module__ == module.__name__
 }
 
 
-def _pack(value: Any, depth: int = 0) -> Any:
+def _pack(value: object, depth: int = 0) -> WireValue:
     if depth > MAX_DEPTH:
         raise CacheMissError("cache graph exceeds maximum depth")
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            "$type": type(value).__name__,
+            "$type": f"{type(value).__module__}.{type(value).__name__}",
             "fields": {f.name: _pack(getattr(value, f.name), depth + 1) for f in fields(value)},
         }
     if isinstance(value, Enum):
-        return {"$enum": type(value).__name__, "value": value.value}
+        return {"$enum": f"{type(value).__module__}.{type(value).__name__}", "value": value.value}
     if isinstance(value, FrozenMap):
         return {
             "$frozen_map": [
@@ -101,7 +103,7 @@ def _pack(value: Any, depth: int = 0) -> Any:
     raise CacheMissError(f"unsupported cache value: {type(value).__name__}")
 
 
-def _unpack(value: Any, depth: int = 0, nodes: list[int] | None = None) -> Any:
+def _unpack(value: object, depth: int = 0, nodes: list[int] | None = None) -> object:
     nodes = [0] if nodes is None else nodes
     nodes[0] += 1
     if nodes[0] > MAX_NODES or depth > MAX_DEPTH:
@@ -120,13 +122,22 @@ def _unpack(value: Any, depth: int = 0, nodes: list[int] | None = None) -> Any:
         except ValueError as exc:
             raise CacheMissError("invalid cache enum value") from exc
     if "$tuple" in value:
-        return tuple(_unpack(item, depth + 1, nodes) for item in value["$tuple"])
+        items = value["$tuple"]
+        if not isinstance(items, list):
+            raise CacheMissError("invalid tuple node")
+        return tuple(_unpack(item, depth + 1, nodes) for item in items)
     if "$frozenset" in value:
-        return frozenset(_unpack(item, depth + 1, nodes) for item in value["$frozenset"])
+        items = value["$frozenset"]
+        if not isinstance(items, list):
+            raise CacheMissError("invalid frozenset node")
+        return frozenset(_unpack(item, depth + 1, nodes) for item in items)
     if "$frozen_map" in value:
+        items = value["$frozen_map"]
+        if not isinstance(items, list):
+            raise CacheMissError("invalid frozen map node")
         return FrozenMap(
             (_unpack(item[0], depth + 1, nodes), _unpack(item[1], depth + 1, nodes))
-            for item in value["$frozen_map"]
+            for item in items
         )
     if (
         set(value) != {"$type", "fields"}
