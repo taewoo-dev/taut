@@ -34,13 +34,18 @@ class IncrementalProjectAnalyzer:
             request.language,
         )
         changes = ChangeSet.compare(self._sources, request.sources)
-        self.last_changes = changes
         reusable = self._request_identity == identity and bool(self._results)
         if not reusable:
+            old_modules = frozenset(source.module_id for source in self._sources)
+            new_modules = frozenset(source.module_id for source in request.sources)
+            changes = ChangeSet(
+                new_modules - old_modules, new_modules & old_modules, old_modules - new_modules
+            )
             self._results.clear()
             impacted = {source.module_id for source in request.sources}
         else:
             impacted = set(changes.touched)
+        self.last_changes = changes
         current = {source.module_id: source for source in request.sources}
         self._results = {
             module: result for module, result in self._results.items() if module in current
@@ -57,4 +62,9 @@ class IncrementalProjectAnalyzer:
             request, tuple(self._results[source.module_id] for source in request.sources)
         )
         self.last_impact = ImpactGraph.from_indexes(changes, old_index, self._snapshot.project)
+        if not reusable:
+            self.last_impact = ImpactGraph(
+                frozenset(changes.touched)
+                | frozenset(source.module_id for source in request.sources)
+            )
         return self._snapshot
