@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import zlib
 from dataclasses import fields, is_dataclass
 from enum import Enum
 from typing import cast
@@ -28,7 +29,7 @@ from taut.domain.issues import CacheErrorCode
 
 CACHE_SCHEMA_VERSION = 1
 MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
-MAX_NODES = 500_000
+MAX_NODES = 10_000_000
 MAX_DEPTH = 1024
 
 
@@ -162,13 +163,14 @@ def _unpack(v: WireValue, d: int = 0, n: list[int] | None = None) -> object:
 
 
 def encode_module_result(result: ModuleAnalysisResult, metadata: CacheMetadata) -> bytes:
-    p = msgspec.msgpack.encode(
+    raw = msgspec.msgpack.encode(
         CacheEnvelope(
             CACHE_SCHEMA_VERSION,
             cast(DataclassNode, _pack(metadata)),
             cast(DataclassNode, _pack(result)),
         )
     )
+    p = zlib.compress(raw, level=6)
     if len(p) > MAX_PAYLOAD_BYTES:
         raise ValueError("cache payload exceeds maximum size")
     return p
@@ -178,7 +180,10 @@ def decode_module_result(payload: bytes | bytearray | memoryview) -> CacheDecode
     try:
         if len(payload) > MAX_PAYLOAD_BYTES:
             raise ValueError("cache payload exceeds maximum size")
-        e = _DECODER.decode(payload)
+        raw = zlib.decompress(payload, bufsize=MAX_PAYLOAD_BYTES)
+        if len(raw) > MAX_PAYLOAD_BYTES:
+            raise ValueError("cache payload exceeds maximum size")
+        e = _DECODER.decode(raw)
         if e.schema != CACHE_SCHEMA_VERSION:
             raise ValueError("unknown cache schema")
         m, r = _unpack(e.metadata), _unpack(e.result)

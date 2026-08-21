@@ -6,7 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-import taut.analysis.module_cache as cache
 from taut.analysis.contracts import AdapterIdentity, ContextManagerProvider, ResolverSettings
 from taut.analysis.module_cache import CacheMetadata, decode_module_result, encode_module_result
 from taut.analysis.python.language_adapter import PythonAstAdapter
@@ -16,7 +15,6 @@ from taut.loading.source_discovery import discover_sources
 
 
 def main() -> None:
-    cache.MAX_NODES = 10_000_000
     root = Path(sys.argv[1]).resolve()
     config = load_project_configuration(root)
     sources = discover_sources(root, config).sources
