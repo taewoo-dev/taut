@@ -1,4 +1,5 @@
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -132,3 +133,102 @@ def test_assemble_rejects_malformed_results() -> None:
     wrong = PythonAstAdapter().analyze_module(_request_many({"app/b.py": "value = 2"}).sources[0])
     with pytest.raises(ValueError, match="module order"):
         ProjectAnalyzer.assemble(request, (wrong,))
+
+
+def test_import_impact_uses_old_and_new_graph_transitively() -> None:
+    base = _request_many(
+        {
+            "app/a.py": "value=1",
+            "app/b.py": "from app.a import value",
+            "app/c.py": "from app.b import value",
+        }
+    )
+    changed = _request_many(
+        {
+            "app/a.py": "value=1",
+            "app/b.py": "from app.c import value",
+            "app/c.py": "from app.b import value",
+        }
+    )
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    analyzer.analyze(base)
+    analyzer.analyze(changed)
+    assert {ModuleId("app.b"), ModuleId("app.c")} <= analyzer.last_impact.impacted
+    assert analyzer.reparsed_modules == 1
+
+
+def test_syntax_failure_then_recovery_matches_fresh() -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    base = _request_many({"app/a.py": "value=1"})
+    analyzer.analyze(base)
+    broken = _request_many({"app/a.py": "def broken("})
+    failed = analyzer.analyze(broken)
+    recovered = _request_many({"app/a.py": "value=2"})
+    actual = analyzer.analyze(recovered)
+    assert actual == ProjectAnalyzer(PythonAstAdapter()).analyze(recovered)
+    assert failed.issues and actual.issues == ()
+
+
+def test_source_metadata_and_module_rename_changeset() -> None:
+    old = _request_many({"app/a.py": "value=1"}).sources[0]
+    metadata = replace(
+        old,
+        path=ProjectPath("app/renamed.py"),
+        module_id=ModuleId("app.renamed"),
+        kind=SourceKind.THIRD_PARTY,
+        is_policy_target=False,
+        is_package=True,
+    )
+    changes = ChangeSet.compare((old,), (metadata,))
+    assert changes.added == {ModuleId("app.renamed")} and changes.removed == {ModuleId("app.a")}
+
+
+@pytest.mark.parametrize("dimension", ["resolver", "language", "adapter_versions", "project_root"])
+def test_identity_dimension_fallbacks(dimension: str) -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    request = _request_many({"app/a.py": "value=1", "app/b.py": "value=2"})
+    analyzer.analyze(request)
+    changed = request
+    if dimension == "resolver":
+        changed = replace(request, resolver=ResolverSettings(source_roots=(ProjectPath("src"),)))
+    elif dimension == "language":
+        changed = replace(request, language=LanguageSettings(target_version="3.11"))
+    elif dimension == "adapter_versions":
+        changed = replace(request, adapter_versions=FrozenMap((("python", "changed"),)))
+    else:
+        changed = replace(request, project_root=ProjectRoot(Path("/tmp").resolve()))
+    analyzer.analyze(changed)
+    assert analyzer.reparsed_modules == 2 and analyzer.last_impact.impacted == {
+        ModuleId("app.a"),
+        ModuleId("app.b"),
+    }
+
+
+def test_no_change_full_snapshot_parity_and_zero_reparse() -> None:
+    request = _request_many({"app/a.py": "value=1"})
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    analyzer.analyze(request)
+    actual = analyzer.analyze(request)
+    assert (
+        actual == ProjectAnalyzer(PythonAstAdapter()).analyze(request)
+        and analyzer.reparsed_modules == 0
+    )
+
+
+def test_cumulative_reparse_counters() -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    request = _request_many({"app/a.py": "value=1"})
+    analyzer.analyze(request)
+    analyzer.analyze(_request_many({"app/a.py": "value=2"}))
+    assert analyzer.total_reparsed_modules == 2 and analyzer.reparsed_modules == 1
+
+
+def test_add_remove_each_matches_fresh_and_exact_counts() -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    analyzer.analyze(_request_many({"app/a.py": "value=1"}))
+    added = _request_many({"app/a.py": "value=1", "app/b.py": "value=2"})
+    assert analyzer.analyze(added) == ProjectAnalyzer(PythonAstAdapter()).analyze(added)
+    assert analyzer.reparsed_modules == 1
+    removed = _request_many({"app/a.py": "value=1"})
+    assert analyzer.analyze(removed) == ProjectAnalyzer(PythonAstAdapter()).analyze(removed)
+    assert analyzer.reparsed_modules == 0
