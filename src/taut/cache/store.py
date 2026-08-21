@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -121,10 +122,8 @@ class CacheStore:
             self._cleanup(conn)
             conn.execute("COMMIT")
         except Exception:
-            try:
+            with suppress(sqlite3.DatabaseError):
                 conn.execute("ROLLBACK")
-            except sqlite3.DatabaseError:
-                pass
             raise
 
     def get_module(self, key: CacheKey) -> ModuleAnalysisResult | None:
@@ -163,10 +162,8 @@ class CacheStore:
             )
             conn.execute("COMMIT")
         except Exception:
-            try:
+            with suppress(sqlite3.DatabaseError):
                 conn.execute("ROLLBACK")
-            except sqlite3.DatabaseError:
-                pass
             raise
 
     def get_report(self, fingerprint: str) -> bytes | None:
