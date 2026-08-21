@@ -249,6 +249,10 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
         baseline_snapshot = ProjectAnalyzer(PythonAstAdapter()).analyze(baseline_request)
         inbound = baseline_snapshot.project.imported_by
         eligible = [item for item in discovered if not item.path.value.endswith("__init__.py")]
+        if not eligible:
+            eligible = list(discovered)
+        if not eligible:
+            raise RuntimeError("benchmark checkout has no discovered Python sources")
         ordinary_source = sorted(eligible, key=lambda item: item.path.value)[0]
         shared_source = max(
             eligible, key=lambda item: (len(inbound.get(item.module_id, ())), item.path.value)
