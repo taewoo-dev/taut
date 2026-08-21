@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import resource
 import statistics
@@ -16,6 +17,7 @@ from typing import cast
 
 from taut.analysis.contracts import (
     AnalysisRequest,
+    ContextManagerProvider,
     LanguageSettings,
     ProjectRoot,
     ResolverSettings,
@@ -27,15 +29,25 @@ from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.manifest import ProjectManifest, Role, RoleMatcher, Zone
+from taut.configuration.validation import validate_classification_for_policy
 from taut.domain.facts import SourceKind
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import ModuleId
+from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
 from taut.domain.snapshot import AnalysisSnapshot
+from taut.loading.config_loader import load_project_configuration
 from taut.loading.default_configuration import default_project_configuration
+from taut.loading.source_discovery import discover_sources
 from taut.policy.context import PolicyContext
+from taut.policy.decision_digest import build_decision_digest
 from taut.policy.engine import PolicyEngine, PolicyRunResult
-from taut.policy.packs import builtin_backend_pack, builtin_backend_providers
+from taut.policy.packs import (
+    builtin_backend_pack,
+    builtin_backend_providers,
+    load_fact_provider,
+    load_rule_pack,
+)
+from taut.policy.registry import RuleRegistry
 
 SCALES = {"small": 8, "medium": 32, "large": 96}
 BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
@@ -158,55 +170,72 @@ def run(scale: str, *, mixed: bool, repeats: int) -> dict[str, object]:
     }
 
 
-def _real_sources(root: Path) -> tuple[SourceInput, ...]:
-    root = root.resolve()
-    sources: list[SourceInput] = []
-    for path in sorted(root.rglob("*.py")):
-        if not path.is_file() or any(
-            part in {".git", ".venv", "__pycache__", "build", "dist"} or part.startswith(".")
-            for part in path.relative_to(root).parts[:-1]
-        ):
-            continue
-        try:
-            content = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            continue
-        relative = path.relative_to(root).as_posix()
-        module = (
-            relative.removesuffix(".py").replace("/", ".").removesuffix(".__init__") or "__root__"
-        )
-        sources.append(
-            SourceInput(
-                ProjectPath(relative),
-                ModuleId(module),
-                SourceKind.FIRST_PARTY,
-                True,
-                path.name == "__init__.py",
-                content,
-                hashlib.sha256(content.encode()).hexdigest(),
-            )
-        )
-    return tuple(sources)
-
-
 def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
-    sources = _real_sources(root)
+    root = root.resolve()
+    config = load_project_configuration(root)
+    discovery = discover_sources(root, config)
+    sources = discovery.sources
+    adapter = PythonAstAdapter()
+    context_manager_providers = tuple(
+        sorted(
+            {
+                *(
+                    ContextManagerProvider(symbol, SymbolId("sqlalchemy.ext.asyncio.AsyncSession"))
+                    for symbol in config.policy.transaction_session_providers
+                ),
+                *(
+                    ContextManagerProvider(symbol, symbol)
+                    for symbol in config.policy.boundaries.http_timeout_calls
+                ),
+            }
+        )
+    )
     request = AnalysisRequest(
         ProjectRoot(root.resolve()),
         sources,
         LanguageSettings(),
-        ResolverSettings(),
-        FrozenMap(
-            (
-                (
-                    PythonAstAdapter().identity.name,
-                    PythonAstAdapter().identity.version,
-                ),
-            )
+        ResolverSettings(
+            source_roots=config.source_roots,
+            context_manager_providers=context_manager_providers,
         ),
+        FrozenMap(((adapter.identity.name, adapter.identity.version),)),
     )
-    measurement = measure(request)
-    snapshot = ProjectAnalyzer(PythonAstAdapter()).analyze(request)
+    before = rss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    started = time.perf_counter()
+    workers = min(8, max(1, (os.cpu_count() or 2) // 2))
+    snapshot = ProjectAnalyzer(adapter).analyze(request, workers=workers)
+    providers = tuple(load_fact_provider(provider_id) for provider_id in config.providers)
+    snapshot = apply_fact_providers(snapshot, providers)
+    classifications = config.manifest.classify(snapshot)
+    validate_classification_for_policy(classifications, config.policy)
+    context = PolicyContext(
+        SnapshotSemanticModel(snapshot),
+        classifications,
+        EffectResolver(),
+        config.catalog,
+        config.policy,
+    )
+    packs = tuple(load_rule_pack(pack_id) for pack_id in config.packs)
+    registry = RuleRegistry.build(
+        definition for pack in packs for definition in pack.registry.definitions.values()
+    )
+    policy_result = PolicyEngine(registry).run(context)
+    elapsed = time.perf_counter() - started
+    after = rss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    engine_issues = (*discovery.issues, *snapshot.issues, *policy_result.engine_issues)
+    measurement = {
+        "wall_seconds": elapsed,
+        "rss_bytes": max(0, after - before),
+        "sources_per_second": len(sources) / max(elapsed, 1e-9),
+        "snapshot_digest": snapshot.id.value,
+        "modules": len(snapshot.modules),
+        "analysis_issues": len(snapshot.issues),
+        "engine_issues": len(engine_issues),
+        "policy_digest": build_decision_digest(
+            config, registry, adapter.identity, packs, providers
+        ),
+        "exit_relevant_indeterminate": policy_result.coverage.indeterminate,
+    }
     counts = {
         "complete": snapshot.coverage.complete_modules,
         "partial": snapshot.coverage.partial_modules,
@@ -215,7 +244,12 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     expected = len(sources) if requested is None else requested
     status = (
         "complete"
-        if len(sources) == expected and counts["complete"] == expected and not counts["failed"]
+        if (
+            len(sources) == expected
+            and counts["complete"] == expected
+            and not counts["failed"]
+            and not engine_issues
+        )
         else "partial"
     )
     if not sources:
@@ -227,8 +261,11 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         "discovered": len(sources),
         **counts,
         "status": status,
-        "measurement": measurement.__dict__,
+        "measurement": measurement,
         "files_read": len(sources),
+        "discovery_issues": len(discovery.issues),
+        "policy_engine_issues": len(policy_result.engine_issues),
+        "engine_issues": len(engine_issues),
     }
 
 
