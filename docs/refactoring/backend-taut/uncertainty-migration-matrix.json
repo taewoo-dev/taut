@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "expected_builtin_count": 48,
   "implemented_evidence": {
-    "scope": "group A",
+    "scope": "groups A-D",
     "status": "implemented",
     "shared_helpers": [
       "taut.policy.rules.helpers.target_uncertainty",
@@ -17,10 +17,11 @@
       "taut.pydantic.fields@1",
       "taut.pydantic.models@1",
       "taut.pydantic.configs@1",
-      "taut.pydantic.operations@1"
+      "taut.pydantic.operations@1",
+      "taut.sqlalchemy.raw_sql@1"
     ],
-    "tests": "tests/contract/test_uncertainty_migration_matrix.py plus focused rule/provider contracts",
-    "semantics": "resolved paths preserved; uncertain provider facts and incomplete modules return INDETERMINATE"
+    "tests": "tests/contract/test_uncertainty_migration_matrix.py plus evaluator/provider contracts in tests/contract",
+    "semantics": "five-state verdict policies are explicit per row; relevant uncertain facts and incomplete modules return INDETERMINATE, while unrelated uncertainty remains compatible"
   },
   "state_values": [
     "resolved",
@@ -699,12 +700,12 @@
           "RiskyCatalogCoverageRule.evaluate",
           "CAT001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate for relevant catalog candidates; unresolved/dynamic=not_applicable without a target"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
-        "current_heuristics": "none observed; effect catalog currently gates relevance",
-        "provider_opportunity": "complete effect catalog/provider registration"
+        "current_heuristics": "none; relevance uses resolved call refs and the effect catalog",
+        "provider_opportunity": "effect catalog/provider registration is consumed before evaluation"
       },
       "implementation_group": "D",
       "group_files": [
@@ -812,7 +813,7 @@
           "TimezoneColumnRule.evaluate",
           "DB001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -1126,7 +1127,7 @@
       },
       "required_code_test_change": "propagate only relevant conditional/ambiguous constructor candidates; unresolved/dynamic without candidates remain compatible evaluation",
       "heuristic_provider_migration": {
-        "current_heuristics": "written-name __init__ suffix and enum symbol prefixes",
+        "current_heuristics": "none; constructor relevance uses resolved call refs and candidates",
         "provider_opportunity": "resolved exception/error-code provider facts"
       },
       "implementation_group": "C",
@@ -1336,7 +1337,7 @@
           "DynamicImportRule.evaluate",
           "IMPORT002 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -1500,7 +1501,7 @@
           "RelationshipLoadingRule.evaluate",
           "ORM001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -1557,7 +1558,7 @@
           "DatabaseEnumRule.evaluate",
           "ORM002 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -1665,7 +1666,7 @@
           "RuntimeShortcutRule.evaluate",
           "RUNTIME001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -2092,7 +2093,7 @@
           "ServiceSessionParameterRule.evaluate",
           "SESSION003 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -2232,6 +2233,7 @@
       "syntax_only": false,
       "semantic_facts_consumed": [
         "module role",
+        "SQLAlchemyRawSQLFact call/ref/confidence",
         "SQL call arguments",
         "literal/dynamic strings"
       ],
@@ -2255,12 +2257,12 @@
           "RawSqlRule.evaluate",
           "SQL001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate from SQLAlchemyRawSQLFact confidence"
       },
-      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "required_code_test_change": "contract provider capability and all five SQLAlchemyRawSQLFact confidence states with exact verdict/reason, missing capability, incomplete facts, and unrelated custom-call behavior",
       "heuristic_provider_migration": {
-        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
-        "provider_opportunity": "typed provider fact with completeness/confidence"
+        "current_heuristics": "none; SQLAlchemy relevance and confidence come from the registered provider fact",
+        "provider_opportunity": "taut.sqlalchemy.raw_sql@1 is produced before evaluation"
       },
       "implementation_group": "D",
       "group_files": [
@@ -2398,7 +2400,7 @@
       "target": "call",
       "syntax_only": false,
       "semantic_facts_consumed": [
-        "call ref written name",
+        "call ref symbol/state",
         "effect catalog",
         "enclosing symbol"
       ],
@@ -2422,12 +2424,12 @@
           "TimeAccessRule.evaluate",
           "TIME001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate_if_suffix_else_not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate when a relevant effect candidate exists; unresolved/dynamic remain compatible when no candidate exists"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
-        "current_heuristics": "written-name suffix now/today/utcnow",
-        "provider_opportunity": "typed time effect/provider capability"
+        "current_heuristics": "none; written call spelling is display evidence only",
+        "provider_opportunity": "configured resolver-owned time effect/catalog capability"
       },
       "implementation_group": "D",
       "group_files": [
@@ -2455,10 +2457,10 @@
       "target": "call",
       "syntax_only": false,
       "semantic_facts_consumed": [
-        "call ref written name",
+        "call ref symbol/state",
         "transaction effects",
         "enclosing symbol",
-        "owner names"
+        "configured transaction ownership"
       ],
       "resolution_source": "effect_resolution",
       "resolution_policy": {
@@ -2480,12 +2482,12 @@
           "TransactionOwnerRule.evaluate",
           "TX001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate_if_db_owner_suffix_else_not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate when a relevant transaction effect candidate exists; unresolved/dynamic remain compatible when no candidate exists"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
-        "current_heuristics": "written-name suffix commit/rollback; receiver database-owner name",
-        "provider_opportunity": "typed transaction effect + provider ownership capability"
+        "current_heuristics": "none; method and receiver spelling are not semantic signals",
+        "provider_opportunity": "typed transaction effect and configured ownership capability"
       },
       "implementation_group": "D",
       "group_files": [
@@ -2536,7 +2538,7 @@
           "ExternalCallTransactionRule.evaluate",
           "TX002 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
@@ -2592,7 +2594,7 @@
           "ImplementationConstructionRule.evaluate",
           "WIRING001 RuleDefinition"
         ],
-        "current_uncertainty_behavior": "not_applicable"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=indeterminate for relevant candidates; ambiguous=indeterminate for relevant candidates; unresolved/dynamic=evaluate when unrelated"
       },
       "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
       "heuristic_provider_migration": {
