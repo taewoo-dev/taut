@@ -25,6 +25,7 @@ from taut.analysis.framework.pydantic_facts import (
     PydanticSerializerFact,
     PydanticValidatorFact,
 )
+from taut.analysis.framework.sqlalchemy_facts import SQLAlchemyRawSQLFact
 from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
@@ -124,6 +125,7 @@ def _provider_fact_state(fact: object, state: ResolutionState) -> object:
             PydanticOperationFact,
             PydanticSerializerFact,
             PydanticValidatorFact,
+            SQLAlchemyRawSQLFact,
         ),
     ):
         return replace(fact, confidence=state)
@@ -232,6 +234,13 @@ def make_context(
                     ),
                 )
                 for module_id, module in snapshot.modules.items()
+            ),
+            capabilities=FrozenMap(
+                (
+                    capability,
+                    tuple(_provider_fact_state(fact, fact_state) for fact in facts),
+                )
+                for capability, facts in snapshot.capabilities.items()
             ),
         )
     if incomplete_modules:

@@ -50,16 +50,18 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
     assert len(rows) == 48
     assert len(row_ids) == len(set(row_ids))
     assert set(row_ids) == registry_ids
-    assert {row["target"] for row in rows} <= {"module", "symbol", "call", "operation", "project"}
+    assert not {row["target"] for row in rows}.difference(
+        {"module", "symbol", "call", "operation", "project"}
+    )
     assert {row["implementation_group"] for row in rows} == set(matrix["groups"])
     for row in rows:
-        assert required <= row.keys()
+        assert required.issubset(row.keys())
         assert row["source_module"].startswith("src/taut/policy/rules/")
         assert row["evaluator"]["class"] and row["evaluator"]["function"]
         assert row["semantic_facts_consumed"]
         assert set(row["resolution_policy"]) == states
-        assert set(row["resolution_policy"].values()) <= verdicts | {"evaluate"}
-        assert required_missing <= row["missing_capability_completeness"].keys()
+        assert set(row["resolution_policy"].values()).issubset(verdicts | {"evaluate"})
+        assert required_missing.issubset(row["missing_capability_completeness"].keys())
         assert set(row["missing_capability_completeness"].values()) == {"indeterminate"}
         assert row["current_code_evidence"]["module"] == row["source_module"]
         if row["syntax_only"]:
@@ -80,7 +82,7 @@ def test_uncertainty_matrix_groups_are_disjoint_and_dependency_ordered() -> None
         assert row["source_module"] in matrix["groups"][row["implementation_group"]]["files"]
         assert row["group_files"] == matrix["groups"][row["implementation_group"]]["files"]
     assert sum(len(ids) for ids in grouped.values()) == 48
-    assert all(9 <= len(ids) <= 16 for ids in grouped.values())
+    assert all(len(ids) in range(9, 17) for ids in grouped.values())
     assert len({path for group in matrix["groups"].values() for path in group["files"]}) == sum(
         len(group["files"]) for group in matrix["groups"].values()
     )

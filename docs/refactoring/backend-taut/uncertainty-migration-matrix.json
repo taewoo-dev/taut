@@ -2238,10 +2238,10 @@
       "resolution_source": "taut.sqlalchemy.raw_sql@1 provider facts (call/ref/confidence/operation/argument metadata)",
       "resolution_policy": {
         "resolved": "evaluate",
-        "conditional": "evaluate",
-        "ambiguous": "evaluate",
-        "unresolved": "evaluate",
-        "dynamic": "evaluate"
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",

@@ -501,8 +501,9 @@ def test_group_b_evaluators_propagate_incomplete_module_facts(rule_id: str) -> N
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
+    expected_reason = "incomplete_project" if rule_id == "ARCH002" else "insufficient_analysis"
     assert {item.reason.code for item in evaluations if item.reason is not None} == {
-        "incomplete_module"
+        expected_reason
     }
 
 
@@ -528,7 +529,7 @@ def test_group_b_evaluators_execute_call_resolution_states(
 def test_group_b_unrelated_uncertainty_does_not_propagate(rule_id: str) -> None:
     result = _run_regular_fixture(
         rule_id,
-        "compliant",
+        "violation" if rule_id == "SQL001" else "compliant",
         fact_state=ResolutionState.CONDITIONAL,
         inject_relevant=False,
     )
@@ -613,7 +614,7 @@ def test_group_c_all_resolution_states_execute_evaluators(
 def test_group_d_matrix_exact_state_contract(rule_id: str, state: ResolutionState) -> None:
     result = _run_regular_fixture(
         rule_id,
-        "compliant",
+        "violation" if rule_id == "SQL001" else "compliant",
         fact_state=state,
         inject_relevant=(
             GROUP_D_MATRIX_EXPECTED[rule_id][state.value] is RuleVerdict.INDETERMINATE
@@ -621,11 +622,17 @@ def test_group_d_matrix_exact_state_contract(rule_id: str, state: ResolutionStat
     )
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
-    expected = GROUP_D_MATRIX_EXPECTED[rule_id][state.value]
+    expected = (
+        RuleVerdict.FAIL
+        if rule_id == "SQL001" and state is ResolutionState.RESOLVED
+        else GROUP_D_MATRIX_EXPECTED[rule_id][state.value]
+    )
     assert {item.verdict for item in evaluations} == {expected}
     if expected is RuleVerdict.INDETERMINATE:
         reason = (
-            "uncertain_effect"
+            "uncertain_provider_fact"
+            if rule_id == "SQL001"
+            else "uncertain_effect"
             if rule_id in {"TIME001", "TX001", "ASYNC001"}
             else "uncertain_symbol"
         )
@@ -641,7 +648,9 @@ def test_group_d_unrelated_candidates_do_not_propagate(rule_id: str) -> None:
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     expected = (
-        RuleVerdict.NOT_APPLICABLE
+        RuleVerdict.PASS
+        if rule_id == "SQL001"
+        else RuleVerdict.NOT_APPLICABLE
         if GROUP_D_MATRIX_EXPECTED[rule_id]["unresolved"] is RuleVerdict.NOT_APPLICABLE
         else RuleVerdict.PASS
     )
@@ -655,10 +664,8 @@ def test_group_d_incomplete_module_facts_are_indeterminate(rule_id: str) -> None
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
-    assert {item.reason.code for item in evaluations if item.reason is not None} <= {
-        "incomplete_module",
-        "incomplete_project",
-        "insufficient_analysis",
+    assert {item.reason.code for item in evaluations if item.reason is not None} == {
+        "insufficient_analysis"
     }
 
 
@@ -673,6 +680,20 @@ def test_sql001_missing_sqlalchemy_provider_is_indeterminate() -> None:
     assert {item.reason.code for item in evaluations if item.reason is not None} == {
         "missing_capability"
     }
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("state", tuple(ResolutionState))
+def test_sql001_provider_confidence_states_are_exact(state: ResolutionState) -> None:
+    result = _run_regular_fixture("SQL001", "violation", provider_state=state)
+    evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId("SQL001"))
+    assert evaluations
+    expected = RuleVerdict.FAIL if state is ResolutionState.RESOLVED else RuleVerdict.INDETERMINATE
+    assert {item.verdict for item in evaluations} == {expected}
+    if expected is RuleVerdict.INDETERMINATE:
+        assert {item.reason.code for item in evaluations if item.reason is not None} == {
+            "uncertain_provider_fact"
+        }
 
 
 @pytest.mark.contract

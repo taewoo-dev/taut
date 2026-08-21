@@ -196,10 +196,11 @@ class RawSqlRule:
             return uncertain
         role = context.classification.get(target.module_id).role
         boundaries = context.policy.boundaries
-        if SQLALCHEMY_RAW_SQL not in context.model.capabilities() and any(
+        sqlalchemy_relevant = SQLALCHEMY_RAW_SQL in context.model.capabilities() or any(
             call.ref.symbol is not None and call.ref.symbol.value.startswith("sqlalchemy.")
             for call in module.calls
-        ):
+        )
+        if sqlalchemy_relevant:
             provider_uncertain = uncertain_provider_evaluation(
                 RAW_SQL_RULE_ID,
                 target,
