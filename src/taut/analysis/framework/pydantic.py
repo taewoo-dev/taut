@@ -177,14 +177,14 @@ class PydanticProvider:
         item: ClassFact,
         written: str,
         symbols: tuple[SymbolId, ...],
-        base_edges: tuple[UseEdge, ...],
+        base_edges: dict[tuple[ModuleId, str], tuple[UseEdge, ...]],
     ) -> SymbolRef:
         candidates = tuple(sorted(set(symbols)))
         edge = next(
             (
                 edge
-                for edge in base_edges
-                if edge.ref.written_name == written and _contains(item.location, edge.location)
+                for edge in base_edges.get((item.module_id, written), ())
+                if _contains(item.location, edge.location)
             ),
             None,
         )
@@ -204,14 +204,13 @@ class PydanticProvider:
         self, snapshot: AnalysisSnapshot, classes: tuple[ClassFact, ...]
     ) -> tuple[PydanticModelFact, ...]:
         known = set(_BASE_SYMBOLS)
-        base_edges_by_module = {
-            module_id: tuple(
-                edge
-                for edge in snapshot.relations.use_edges
-                if edge.module_id == module_id and edge.purpose.value == "base"
-            )
-            for module_id in snapshot.modules
-        }
+        base_edges_by_name: dict[tuple[ModuleId, str], list[UseEdge]] = {}
+        for edge in snapshot.relations.use_edges:
+            if edge.purpose.value == "base":
+                base_edges_by_name.setdefault((edge.module_id, edge.ref.written_name), []).append(
+                    edge
+                )
+        indexed_edges = {key: tuple(edges) for key, edges in base_edges_by_name.items()}
         result: list[PydanticModelFact] = []
         pending = list(classes)
         while pending:
@@ -224,7 +223,7 @@ class PydanticProvider:
                         item,
                         base.written,
                         base.symbols,
-                        base_edges_by_module.get(item.module_id, ()),
+                        indexed_edges,
                     )
                     for base in item.bases
                 )
