@@ -46,6 +46,11 @@ class IncrementalProjectAnalyzer:
         else:
             impacted = set(changes.touched)
         self.last_changes = changes
+        if reusable and not changes.touched and self._snapshot is not None:
+            self._sources = request.sources
+            self.reparsed_modules = 0
+            self.last_impact = ImpactGraph(frozenset())
+            return self._snapshot
         current = {source.module_id: source for source in request.sources}
         self._results = {
             module: result for module, result in self._results.items() if module in current

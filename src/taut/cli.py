@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import sys
 from collections.abc import Generator, Sequence
@@ -12,26 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from taut import __version__
-from taut.analysis.contracts import (
-    AnalysisRequest,
-    ContextManagerProvider,
-    LanguageSettings,
-    ProjectRoot,
-    ResolverSettings,
-)
-from taut.analysis.project_analyzer import ProjectAnalyzer
-from taut.analysis.providers import apply_fact_providers
-from taut.analysis.python.language_adapter import PythonAstAdapter
-from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.cache import CacheStore
 from taut.cache.store import ReportEnvelope
-from taut.configuration.catalog import EffectResolver
-from taut.configuration.validation import validate_classification_for_policy
-from taut.domain.frozen import FrozenMap
-from taut.domain.ids import RuleId, SymbolId
+from taut.check_service import CheckRequest, run_check_request
+from taut.domain.ids import RuleId
 from taut.domain.location import ConfigPath
-from taut.finding_processing.finding_processor import FindingProcessor
-from taut.finding_processing.report_builder import build_run_report
 from taut.loading.config_loader import (
     load_project_configuration,
 )
@@ -40,20 +24,10 @@ from taut.loading.config_migration import (
     write_migrated_configuration,
 )
 from taut.loading.errors import PolicyConfigError
-from taut.loading.inline_ignores import load_inline_ignores
 from taut.loading.source_discovery import discover_sources
-from taut.policy.context import PolicyContext
-from taut.policy.decision_digest import build_decision_digest
-from taut.policy.engine import PolicyEngine
-from taut.policy.packs import load_fact_provider, load_rule_pack
-from taut.policy.registry import RuleRegistry
 from taut.policy.rules import builtin_rule_registry
-from taut.reporting.json import render_configuration_error_json, render_json
-from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH, render_text
-
-_ASYNC_SESSION_TYPE = SymbolId("sqlalchemy.ext.asyncio.AsyncSession")
-_MINIMUM_PARALLEL_SOURCES = 100
-_MAXIMUM_ANALYSIS_WORKERS = 4
+from taut.reporting.json import render_configuration_error_json
+from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH
 
 
 @dataclass(frozen=True)
@@ -218,90 +192,21 @@ def run_check(options: CheckOptions) -> int:
                 return int(cached.exit_code)
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
-    adapter = PythonAstAdapter()
-    context_manager_providers = {
-        ContextManagerProvider(symbol, _ASYNC_SESSION_TYPE)
-        for symbol in config.policy.transaction_session_providers
-    }
-    context_manager_providers.update(
-        ContextManagerProvider(symbol, symbol)
-        for symbol in config.policy.boundaries.http_timeout_calls
-    )
-    request = AnalysisRequest(
-        project_root=ProjectRoot(options.project_root),
-        sources=discovery.sources,
-        language=LanguageSettings(),
-        resolver=ResolverSettings(
-            source_roots=config.source_roots,
-            context_manager_providers=tuple(sorted(context_manager_providers)),
-        ),
-        adapter_versions=FrozenMap(((adapter.identity.name, adapter.identity.version),)),
-    )
-    snapshot = ProjectAnalyzer(adapter).analyze(
-        request,
-        workers=_analysis_workers(len(request.sources)),
-    )
-    providers = tuple(load_fact_provider(provider_id) for provider_id in config.providers)
-    snapshot = apply_fact_providers(snapshot, providers)
-    classifications = config.manifest.classify(snapshot)
-    validate_classification_for_policy(classifications, config.policy)
-    model = SnapshotSemanticModel(snapshot)
-    context = PolicyContext(
-        model=model,
-        classification=classifications,
-        effects=EffectResolver(),
-        catalog=config.catalog,
-        policy=config.policy,
-    )
-    packs = tuple(load_rule_pack(pack_id) for pack_id in config.packs)
-    registry = RuleRegistry.build(
-        definition for pack in packs for definition in pack.registry.definitions.values()
-    )
-    ignore_result = load_inline_ignores(
-        discovery.sources,
-        frozenset(registry.definitions),
-    )
-    policy_result = PolicyEngine(registry).run(context)
-    help_by_rule = FrozenMap(
-        (rule_id, definition.help) for rule_id, definition in registry.definitions.items()
-    )
-    processing = FindingProcessor().process(
-        findings=policy_result.findings,
-        policy=config.policy,
-        help_by_rule=help_by_rule,
-        ignores=ignore_result.directives,
-    )
-    report = build_run_report(
-        snapshot=snapshot,
-        engine_version=__version__,
-        decision_digest=build_decision_digest(config, registry, adapter.identity, packs, providers),
-        diagnostics=processing.diagnostics,
-        engine_issues=(
-            *discovery.issues,
-            *snapshot.issues,
-            *policy_result.engine_issues,
-            *processing.engine_issues,
-            *ignore_result.issues,
-        ),
-        coverage=policy_result.coverage,
-        ignore_audit=processing.ignore_audit,
-    )
-    output: str
-    if options.output_format == "json":
-        output = render_json(report) + "\n"
-    else:
-        output = (
-            render_text(
-                report,
-                show_inactive=options.show_inactive,
-                verbose=options.verbose,
-                color=_use_color(options.color),
-                width=_output_width(options.width),
-            )
-            + "\n"
+    result = run_check_request(
+        CheckRequest(
+            project_root=options.project_root,
+            config_path=options.config_path,
+            output_format=options.output_format,
+            show_inactive=options.show_inactive,
+            verbose=options.verbose,
+            use_color=_use_color(options.color),
+            width=_output_width(options.width),
         )
-    output_bytes = output.encode()
-    print(output, end="")
+    )
+    output_bytes = result.stdout
+    sys.stdout.buffer.write(result.stdout)
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
     if cache_key is not None:
         try:
             with _cache_context(directory, enabled=True) as write_store:
@@ -313,7 +218,7 @@ def run_check(options: CheckOptions) -> int:
                             cache_key,
                             output_bytes,
                             b"",
-                            report.exit_decision.code,
+                            result.exit_code,
                             {
                                 "format": options.output_format,
                                 "show_inactive": str(options.show_inactive),
@@ -326,7 +231,7 @@ def run_check(options: CheckOptions) -> int:
         except Exception:
             if options.verbose:
                 print("taut cache: error", file=sys.stderr)
-    return report.exit_decision.code
+    return result.exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -450,13 +355,6 @@ def _output_width(configured: int | None) -> int:
         return DEFAULT_TEXT_WIDTH
     terminal_width = shutil.get_terminal_size(fallback=(DEFAULT_TEXT_WIDTH, 24)).columns
     return max(terminal_width, MINIMUM_TEXT_WIDTH)
-
-
-def _analysis_workers(source_count: int) -> int:
-    if source_count < _MINIMUM_PARALLEL_SOURCES:
-        return 1
-    available = os.cpu_count() or 1
-    return max(1, min(available, _MAXIMUM_ANALYSIS_WORKERS, source_count))
 
 
 if __name__ == "__main__":

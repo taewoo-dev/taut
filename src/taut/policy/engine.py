@@ -115,6 +115,16 @@ class PolicyEngine:
             or not self._safe_context(context, prior_context, changes)
         ):
             return self.run_tracked(context)
+        if not changes.touched:
+            return IncrementalPolicyResult(
+                previous,
+                IncrementalState(
+                    len(previous.evaluations),
+                    0,
+                    False,
+                    identity,
+                ),
+            )
         old: dict[_EvaluationKey, RuleEvaluation] = {
             (evaluation.rule_id, evaluation.target): evaluation
             for evaluation in previous.evaluations
