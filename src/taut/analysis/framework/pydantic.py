@@ -31,6 +31,7 @@ from taut.domain.facts import (
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.location import SourceRange
+from taut.domain.relations import UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 __all__ = [
@@ -93,11 +94,14 @@ def _calls(snapshot: AnalysisSnapshot) -> tuple[CallFact, ...]:
 
 
 def _refs(
-    snapshot: AnalysisSnapshot, module_id: ModuleId, location: SourceRange
+    snapshot: AnalysisSnapshot,
+    module_id: ModuleId,
+    location: SourceRange,
+    edges: tuple[UseEdge, ...] | None = None,
 ) -> tuple[SymbolRef, ...]:
     return tuple(
         edge.ref
-        for edge in snapshot.relations.use_edges
+        for edge in (snapshot.relations.use_edges if edges is None else edges)
         if edge.module_id == module_id and _contains(location, edge.location)
     )
 
@@ -140,13 +144,29 @@ class PydanticProvider:
         classes = tuple(item for module in snapshot.modules.values() for item in module.classes)
         fields = tuple(item for module in snapshot.modules.values() for item in module.fields)
         calls = _calls(snapshot)
+        calls_by_module: dict[ModuleId, tuple[CallFact, ...]] = {}
+        for call in calls:
+            calls_by_module.setdefault(call.module_id, ())
+            calls_by_module[call.module_id] += (call,)
+        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]] = {}
+        for edge in snapshot.relations.use_edges:
+            edges_by_module.setdefault(edge.module_id, ())
+            edges_by_module[edge.module_id] += (edge,)
         models = self._models(snapshot, classes)
         model_ids = {item.symbol for item in models}
         return FrozenMap(
             (
                 (PYDANTIC_MODELS, models),
-                (PYDANTIC_FIELDS, self._fields(snapshot, fields, calls, model_ids)),
-                (PYDANTIC_CONFIGS, self._configs(snapshot, classes, fields, calls, model_ids)),
+                (
+                    PYDANTIC_FIELDS,
+                    self._fields(snapshot, fields, calls_by_module, edges_by_module, model_ids),
+                ),
+                (
+                    PYDANTIC_CONFIGS,
+                    self._configs(
+                        snapshot, classes, fields, calls_by_module, edges_by_module, model_ids
+                    ),
+                ),
                 (PYDANTIC_VALIDATORS, self._decorated(snapshot, models, False)),
                 (PYDANTIC_SERIALIZERS, self._decorated(snapshot, models, True)),
                 (PYDANTIC_OPERATIONS, extract_operations(snapshot, calls, model_ids)),
@@ -232,14 +252,18 @@ class PydanticProvider:
         self,
         snapshot: AnalysisSnapshot,
         fields: tuple[FieldFact, ...],
-        calls: tuple[CallFact, ...],
+        calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
+        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
     ) -> tuple[PydanticFieldFact, ...]:
         result: list[PydanticFieldFact] = []
         for field in fields:
             if field.owner_symbol not in models or not field.is_annotated:
                 continue
-            refs = _refs(snapshot, field.module_id, field.location)
+            calls = calls_by_module.get(field.module_id, ())
+            refs = _refs(
+                snapshot, field.module_id, field.location, edges_by_module.get(field.module_id)
+            )
             annotation = next(
                 (
                     ref
@@ -313,13 +337,15 @@ class PydanticProvider:
         snapshot: AnalysisSnapshot,
         classes: tuple[ClassFact, ...],
         fields: tuple[FieldFact, ...],
-        calls: tuple[CallFact, ...],
+        calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
+        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
     ) -> tuple[PydanticConfigFact, ...]:
         result: list[PydanticConfigFact] = []
         for field in fields:
             if field.owner_symbol not in models or field.name not in {"Config", "model_config"}:
                 continue
+            calls = calls_by_module.get(field.module_id, ())
             direct = (
                 field.value is not None
                 and field.value.kind == "Call"
@@ -352,7 +378,14 @@ class PydanticProvider:
                 call.ref
                 if call
                 else next(
-                    iter(_refs(snapshot, field.module_id, field.location)),
+                    iter(
+                        _refs(
+                            snapshot,
+                            field.module_id,
+                            field.location,
+                            edges_by_module.get(field.module_id),
+                        )
+                    ),
                     SymbolRef(field.name, ResolutionState.UNRESOLVED, None, (), field.provenance),
                 )
             )

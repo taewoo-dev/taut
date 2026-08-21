@@ -24,7 +24,7 @@ from taut.analysis.contracts import (
     SourceInput,
 )
 from taut.analysis.project_analyzer import ProjectAnalyzer
-from taut.analysis.providers import apply_fact_providers
+from taut.analysis.providers import FactProviderV1, apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.configuration.catalog import EffectResolver
@@ -55,6 +55,23 @@ SCALES = {"small": 8, "medium": 32, "large": 96}
 BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
 WALL_FLOOR_SECONDS = 0.05
 RSS_FLOOR_BYTES = 1 << 20
+
+
+class _TimedProvider:
+    """Transparent provider wrapper; timing does not alter dependency semantics."""
+
+    def __init__(self, provider: FactProviderV1, timings: dict[str, float]) -> None:
+        self._provider = provider
+        self._timings = timings
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._provider, name)
+
+    def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]:
+        started = time.perf_counter()
+        result = self._provider.analyze(snapshot)
+        self._timings[self._provider.id] = time.perf_counter() - started
+        return result
 
 
 def _source(index: int, mixed: bool) -> SourceInput:
@@ -211,7 +228,9 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     phase_timings["ast_analysis"] = time.perf_counter() - started
     phase_started = time.perf_counter()
     providers = tuple(load_fact_provider(provider_id) for provider_id in config.providers)
-    snapshot = apply_fact_providers(snapshot, providers)
+    provider_timings: dict[str, float] = {}
+    timed_providers = tuple(_TimedProvider(provider, provider_timings) for provider in providers)
+    snapshot = apply_fact_providers(snapshot, cast(tuple[FactProviderV1, ...], timed_providers))
     phase_timings["configured_providers"] = time.perf_counter() - phase_started
     phase_started = time.perf_counter()
     classifications = config.manifest.classify(snapshot)
@@ -262,6 +281,7 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         ),
         "exit_relevant_indeterminate": policy_result.coverage.indeterminate,
         "phase_timings": phase_timings,
+        "provider_timings": provider_timings,
     }
     counts = {
         "complete": snapshot.coverage.complete_modules,
