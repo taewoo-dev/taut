@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from taut.analysis.framework.indexes import grouped
 from taut.analysis.framework.pydantic_facts import (
     PYDANTIC_CONFIGS,
@@ -151,7 +153,7 @@ class PydanticProvider:
         fields = tuple(item for module in snapshot.modules.values() for item in module.fields)
         calls = _calls(snapshot)
         calls_by_module = dict(grouped(calls, lambda item: item.module_id))
-        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+        edges_by_module = snapshot.relations.use_edges_by_module
         models = self._models(snapshot, classes)
         model_ids = {item.symbol for item in models}
         return FrozenMap(
@@ -237,7 +239,7 @@ class PydanticProvider:
         snapshot: AnalysisSnapshot,
         fields: tuple[FieldFact, ...],
         calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
-        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
+        edges_by_module: Mapping[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
     ) -> tuple[PydanticFieldFact, ...]:
         result: list[PydanticFieldFact] = []
@@ -322,7 +324,7 @@ class PydanticProvider:
         classes: tuple[ClassFact, ...],
         fields: tuple[FieldFact, ...],
         calls_by_module: dict[ModuleId, tuple[CallFact, ...]],
-        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]],
+        edges_by_module: Mapping[ModuleId, tuple[UseEdge, ...]],
         models: set[SymbolId],
     ) -> tuple[PydanticConfigFact, ...]:
         result: list[PydanticConfigFact] = []

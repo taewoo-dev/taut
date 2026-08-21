@@ -168,22 +168,18 @@ class SQLAlchemyProvider:
         inherited_models: frozenset[SymbolId] = frozenset(),
     ) -> tuple[SQLAlchemyModelFact, ...]:
         calls_by_module = dict(grouped(calls, lambda item: item.module_id))
-        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+        edges_by_module = snapshot.relations.use_edges_by_module
         base_edges_by_module = {
             module: tuple(edge for edge in edges if edge.purpose.value == "base")
             for module, edges in edges_by_module.items()
         }
         declarative_bases = {
             binding.target.symbol
-            for binding in snapshot.relations.bindings
-            if any(
-                call.module_id == binding.module_id
-                and call.ref.symbol in _DECLARATIVE_BASE_CALLS
-                and call.context.parent_fact_id is None
-                and _contains(binding.location, call.location)
-                for call in calls_by_module.get(binding.module_id, ())
-            )
-            if binding.target.symbol is not None
+            for calls_in_module in calls_by_module.values()
+            for call in calls_in_module
+            if call.ref.symbol in _DECLARATIVE_BASE_CALLS and call.context.parent_fact_id is None
+            for binding in snapshot.relations.bindings_by_module.get(call.module_id, ())
+            if binding.target.symbol is not None and _contains(binding.location, call.location)
         }
         declarative_bases.update(
             field.symbol_id
@@ -270,7 +266,7 @@ class SQLAlchemyProvider:
                 lambda item: (item.module_id, item.context.parent_fact_id),
             )
         )
-        edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+        edges_by_module = snapshot.relations.use_edges_by_module
         columns: list[SQLAlchemyMappedColumnFact] = []
         relationships: list[SQLAlchemyRelationshipFact] = []
         for field in fields:

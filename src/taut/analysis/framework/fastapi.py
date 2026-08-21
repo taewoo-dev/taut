@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from taut.analysis.framework.indexes import grouped
 from taut.analysis.providers import CapabilitySpec
 from taut.domain.facts import (
     CallFact,
@@ -13,7 +13,7 @@ from taut.domain.facts import (
     SymbolRef,
 )
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import ModuleId, SymbolId
+from taut.domain.ids import FactId, ModuleId, SymbolId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.domain.provenance import Provenance
 from taut.domain.relations import Binding, UseEdge
@@ -116,13 +116,23 @@ def _contains(outer: SourceRange, inner: SourceRange) -> bool:
     ) <= (outer.end_line, outer.end_column)
 
 
+def _selected_edges_by_path_line(
+    snapshot: AnalysisSnapshot, selected: frozenset[ModuleId]
+) -> Mapping[tuple[ProjectPath, int], tuple[UseEdge, ...]]:
+    groups: dict[tuple[ProjectPath, int], list[UseEdge]] = {}
+    for module_id in sorted(selected):
+        for edge in snapshot.relations.use_edges_by_module.get(module_id, ()):
+            key = (edge.location.path, edge.location.start_line)
+            groups.setdefault(key, []).append(edge)
+    return {key: tuple(values) for key, values in groups.items()}
+
+
 def _confidence_for_receiver(
-    snapshot: AnalysisSnapshot,
+    binding_by_id: Mapping[FactId, Binding],
     receiver_edges: tuple[UseEdge, ...],
     method_state: ResolutionState,
 ) -> FastAPIConfidence:
     refs = [edge.ref for edge in receiver_edges]
-    binding_by_id = {binding.id: binding for binding in snapshot.relations.bindings}
     candidate_bindings = [
         binding_by_id[candidate]
         for edge in receiver_edges
@@ -167,13 +177,8 @@ class FastAPIProvider:
             for module in snapshot.modules.values()
             for function in module.functions
         }
-        bindings_by_module = dict(grouped(snapshot.relations.bindings, lambda item: item.module_id))
-        edges_by_path_line = dict(
-            grouped(
-                snapshot.relations.use_edges,
-                lambda item: (item.location.path, item.location.start_line),
-            )
-        )
+        bindings_by_module = snapshot.relations.bindings_by_module
+        edges_by_path_line = snapshot.relations.use_edges_by_path_line
         routers = self._routers(snapshot, bindings_by_module)
         endpoints = self._endpoints(snapshot, functions, routers, edges_by_path_line)
         dependencies = self._dependencies(snapshot, functions, edges_by_path_line)
@@ -206,13 +211,8 @@ class FastAPIProvider:
             if module.module.id in selected
             for f in module.functions
         }
-        bindings = dict(grouped(snapshot.relations.bindings, lambda item: item.module_id))
-        edges = dict(
-            grouped(
-                snapshot.relations.use_edges,
-                lambda item: (item.location.path, item.location.start_line),
-            )
-        )
+        bindings = snapshot.relations.bindings_by_module
+        edges = _selected_edges_by_path_line(snapshot, selected)
         routers = self._routers(snapshot, bindings, selected)
         old_routers = cast(tuple[FastAPIRouterFact, ...], previous.get(FASTAPI_ROUTERS, ()))
         global_routers = tuple(
@@ -243,7 +243,7 @@ class FastAPIProvider:
     def _routers(
         self,
         snapshot: AnalysisSnapshot,
-        bindings_by_module: dict[ModuleId, tuple[Binding, ...]],
+        bindings_by_module: Mapping[ModuleId, tuple[Binding, ...]],
         selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIRouterFact, ...]:
         result: list[FastAPIRouterFact] = []
@@ -287,10 +287,11 @@ class FastAPIProvider:
         snapshot: AnalysisSnapshot,
         functions: dict[SymbolId, FunctionFact],
         routers: tuple[FastAPIRouterFact, ...],
-        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
+        edges_by_path_line: Mapping[tuple[ProjectPath, int], tuple[UseEdge, ...]],
         selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIEndpointFact, ...]:
         router_symbols = {item.symbol for item in routers}
+        binding_by_id = snapshot.relations.binding_by_id
         result: list[FastAPIEndpointFact] = []
         for module in snapshot.modules.values():
             if selected is not None and module.module.id not in selected:
@@ -386,7 +387,7 @@ class FastAPIProvider:
                         _path(decorator_as_call(decorator)),
                         decorator,
                         function,
-                        _confidence_for_receiver(snapshot, receiver_edges, method_ref.state),
+                        _confidence_for_receiver(binding_by_id, receiver_edges, method_ref.state),
                         response_symbol,
                         response_ref,
                         _provenance(decorator),
@@ -400,7 +401,7 @@ class FastAPIProvider:
         self,
         snapshot: AnalysisSnapshot,
         functions: dict[SymbolId, FunctionFact],
-        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]],
+        edges_by_path_line: Mapping[tuple[ProjectPath, int], tuple[UseEdge, ...]],
         selected: frozenset[ModuleId] | None = None,
     ) -> tuple[FastAPIDependencyFact, ...]:
         result: list[FastAPIDependencyFact] = []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from taut.configuration.catalog import EffectResolutionState
 from taut.domain.evaluations import RuleTarget, RuleTargetRef
+from taut.domain.ids import ModuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition
 
@@ -12,11 +13,34 @@ class RuleScheduler:
         definition: RuleDefinition,
         context: PolicyContext,
     ) -> tuple[RuleTargetRef, ...]:
+        return self._targets_for(definition, context, None)
+
+    def targets_for_modules(
+        self,
+        definition: RuleDefinition,
+        context: PolicyContext,
+        module_ids: frozenset[ModuleId],
+    ) -> tuple[RuleTargetRef, ...]:
+        return self._targets_for(definition, context, module_ids)
+
+    def _targets_for(
+        self,
+        definition: RuleDefinition,
+        context: PolicyContext,
+        module_ids: frozenset[ModuleId] | None,
+    ) -> tuple[RuleTargetRef, ...]:
         target_kind = definition.target
         if target_kind is RuleTarget.PROJECT:
             return (RuleTargetRef(RuleTarget.PROJECT),)
         targets: list[RuleTargetRef] = []
-        for module_id in context.model.modules():
+        selected_modules = (
+            context.model.modules()
+            if module_ids is None
+            else tuple(
+                module_id for module_id in context.model.modules() if module_id in module_ids
+            )
+        )
+        for module_id in selected_modules:
             module = context.model.module(module_id)
             if not module.module.is_policy_target:
                 continue

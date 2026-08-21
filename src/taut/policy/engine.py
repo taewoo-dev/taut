@@ -125,31 +125,32 @@ class PolicyEngine:
                     identity,
                 ),
             )
-        old: dict[_EvaluationKey, RuleEvaluation] = {
-            (evaluation.rule_id, evaluation.target): evaluation
-            for evaluation in previous.evaluations
-        }
-        reuse: dict[_EvaluationKey, RuleEvaluation] = {}
-        for rule_id, definition in self._registry.definitions.items():
-            for key, evaluation in old.items():
-                if key[0] != rule_id:
-                    continue
-                if not changes.touched:
-                    reuse[key] = evaluation
-                    continue
-                module = evaluation.target.module_id
-                if module is None:
-                    continue
-                if definition.change_impact is ChangeImpact.PROJECT:
-                    continue
-                invalidated = (
+        reuse_by_rule: dict[RuleId, list[RuleEvaluation]] = {}
+        for evaluation in previous.evaluations:
+            definition = self._registry.definitions[evaluation.rule_id]
+            module = evaluation.target.module_id
+            if module is None or definition.change_impact is ChangeImpact.PROJECT:
+                continue
+            invalidated = (
+                changes.touched
+                if definition.change_impact is ChangeImpact.SELF
+                else impact_graph.impacted
+            )
+            if module not in invalidated:
+                reuse_by_rule.setdefault(evaluation.rule_id, []).append(evaluation)
+        target_modules = {
+            rule_id: (
+                frozenset(context.model.modules())
+                if definition.change_impact is ChangeImpact.PROJECT
+                else (
                     changes.touched
                     if definition.change_impact is ChangeImpact.SELF
                     else impact_graph.impacted
                 )
-                if module not in invalidated:
-                    reuse[key] = evaluation
-        execution = self._execute(context, reuse)
+            )
+            for rule_id, definition in self._registry.definitions.items()
+        }
+        execution = self._execute(context, {}, target_modules, reuse_by_rule)
         return IncrementalPolicyResult(
             execution.result,
             IncrementalState(
@@ -217,12 +218,18 @@ class PolicyEngine:
         self,
         context: PolicyContext,
         reuse: Mapping[_EvaluationKey, RuleEvaluation],
+        target_modules: Mapping[RuleId, frozenset[ModuleId]] | None = None,
+        prior_by_rule: Mapping[RuleId, list[RuleEvaluation]] | None = None,
     ) -> _Execution:
         evaluations: list[RuleEvaluation] = []
+        reuse_by_rule: dict[RuleId, list[RuleEvaluation]] = dict(prior_by_rule or {})
+        if target_modules is not None and prior_by_rule is None:
+            for (rule_id, _), evaluation in reuse.items():
+                reuse_by_rule.setdefault(rule_id, []).append(evaluation)
         issues: list[EngineIssue] = []
         enabled_rules = 0
         target_cache: dict[
-            tuple[RuleTarget, frozenset[Zone]],
+            tuple[RuleTarget, frozenset[Zone], frozenset[ModuleId] | None],
             tuple[RuleTargetRef, ...],
         ] = {}
         project_is_complete = all(
@@ -234,15 +241,21 @@ class PolicyEngine:
             if setting is None or setting.level is RuleLevel.OFF:
                 continue
             enabled_rules += 1
-            target_key = (definition.target, definition.applies_to_zones)
+            selected_modules = target_modules.get(rule_id) if target_modules is not None else None
+            target_key = (definition.target, definition.applies_to_zones, selected_modules)
             targets = target_cache.get(target_key)
             if targets is None:
-                targets = self._scheduler.targets_for(definition, context)
+                targets = (
+                    self._scheduler.targets_for(definition, context)
+                    if selected_modules is None
+                    else self._scheduler.targets_for_modules(definition, context, selected_modules)
+                )
                 target_cache[target_key] = targets
+            rule_evaluations = list(reuse_by_rule.get(rule_id, ()))
             for target in targets:
                 cached = reuse.get((rule_id, target))
                 if cached is not None:
-                    evaluations.append(cached)
+                    rule_evaluations.append(cached)
                     continue
                 reason = self._missing_requirement(
                     definition.requirements,
@@ -251,7 +264,7 @@ class PolicyEngine:
                     project_is_complete,
                 )
                 if reason is not None:
-                    evaluations.append(
+                    rule_evaluations.append(
                         RuleEvaluation(
                             rule_id,
                             target,
@@ -265,9 +278,9 @@ class PolicyEngine:
                     evaluation = definition.implementation.evaluate(target, context)
                     if evaluation.rule_id != rule_id or evaluation.target != target:
                         raise ValueError("rule returned a mismatched id or target")
-                    evaluations.append(evaluation)
+                    rule_evaluations.append(evaluation)
                 except Exception as error:
-                    evaluations.append(
+                    rule_evaluations.append(
                         RuleEvaluation(
                             rule_id,
                             target,
@@ -288,6 +301,7 @@ class PolicyEngine:
                             cause=error.__class__.__name__,
                         )
                     )
+            evaluations.extend(sorted(rule_evaluations, key=lambda item: item.target))
         # Registry iteration and scheduler targets are already deterministic and sorted.
         ordered = tuple(evaluations)
         findings = tuple(
@@ -304,7 +318,11 @@ class PolicyEngine:
         )
         coverage = _coverage(enabled_rules, ordered, context)
         result = PolicyRunResult(ordered, findings, tuple(issues), coverage)
-        reused = sum((item.rule_id, item.target) in reuse for item in ordered)
+        reused = (
+            sum(len(items) for items in reuse_by_rule.values())
+            if prior_by_rule is not None
+            else sum((item.rule_id, item.target) in reuse for item in ordered)
+        )
         return _Execution(result, reused, len(ordered) - reused)
 
     def _missing_requirement(

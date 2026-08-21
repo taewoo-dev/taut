@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import cast
 
 from taut.analysis.framework.indexes import grouped
@@ -43,7 +43,7 @@ def analyze_incremental_pydantic(
             AnalysisSnapshot,
             tuple[FieldFact, ...],
             dict[ModuleId, tuple[CallFact, ...]],
-            dict[ModuleId, tuple[UseEdge, ...]],
+            Mapping[ModuleId, tuple[UseEdge, ...]],
             set[SymbolId],
         ],
         tuple[PydanticFieldFact, ...],
@@ -54,7 +54,7 @@ def analyze_incremental_pydantic(
             tuple[ClassFact, ...],
             tuple[FieldFact, ...],
             dict[ModuleId, tuple[CallFact, ...]],
-            dict[ModuleId, tuple[UseEdge, ...]],
+            Mapping[ModuleId, tuple[UseEdge, ...]],
             set[SymbolId],
         ],
         tuple[PydanticConfigFact, ...],
@@ -80,7 +80,7 @@ def analyze_incremental_pydantic(
     models = _merge_models(old_models, fresh_models, impacted)
     model_ids = {item.symbol for item in models}
     calls_by_module = dict(grouped(calls, lambda item: item.module_id))
-    edges_by_module = dict(grouped(snapshot.relations.use_edges, lambda item: item.module_id))
+    edges_by_module = snapshot.relations.use_edges_by_module
     fresh_fields = fields_from(snapshot, fields, calls_by_module, edges_by_module, model_ids)
     fresh_configs = configs_from(
         snapshot, classes, fields, calls_by_module, edges_by_module, model_ids
