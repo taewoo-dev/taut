@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
+from taut.cache import CacheStore
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.validation import validate_classification_for_policy
 from taut.domain.frozen import FrozenMap
@@ -61,6 +63,8 @@ class CheckOptions:
     verbose: bool
     color: str
     width: int | None
+    no_cache: bool = False
+    cache_dir: Path | None = None
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -73,6 +77,8 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
     )
+    check.add_argument("--no-cache", action="store_true")
+    check.add_argument("--cache-dir")
     check.add_argument("--format", choices=("text", "json"), default="text")
     check.add_argument("--show-inactive", action="store_true")
     check.add_argument("-v", "--verbose", action="store_true")
@@ -112,6 +118,8 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
     verbose = namespace.verbose
     color = namespace.color
     width = namespace.width
+    no_cache = namespace.no_cache
+    cache_dir = Path(namespace.cache_dir).resolve() if namespace.cache_dir else None
     if not isinstance(root_value, str):
         raise ValueError("project_root must be a string")
     if config_value is not None and not isinstance(config_value, str):
@@ -134,12 +142,38 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
         verbose=verbose,
         color=color,
         width=width,
+        no_cache=no_cache,
+        cache_dir=cache_dir,
     )
 
 
 def run_check(options: CheckOptions) -> int:
     config = load_project_configuration(options.project_root, options.config_path)
     discovery = discover_sources(options.project_root, config)
+    cache_store = None
+    cache_key = None
+    if not options.no_cache and config.cache_enabled:
+        directory = options.cache_dir or (options.project_root / config.cache_directory.value)
+        cache_store = CacheStore(directory)
+        cache_store.__enter__()
+        fingerprint = hashlib.sha256(
+            (
+                config.digest()
+                + options.output_format
+                + str(options.show_inactive)
+                + str(options.verbose)
+                + options.color
+                + str(options.width)
+                + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
+            ).encode()
+        ).hexdigest()
+        cache_key = fingerprint
+        cached = cache_store.get_report(fingerprint)
+        if cached is not None:
+            exit_code, cached_output = cached.split(b"\n", 1)
+            sys.stdout.buffer.write(cached_output)
+            cache_store.__exit__(None, None, None)
+            return int(exit_code)
     adapter = PythonAstAdapter()
     context_manager_providers = {
         ContextManagerProvider(symbol, _ASYNC_SESSION_TYPE)
@@ -208,10 +242,11 @@ def run_check(options: CheckOptions) -> int:
         coverage=policy_result.coverage,
         ignore_audit=processing.ignore_audit,
     )
+    output: str
     if options.output_format == "json":
-        print(render_json(report))
+        output = render_json(report) + "\n"
     else:
-        print(
+        output = (
             render_text(
                 report,
                 show_inactive=options.show_inactive,
@@ -219,7 +254,12 @@ def run_check(options: CheckOptions) -> int:
                 color=_use_color(options.color),
                 width=_output_width(options.width),
             )
+            + "\n"
         )
+    print(output, end="")
+    if cache_store is not None and cache_key is not None:
+        cache_store.put_report(cache_key, f"{report.exit_decision.code}\n{output}".encode())
+        cache_store.__exit__(None, None, None)
     return report.exit_decision.code
 
 

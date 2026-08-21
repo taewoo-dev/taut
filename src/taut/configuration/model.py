@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from taut.configuration.catalog import EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy
@@ -22,6 +22,8 @@ class ProjectConfiguration:
     schema_version: int = 3
     packs: tuple[str, ...] = ("taut.backend",)
     providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
+    cache_enabled: bool = True
+    cache_directory: ProjectPath = field(default_factory=lambda: ProjectPath(".taut_cache"))
 
     def __post_init__(self) -> None:
         if not self.include:

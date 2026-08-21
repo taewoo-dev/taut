@@ -148,6 +148,7 @@ composition = [
   "incremental",
   "loading",
   "reporting",
+  "cache",
   "composition",
 ]
 

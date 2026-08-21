@@ -49,6 +49,7 @@ _ROOT_KEYS = frozenset(
         "schema_version",
         "packs",
         "providers",
+        "cache",
         "project",
         "roles",
         "zones",
@@ -94,6 +95,12 @@ def _load_project_configuration(
 
     packs = _strings(root.get("packs", ["taut.backend"]), "packs")
     providers = _strings(root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)), "providers")
+    cache = _table(root.get("cache", {}), "cache")
+    _reject_unknown(cache, frozenset({"enabled", "directory"}), "cache")
+    cache_enabled = cache.get("enabled", True)
+    if not isinstance(cache_enabled, bool):
+        raise ValueError("cache.enabled must be a boolean")
+    cache_directory = ProjectPath(_string(cache.get("directory", ".taut_cache"), "cache.directory"))
 
     location = ConfigLocation(document.path)
     project = _table(root.get("project", {}), "project")
@@ -131,6 +138,8 @@ def _load_project_configuration(
         schema_version=3,
         packs=packs,
         providers=providers,
+        cache_enabled=cache_enabled,
+        cache_directory=cache_directory,
     )
 
 
