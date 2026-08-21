@@ -16,6 +16,35 @@ from taut.analysis.framework.fastapi import (
 from taut.analysis.providers import apply_fact_providers
 
 
+def test_fastapi_indexed_outputs_ignore_unrelated_same_line_module() -> None:
+    source = make_source(
+        "app/api.py",
+        "from fastapi import APIRouter\nrouter = APIRouter()\n@router.get('/')\ndef endpoint(): pass",  # noqa: E501
+    )
+    result = apply_fact_providers(
+        analyze(source, make_source("other/x.py", "router = object()")), (FastAPIProvider(),)
+    )
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    assert len(endpoints) == 1 and endpoints[0].module_id.value == "app.api"
+
+
+def test_fastapi_unresolved_dependency_is_local_to_call_module() -> None:
+    result = apply_fact_providers(
+        analyze(
+            make_source(
+                "app/api.py",
+                "from fastapi import Depends\ndef endpoint(x: int = Depends(Unknown)): pass",
+            ),
+            make_source("other/api.py", "Unknown = object()"),
+        ),
+        (FastAPIProvider(),),
+    )
+    dependencies = cast(
+        tuple[FastAPIDependencyFact, ...], result.capabilities[FASTAPI_DEPENDENCIES]
+    )
+    assert len(dependencies) == 1 and dependencies[0].provider is None
+
+
 def test_fastapi_provider_extracts_alias_reexported_router_and_typed_contracts() -> None:
     snapshot = analyze(
         make_source("app/routes.py", "from fastapi import APIRouter as Router\nrouter = Router()"),

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import cast
 
-from scripts.benchmark_performance import BASELINE_SCHEMA, compare, measure, request_for, rss_bytes
+from scripts.benchmark_performance import (
+    BASELINE_SCHEMA,
+    TimedProvider,
+    compare,
+    measure,
+    request_for,
+    rss_bytes,
+)
 
 from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.analysis.providers import FactProviderV1, apply_fact_providers
@@ -98,3 +105,22 @@ def test_benchmark_request_is_sorted_and_digest_changes_only_with_sources() -> N
         ProjectAnalyzer(PythonAstAdapter()).analyze(small).id
         != ProjectAnalyzer(PythonAstAdapter()).analyze(larger).id
     )
+
+
+def test_timed_provider_preserves_contract_and_records_duration() -> None:
+    provider = builtin_backend_providers()[0]
+    timings: dict[str, float] = {}
+    timed = TimedProvider(provider, timings)
+    assert timed.id == provider.id
+    assert timed.version == provider.version
+    assert timed.provides == provider.provides
+    timed.analyze(ProjectAnalyzer(PythonAstAdapter()).analyze(request_for(1, mixed=False)))
+    assert provider.id in timings and timings[provider.id] >= 0
+
+
+def test_timing_schema_keys_are_stable() -> None:
+    assert {"wall_seconds", "rss_bytes", "phase_timings"} >= {
+        "wall_seconds",
+        "rss_bytes",
+        "phase_timings",
+    }

@@ -20,8 +20,36 @@ from taut.analysis.framework.sqlalchemy import (
     SQLAlchemyTransactionFact,
 )
 from taut.analysis.providers import apply_fact_providers
-from taut.domain.facts import ResolutionState
-from taut.plugins.v1 import SQLAlchemyProvider as PublicSQLAlchemyProvider
+
+
+def test_sqlalchemy_unrelated_module_does_not_leak_models() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/model.py",
+            "from sqlalchemy.orm import DeclarativeBase\nclass Base(DeclarativeBase): pass",
+        ),
+        make_source("other/noise.py", "class Base: pass"),
+    )
+    result = apply_fact_providers(snapshot, (SQLAlchemyProvider(),))
+    models = cast(tuple[SQLAlchemyModelFact, ...], result.capabilities[SQLALCHEMY_MODELS])
+    assert all(item.module_id.value == "app.model" for item in models)
+
+
+def test_sqlalchemy_transaction_query_and_raw_sql_facts() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/db.py",
+            "from sqlalchemy import text\ndef run(session):\n    with session.begin():\n        session.execute(text('select 1'))",  # noqa: E501
+        )
+    )
+    result = apply_fact_providers(snapshot, (SQLAlchemyProvider(),))
+    assert result.capabilities[SQLALCHEMY_TRANSACTIONS] is not None
+    assert result.capabilities[SQLALCHEMY_QUERIES] is not None
+    assert result.capabilities[SQLALCHEMY_RAW_SQL] is not None
+
+
+from taut.domain.facts import ResolutionState  # noqa: E402
+from taut.plugins.v1 import SQLAlchemyProvider as PublicSQLAlchemyProvider  # noqa: E402
 
 
 def test_sqlalchemy_provider_extracts_14_and_20_declarative_and_runtime_facts() -> None:

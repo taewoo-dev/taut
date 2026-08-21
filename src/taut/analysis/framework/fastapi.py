@@ -149,16 +149,15 @@ class FastAPIProvider:
             for module in snapshot.modules.values()
             for function in module.functions
         }
-        bindings_by_module: dict[ModuleId, tuple[Binding, ...]] = {}
-        edges_by_path_line: dict[tuple[ProjectPath, int], tuple[UseEdge, ...]] = {}
+        bindings_mut: dict[ModuleId, list[Binding]] = {}
+        edges_mut: dict[tuple[ProjectPath, int], list[UseEdge]] = {}
         for binding in snapshot.relations.bindings:
-            bindings_by_module[binding.module_id] = (
-                *bindings_by_module.get(binding.module_id, ()),
-                binding,
-            )
+            bindings_mut.setdefault(binding.module_id, []).append(binding)
         for edge in snapshot.relations.use_edges:
             key = (edge.location.path, edge.location.start_line)
-            edges_by_path_line[key] = (*edges_by_path_line.get(key, ()), edge)
+            edges_mut.setdefault(key, []).append(edge)
+        bindings_by_module = {key: tuple(value) for key, value in bindings_mut.items()}
+        edges_by_path_line = {key: tuple(value) for key, value in edges_mut.items()}
         routers = self._routers(snapshot, bindings_by_module)
         endpoints = self._endpoints(snapshot, functions, routers, edges_by_path_line)
         dependencies = self._dependencies(snapshot, functions, edges_by_path_line)

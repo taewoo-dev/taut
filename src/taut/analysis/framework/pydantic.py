@@ -144,14 +144,14 @@ class PydanticProvider:
         classes = tuple(item for module in snapshot.modules.values() for item in module.classes)
         fields = tuple(item for module in snapshot.modules.values() for item in module.fields)
         calls = _calls(snapshot)
-        calls_by_module: dict[ModuleId, tuple[CallFact, ...]] = {}
+        calls_by_module_mut: dict[ModuleId, list[CallFact]] = {}
         for call in calls:
-            calls_by_module.setdefault(call.module_id, ())
-            calls_by_module[call.module_id] += (call,)
-        edges_by_module: dict[ModuleId, tuple[UseEdge, ...]] = {}
+            calls_by_module_mut.setdefault(call.module_id, []).append(call)
+        calls_by_module = {key: tuple(value) for key, value in calls_by_module_mut.items()}
+        edges_by_module_mut: dict[ModuleId, list[UseEdge]] = {}
         for edge in snapshot.relations.use_edges:
-            edges_by_module.setdefault(edge.module_id, ())
-            edges_by_module[edge.module_id] += (edge,)
+            edges_by_module_mut.setdefault(edge.module_id, []).append(edge)
+        edges_by_module = {key: tuple(value) for key, value in edges_by_module_mut.items()}
         models = self._models(snapshot, classes)
         model_ids = {item.symbol for item in models}
         return FrozenMap(

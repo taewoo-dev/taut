@@ -57,7 +57,7 @@ WALL_FLOOR_SECONDS = 0.05
 RSS_FLOOR_BYTES = 1 << 20
 
 
-class _TimedProvider:
+class TimedProvider:
     """Transparent provider wrapper; timing does not alter dependency semantics."""
 
     def __init__(self, provider: FactProviderV1, timings: dict[str, float]) -> None:
@@ -229,7 +229,7 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     phase_started = time.perf_counter()
     providers = tuple(load_fact_provider(provider_id) for provider_id in config.providers)
     provider_timings: dict[str, float] = {}
-    timed_providers = tuple(_TimedProvider(provider, provider_timings) for provider in providers)
+    timed_providers = tuple(TimedProvider(provider, provider_timings) for provider in providers)
     snapshot = apply_fact_providers(snapshot, cast(tuple[FactProviderV1, ...], timed_providers))
     phase_timings["configured_providers"] = time.perf_counter() - phase_started
     phase_started = time.perf_counter()

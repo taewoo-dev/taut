@@ -21,6 +21,38 @@ from taut.analysis.providers import apply_fact_providers
 from taut.domain.facts import ResolutionState
 
 
+def test_pydantic_indexed_outputs_are_stable_with_unrelated_module() -> None:
+    base = analyze(
+        make_source(
+            "app/model.py", "from pydantic import BaseModel\nclass Item(BaseModel):\n    id: int"
+        )
+    )
+    expanded = analyze(
+        make_source(
+            "app/model.py", "from pydantic import BaseModel\nclass Item(BaseModel):\n    id: int"
+        ),
+        make_source("other/unrelated.py", "class Noise:\n    value = 1"),
+    )
+    provider = PydanticProvider()
+    first = provider.analyze(base)
+    second = provider.analyze(expanded)
+    assert first[PYDANTIC_MODELS] == second[PYDANTIC_MODELS]
+    assert first[PYDANTIC_FIELDS] == second[PYDANTIC_FIELDS]
+
+
+def test_pydantic_inherited_field_metadata_and_config() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/model.py",
+            "from pydantic import BaseModel, Field\nclass Parent(BaseModel):\n    id: int = Field(alias='pk')\nclass Child(Parent):\n    name: str",  # noqa: E501
+        )
+    )
+    result = apply_fact_providers(snapshot, (PydanticProvider(),))
+    fields = cast(tuple[PydanticFieldFact, ...], result.capabilities[PYDANTIC_FIELDS])
+    assert {field.name for field in fields} == {"id", "name"}
+    assert next(field for field in fields if field.name == "id").alias is not None
+
+
 def test_pydantic_provider_extracts_v1_v2_semantics_and_operations() -> None:
     snapshot = analyze(
         make_source(
