@@ -232,6 +232,7 @@ class CallFact:
     location: SourceRange
     provenance: Provenance
     context: SyntaxContext
+    semantic_candidates: tuple[SymbolId, ...] = ()
 
     def __post_init__(self) -> None:
         if self.positional_argument_count < 0:
@@ -241,6 +242,8 @@ class CallFact:
         positions = tuple(argument.position for argument in self.arguments)
         if positions != tuple(range(len(self.arguments))):
             raise ValueError("call argument positions must be contiguous")
+        if self.semantic_candidates != tuple(sorted(set(self.semantic_candidates))):
+            raise ValueError("semantic candidates must be unique and sorted")
 
 
 @dataclass(frozen=True, order=True)
@@ -359,6 +362,7 @@ class ModuleFacts:
     fields: tuple[FieldFact, ...]
     bindings: tuple[BindingFact, ...]
     completeness: ModuleCompleteness
+    semantic_resolution_state: ResolutionState = ResolutionState.RESOLVED
 
     def __post_init__(self) -> None:
         _validate_fact_collection(self.imports, self.module.id)

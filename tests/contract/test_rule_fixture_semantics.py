@@ -217,6 +217,17 @@ def _run_regular_fixture(
         else ()
     )
     snapshot = analyze(*sources, resolver=resolver)
+    if fact_state is not None and rule_id in {"ADAPTER002", "ARCH000", "EXC001"}:
+        snapshot = replace(
+            snapshot,
+            modules=FrozenMap(
+                (
+                    module_id,
+                    replace(module, semantic_resolution_state=fact_state),
+                )
+                for module_id, module in snapshot.modules.items()
+            ),
+        )
     time_wrapper = CatalogEntry(
         SymbolId("app.clock.utc_now"),
         frozenset({Effect.TIME_NOW}),
@@ -251,6 +262,7 @@ def _run_regular_fixture(
             if inject_relevant
             else ()
         ),
+        preserve_semantic_candidates=rule_id in GROUP_C_RULES,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -341,6 +353,17 @@ GROUP_C_RULES = (
     "TEST002",
     "WIRING001",
 )
+GROUP_C_SEMANTIC_RULES = {
+    "ADAPTER002",
+    "ARCH000",
+    "CONFIG001",
+    "EXC001",
+    "HTTP001",
+    "LOG001",
+    "SEC001",
+    "TEST002",
+    "WIRING001",
+}
 GROUP_C_RELEVANT_SYMBOLS = {
     "CONFIG001": ("app.settings.Settings",),
     "HTTP001": ("httpx.AsyncClient",),
@@ -348,6 +371,10 @@ GROUP_C_RELEVANT_SYMBOLS = {
     "SEC001": ("os.getenv",),
     "TEST002": ("httpx.AsyncClient",),
     "WIRING001": ("httpx.AsyncClient",),
+}
+GROUP_C_UNRELATED_EXPECTED = {
+    rule: (RuleVerdict.NOT_APPLICABLE if rule in {"HTTP001", "LOG001"} else RuleVerdict.PASS)
+    for rule in GROUP_C_RELEVANT_SYMBOLS
 }
 EXPECTED_GROUP_C_RESOLVED = {rule: "pass" for rule in GROUP_C_RULES}
 GROUP_B_EXPECTED = {
@@ -519,9 +546,7 @@ def test_group_c_unrelated_unresolved_facts_keep_compatible_verdict(rule_id: str
     )
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
-    assert all(
-        item.verdict in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE} for item in evaluations
-    )
+    assert {item.verdict for item in evaluations} == {GROUP_C_UNRELATED_EXPECTED[rule_id]}
 
 
 @pytest.mark.contract
@@ -534,14 +559,18 @@ def test_group_c_all_resolution_states_execute_evaluators(
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert not result.engine_issues
-    if state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS} and (
-        rule_id in GROUP_C_RELEVANT_SYMBOLS
-    ):
+    if state is not ResolutionState.RESOLVED and rule_id in GROUP_C_SEMANTIC_RULES:
         assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
-    else:
-        assert all(
-            item.verdict in {RuleVerdict.PASS, RuleVerdict.NOT_APPLICABLE} for item in evaluations
+        expected_reason = (
+            "uncertain_derived_fact"
+            if rule_id in {"ADAPTER002", "ARCH000", "EXC001"}
+            else "uncertain_symbol"
         )
+        assert {item.reason.code for item in evaluations if item.reason is not None} == {
+            expected_reason
+        }
+    else:
+        assert {item.verdict for item in evaluations} == {RuleVerdict.PASS}
 
 
 @pytest.mark.contract

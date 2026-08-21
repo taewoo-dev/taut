@@ -7,7 +7,11 @@ from taut.domain.findings import Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import module_fact_uncertainty, unresolved_call_evaluation
+from taut.policy.rules.helpers import (
+    derived_fact_uncertainty,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+)
 from taut.policy.rules.layer_boundaries import (
     RULE_VERSION,
     boundary_result,
@@ -84,7 +88,7 @@ class AdapterTypeLeakRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ADAPTER002 requires a module target")
-        uncertainty = module_fact_uncertainty(
+        uncertainty = derived_fact_uncertainty(
             ADAPTER_TYPE_RULE_ID, target, context, target.module_id
         )
         if uncertainty is not None:
