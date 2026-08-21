@@ -27,7 +27,7 @@ _PLUGIN_ID = re.compile(r"^[a-z][a-z0-9_.-]+$")
 
 def _entry_points(group: str) -> tuple[Any, ...]:
     """Return a stable tuple across Python metadata API generations."""
-    points = entry_points()
+    points: Any = entry_points()
     if hasattr(points, "select"):
         selected = points.select(group=group)
     elif hasattr(points, "get"):
