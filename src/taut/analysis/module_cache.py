@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -16,6 +17,7 @@ from taut.domain.relations import ModuleRelations
 
 CACHE_SCHEMA_VERSION = 2
 MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
+MAX_UNCOMPRESSED_PAYLOAD_BYTES = 256 * 1024 * 1024
 MAX_NODES = 10_000_000
 MAX_DEPTH = 1024
 
@@ -141,7 +143,7 @@ def encode_module_result(result: ModuleAnalysisResult, metadata: CacheMetadata) 
         tuple(_issue_wire(issue) for issue in result.issues),
         result.relations,
     )
-    payload = msgspec.msgpack.encode(envelope, enc_hook=_enc_hook)
+    payload = zlib.compress(msgspec.msgpack.encode(envelope, enc_hook=_enc_hook), level=1)
     if len(payload) > MAX_PAYLOAD_BYTES:
         raise ValueError("cache payload exceeds maximum size")
     return payload
@@ -151,7 +153,15 @@ def decode_module_result(payload: bytes | bytearray | memoryview) -> CacheDecode
     try:
         if len(payload) > MAX_PAYLOAD_BYTES:
             raise ValueError("cache payload exceeds maximum size")
-        envelope = _DECODER.decode(payload)
+        decompressor = zlib.decompressobj()
+        raw = decompressor.decompress(bytes(payload), MAX_UNCOMPRESSED_PAYLOAD_BYTES + 1)
+        if (
+            len(raw) > MAX_UNCOMPRESSED_PAYLOAD_BYTES
+            or not decompressor.eof
+            or decompressor.unused_data
+        ):
+            raise ValueError("invalid or oversized compressed cache payload")
+        envelope = _DECODER.decode(raw)
         if envelope.schema != CACHE_SCHEMA_VERSION:
             raise ValueError("unknown cache schema")
         result = ModuleAnalysisResult(
@@ -167,3 +177,13 @@ def decode_module_result(payload: bytes | bytearray | memoryview) -> CacheDecode
             CacheErrorCode.LIMIT if "maximum" in str(exc) else CacheErrorCode.DECODE,
             str(exc),
         )
+
+
+def encode_module_results(
+    results: tuple[ModuleAnalysisResult, ...], metadata: CacheMetadata
+) -> tuple[bytes, ...]:
+    return tuple(encode_module_result(result, metadata) for result in results)
+
+
+def decode_module_results(payloads: tuple[bytes, ...]) -> tuple[CacheDecodeResult, ...]:
+    return tuple(decode_module_result(payload) for payload in payloads)

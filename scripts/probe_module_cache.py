@@ -7,7 +7,11 @@ import time
 from pathlib import Path
 
 from taut.analysis.contracts import AdapterIdentity, ContextManagerProvider, ResolverSettings
-from taut.analysis.module_cache import CacheMetadata, decode_module_result, encode_module_result
+from taut.analysis.module_cache import (
+    CacheMetadata,
+    decode_module_results,
+    encode_module_results,
+)
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.domain.ids import SymbolId
 from taut.loading.config_loader import load_project_configuration
@@ -43,10 +47,10 @@ def main() -> None:
         AdapterIdentity(adapter.identity.name, adapter.identity.version), "resolver-v1"
     )
     encoded_started = time.perf_counter()
-    payloads = tuple(encode_module_result(result, metadata) for result in results)
+    payloads = encode_module_results(results, metadata)
     encode_seconds = time.perf_counter() - encoded_started
     decode_started = time.perf_counter()
-    decoded = tuple(decode_module_result(payload) for payload in payloads)
+    decoded = decode_module_results(payloads)
     decode_seconds = time.perf_counter() - decode_started
     assert all(
         item.value == result and item.metadata == metadata
