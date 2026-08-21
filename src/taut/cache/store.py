@@ -53,14 +53,14 @@ class CacheStore:
     def __enter__(self) -> CacheStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            self._connection = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+            self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.execute("PRAGMA synchronous=NORMAL")
             self._connection.execute("PRAGMA busy_timeout=5000")
             self._schema()
         except (sqlite3.DatabaseError, OSError):
             self._close_and_quarantine()
-            self._connection = sqlite3.connect(self.path, timeout=5, isolation_level=None)
+            self._connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
             self._schema()
         return self
 

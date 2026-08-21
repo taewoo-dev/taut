@@ -1,18 +1,25 @@
 from __future__ import annotations
 
+import dataclasses
+
 # Test-only SQL corruption uses the store's private connection deliberately.
 # pyright: reportPrivateUsage=false
 import hashlib
 import time
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import msgspec
 import pytest
 from tests.utils.builders import make_source
 
+from taut.analysis import module_cache
 from taut.analysis.contracts import AdapterIdentity, ModuleAnalysisResult
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.cache.store import MAX_AGE_SECONDS, CacheKey, CacheStore
+from taut.domain.issues import EngineIssue, EngineIssueKind
+from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath, SourceRange
 
 HASH = hashlib.sha256(b"source").hexdigest()
 
@@ -23,6 +30,29 @@ def _key(suffix: str = "") -> CacheKey:
 
 def _result() -> ModuleAnalysisResult:
     return PythonAstAdapter().analyze_module(make_source("app/a.py", "value = 1"))
+
+
+def _rich_result() -> ModuleAnalysisResult:
+    base = _result()
+    issues = (
+        EngineIssue("A", EngineIssueKind.PARSE_FAILURE, "bad", None),
+        EngineIssue(
+            "B",
+            EngineIssueKind.ANALYSIS_FAILURE,
+            "bad",
+            SourceRange(ProjectPath("a.py"), 0, 0, 0, 1),
+        ),
+        EngineIssue(
+            "C", EngineIssueKind.RULE_FAILURE, "bad", ConfigLocation(ProjectPath("a.py"), 1, 2)
+        ),
+        EngineIssue(
+            "D",
+            EngineIssueKind.RULE_FAILURE,
+            "bad",
+            ConfigLocation(ConfigPath("cfg.toml"), None, None),
+        ),
+    )
+    return dataclasses.replace(base, issues=issues)
 
 
 def test_key_validation_and_paths(tmp_path: Path) -> None:
@@ -144,3 +174,35 @@ def test_report_invalid_and_stats_error_degrade(tmp_path: Path) -> None:
         assert store.get_report("bad") is None
         store._connection.close()  # type: ignore[union-attr]
         assert store.stats().total_bytes == 0
+
+
+def test_codec_issue_variants_hooks_batch_and_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    metadata = module_cache.CacheMetadata(AdapterIdentity("python", "1"), "resolver")
+    payload = module_cache.encode_module_result(_rich_result(), metadata)
+    decoded = module_cache.decode_module_result(payload)
+    assert decoded.value is not None and len(decoded.value.issues) == 4
+    assert module_cache._enc_hook(object()) is msgspec.NODEFAULT
+    assert module_cache._dec_hook(str, []) is msgspec.NODEFAULT
+    batch = module_cache.decode_module_results(
+        module_cache.encode_module_results((_result(), _rich_result()), metadata)
+    )
+    assert [item.value is not None for item in batch] == [True, True]
+    monkeypatch.setattr(module_cache, "MAX_PAYLOAD_BYTES", 1)
+    with pytest.raises(ValueError):
+        module_cache.encode_module_result(_result(), metadata)
+
+
+def test_codec_corruption_schema_trailing_and_raw_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    metadata = module_cache.CacheMetadata(AdapterIdentity("python", "1"), "resolver")
+    payload = module_cache.encode_module_result(_result(), metadata)
+    assert module_cache.decode_module_result(payload[:-1]).value is None
+    assert module_cache.decode_module_result(payload + b"trailing").value is None
+    raw = zlib.decompress(payload)
+    envelope = module_cache._DECODER.decode(raw)
+    bad = module_cache.CacheEnvelope(
+        999, envelope.metadata, envelope.facts, envelope.issues, envelope.relations
+    )
+    bad_payload = zlib.compress(msgspec.msgpack.encode(bad, enc_hook=module_cache._enc_hook))
+    assert module_cache.decode_module_result(bad_payload).value is None
+    monkeypatch.setattr(module_cache, "MAX_UNCOMPRESSED_PAYLOAD_BYTES", 1)
+    assert module_cache.decode_module_result(payload).value is None
