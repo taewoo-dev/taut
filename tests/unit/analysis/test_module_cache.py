@@ -2,13 +2,13 @@ from tests.utils.builders import make_source
 
 from taut.analysis.contracts import AdapterIdentity
 from taut.analysis.module_cache import (
-    CacheErrorCode,
     CacheMetadata,
     decode_module_result,
     encode_module_result,
 )
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.domain.facts import ResolutionState
+from taut.domain.issues import CacheErrorCode
 
 
 def test_module_cache_roundtrip_preserves_domain_and_strenum_types() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import fields, is_dataclass
-from enum import Enum, StrEnum
+from enum import Enum
 from typing import cast
 
 import msgspec
@@ -24,19 +24,12 @@ from taut.domain import (
     relations,
 )
 from taut.domain.frozen import FrozenMap
+from taut.domain.issues import CacheErrorCode
 
 CACHE_SCHEMA_VERSION = 1
 MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
 MAX_NODES = 500_000
 MAX_DEPTH = 128
-
-
-class CacheErrorCode(StrEnum):
-    DECODE = "decode"
-    LIMIT = "limit"
-    SCHEMA = "schema"
-    TYPE = "type"
-    DOMAIN = "domain"
 
 
 @dataclasses.dataclass(frozen=True)
