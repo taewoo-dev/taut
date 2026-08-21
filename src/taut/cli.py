@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 from collections.abc import Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,6 +67,25 @@ class CheckOptions:
     width: int | None
     no_cache: bool = False
     cache_dir: Path | None = None
+
+
+@contextmanager
+def _cache_context(directory: Path, *, enabled: bool):
+    """Best-effort cache resource; cache failures never affect check output."""
+    if not enabled:
+        yield None
+        return
+    store = CacheStore(directory)
+    try:
+        store.__enter__()
+    except Exception:
+        yield None
+        return
+    try:
+        yield store
+    finally:
+        with suppress(Exception):
+            store.__exit__(None, None, None)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -157,37 +177,35 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
 def run_check(options: CheckOptions) -> int:
     config = load_project_configuration(options.project_root, options.config_path)
     discovery = discover_sources(options.project_root, config)
-    cache_store = None
     cache_key = None
-    if not options.no_cache and config.cache_enabled:
-        directory = options.cache_dir or (options.project_root / config.cache_directory.value)
-        cache_store = CacheStore(directory)
-        try:
-            cache_store.__enter__()
-        except (OSError, RuntimeError):
-            cache_store = None
-        if cache_store is None:
-            if options.verbose:
-                print("taut cache: error (disabled)", file=sys.stderr)
-        else:
+    directory = options.cache_dir or (options.project_root / config.cache_directory.value)
+    with _cache_context(
+        directory, enabled=not options.no_cache and config.cache_enabled
+    ) as cache_store:
+        if cache_store is not None:
             fingerprint = hashlib.sha256(
-            (
-                config.digest()
+                (
+                __version__ + "|report-schema:1|" + config.digest()
                 + options.output_format
                 + str(options.show_inactive)
                 + str(options.verbose)
                 + options.color
                 + str(options.width)
+                + "python-target:3.11|adapter:python:1|"
                 + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
-            ).encode()
+                ).encode()
             ).hexdigest()
             cache_key = fingerprint
-            cached = cache_store.get_report_envelope(fingerprint)
+            try:
+                cached = cache_store.get_report_envelope(fingerprint)
+            except Exception:
+                cached = None
             if cached is not None:
                 sys.stdout.buffer.write(cached.stdout)
                 if cached.stderr:
                     sys.stderr.buffer.write(cached.stderr)
-                cache_store.__exit__(None, None, None)
+                if options.verbose:
+                    print("taut cache: hit", file=sys.stderr)
                 return cached.exit_code
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
@@ -275,14 +293,26 @@ def run_check(options: CheckOptions) -> int:
         )
     output_bytes = output.encode()
     print(output, end="")
-    if cache_store is not None and cache_key is not None:
-        cache_store.put_report_envelope(
-            cache_key,
-            ReportEnvelope(
-                1, output_bytes, b"", report.exit_decision.code, {"format": options.output_format}
-            ),
-        )
-        cache_store.__exit__(None, None, None)
+    if cache_key is not None:
+        try:
+            with _cache_context(directory, enabled=True) as write_store:
+                if write_store is not None:
+                    write_store.put_report_envelope(
+                        cache_key,
+                        ReportEnvelope(
+                            1, cache_key, output_bytes, b"", report.exit_decision.code,
+                            {
+                                "format": options.output_format,
+                                "show_inactive": str(options.show_inactive),
+                                "verbose": str(options.verbose),
+                                "color": options.color,
+                                "width": str(options.width),
+                            }
+                        ),
+                    )
+        except Exception:
+            if options.verbose:
+                print("taut cache: error", file=sys.stderr)
     return report.exit_decision.code
 
 

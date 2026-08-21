@@ -50,6 +50,7 @@ class ReportEnvelope(msgspec.Struct, forbid_unknown_fields=True):
     """Versioned, byte-preserving report payload; only deterministic reports use it."""
 
     schema: int
+    fingerprint: str
     stdout: bytes
     stderr: bytes
     exit_code: int
@@ -194,6 +195,8 @@ class CacheStore:
         return True
 
     def put_report_envelope(self, fingerprint: str, envelope: ReportEnvelope) -> bool:
+        if envelope.fingerprint != fingerprint:
+            return False
         return self.put_report(fingerprint, _REPORT_ENCODER.encode(envelope))
 
     def get_report(self, fingerprint: str) -> bytes | None:
@@ -228,8 +231,13 @@ class CacheStore:
             return None
         try:
             envelope = _REPORT_DECODER.decode(payload)
-            return envelope if envelope.schema == 1 else None
+            if envelope.schema != 1 or envelope.fingerprint != fingerprint:
+                self._conn().execute("DELETE FROM report_entries WHERE key=?", (fingerprint,))
+                return None
+            return envelope
         except (msgspec.DecodeError, TypeError, ValueError):
+            with suppress(sqlite3.DatabaseError):
+                self._conn().execute("DELETE FROM report_entries WHERE key=?", (fingerprint,))
             return None
 
     def stats(self) -> CacheStats:
