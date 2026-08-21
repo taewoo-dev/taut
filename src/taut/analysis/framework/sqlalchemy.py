@@ -180,7 +180,7 @@ class SQLAlchemyProvider:
                     next(
                         (
                             edge.ref
-                    for edge in edges_by_module.get(item.module_id, ())
+                            for edge in edges_by_module.get(item.module_id, ())
                             if edge.module_id == item.module_id
                             and edge.purpose.value == "base"
                             and _contains(item.location, edge.location)
@@ -238,9 +238,14 @@ class SQLAlchemyProvider:
         models: set[SymbolId],
     ) -> tuple[tuple[SQLAlchemyMappedColumnFact, ...], tuple[SQLAlchemyRelationshipFact, ...]]:
         calls_by_module: dict[ModuleId, list[CallFact]] = {}
+        calls_by_parent: dict[tuple[ModuleId, object], list[CallFact]] = {}
         edges_by_module: dict[ModuleId, list[UseEdge]] = {}
         for call in calls:
             calls_by_module.setdefault(call.module_id, []).append(call)
+            if call.context.parent_fact_id is not None:
+                calls_by_parent.setdefault(
+                    (call.module_id, call.context.parent_fact_id), []
+                ).append(call)
         for edge in snapshot.relations.use_edges:
             edges_by_module.setdefault(edge.module_id, []).append(edge)
         columns: list[SQLAlchemyMappedColumnFact] = []
@@ -250,10 +255,15 @@ class SQLAlchemyProvider:
                 continue
             nested = tuple(
                 call
-                for call in calls_by_module.get(field.module_id, ())
-                if call.module_id == field.module_id
-                and _contains(field.location, call.location)
-                and (call.context.parent_fact_id == field.id or call.context.parent_fact_id is None)
+                for call in (
+                    *calls_by_parent.get((field.module_id, field.id), ()),
+                    *(
+                        call
+                        for call in calls_by_module.get(field.module_id, ())
+                        if call.context.parent_fact_id is None
+                    ),
+                )
+                if _contains(field.location, call.location)
             )
             for call in nested:
                 if call.ref.symbol in {SymbolId(value) for value in COLUMN_CALLS} or _names(

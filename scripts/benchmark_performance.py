@@ -174,9 +174,11 @@ def run(scale: str, *, mixed: bool, repeats: int) -> dict[str, object]:
 
 def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     root = root.resolve()
+    phase_started = time.perf_counter()
     config = load_project_configuration(root)
     discovery = discover_sources(root, config)
     sources = discovery.sources
+    phase_timings = {"config_discovery": time.perf_counter() - phase_started}
     adapter = PythonAstAdapter()
     context_manager_providers = tuple(
         sorted(
@@ -206,8 +208,12 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
     started = time.perf_counter()
     workers = min(8, max(1, (os.cpu_count() or 2) // 2))
     snapshot = ProjectAnalyzer(adapter).analyze(request, workers=workers)
+    phase_timings["ast_analysis"] = time.perf_counter() - started
+    phase_started = time.perf_counter()
     providers = tuple(load_fact_provider(provider_id) for provider_id in config.providers)
     snapshot = apply_fact_providers(snapshot, providers)
+    phase_timings["configured_providers"] = time.perf_counter() - phase_started
+    phase_started = time.perf_counter()
     classifications = config.manifest.classify(snapshot)
     validate_classification_for_policy(classifications, config.policy)
     context = PolicyContext(
@@ -222,6 +228,8 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         definition for pack in packs for definition in pack.registry.definitions.values()
     )
     policy_result = PolicyEngine(registry).run(context)
+    phase_timings["classification_policy"] = time.perf_counter() - phase_started
+    phase_started = time.perf_counter()
     ignore_result = load_inline_ignores(sources, frozenset(registry.definitions))
     processing = FindingProcessor().process(
         findings=policy_result.findings,
@@ -231,6 +239,7 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
         ),
         ignores=ignore_result.directives,
     )
+    phase_timings["ignore_finding_processing"] = time.perf_counter() - phase_started
     elapsed = time.perf_counter() - started
     after = rss_bytes(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     engine_issues = (
@@ -252,6 +261,7 @@ def real_checkout(root: Path, requested: int | None) -> dict[str, object]:
             config, registry, adapter.identity, packs, providers
         ),
         "exit_relevant_indeterminate": policy_result.coverage.indeterminate,
+        "phase_timings": phase_timings,
     }
     counts = {
         "complete": snapshot.coverage.complete_modules,
