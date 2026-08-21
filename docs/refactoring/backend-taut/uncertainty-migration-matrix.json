@@ -741,8 +741,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1162,8 +1162,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1377,8 +1377,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -1856,8 +1856,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2351,8 +2351,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",
@@ -2577,8 +2577,8 @@
         "resolved": "evaluate",
         "conditional": "indeterminate",
         "ambiguous": "indeterminate",
-        "unresolved": "indeterminate",
-        "dynamic": "indeterminate"
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
       },
       "missing_capability_completeness": {
         "missing_capability": "indeterminate",

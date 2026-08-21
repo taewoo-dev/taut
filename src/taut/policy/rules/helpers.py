@@ -119,27 +119,6 @@ def module_fact_uncertainty(
     return None
 
 
-def derived_fact_uncertainty(
-    rule_id: RuleId, target: RuleTargetRef, context: PolicyContext, module_id: ModuleId
-) -> RuleEvaluation | None:
-    """Propagate typed derived-fact confidence without using source spelling."""
-    incomplete = incomplete_module_evaluation(rule_id, target, context, module_id)
-    if incomplete is not None:
-        return incomplete
-    state = context.model.module(module_id).semantic_resolution_state
-    if state is ResolutionState.RESOLVED:
-        return None
-    return RuleEvaluation(
-        rule_id,
-        target,
-        RuleVerdict.INDETERMINATE,
-        (),
-        EvaluationReason(
-            "uncertain_derived_fact", "규칙에 필요한 derived fact를 확정하지 못했습니다."
-        ),
-    )
-
-
 def project_fact_uncertainty(
     rule_id: RuleId, target: RuleTargetRef, context: PolicyContext
 ) -> RuleEvaluation | None:
@@ -160,30 +139,6 @@ def project_fact_uncertainty(
     return None
 
 
-def project_derived_fact_uncertainty(
-    rule_id: RuleId, target: RuleTargetRef, context: PolicyContext
-) -> RuleEvaluation | None:
-    """Propagate typed project-derived confidence without source heuristics."""
-    incomplete = project_fact_uncertainty(rule_id, target, context)
-    if incomplete is not None:
-        return incomplete
-    if any(
-        context.model.module(module_id).semantic_resolution_state is not ResolutionState.RESOLVED
-        for module_id in context.model.modules()
-    ):
-        return RuleEvaluation(
-            rule_id,
-            target,
-            RuleVerdict.INDETERMINATE,
-            (),
-            EvaluationReason(
-                "uncertain_derived_fact",
-                "규칙에 필요한 project derived fact를 확정하지 못했습니다.",
-            ),
-        )
-    return None
-
-
 def unresolved_call_evaluation(
     rule_id: RuleId,
     target: RuleTargetRef,
@@ -196,11 +151,7 @@ def unresolved_call_evaluation(
     for call in context.model.calls_in(module_id):
         if call.ref.state is ResolutionState.RESOLVED:
             continue
-        if (
-            call.ref.symbol in names
-            or names.intersection(call.ref.candidates)
-            or names.intersection(call.semantic_candidates)
-        ):
+        if call.ref.symbol in names or names.intersection(call.ref.candidates):
             return RuleEvaluation(
                 rule_id,
                 target,

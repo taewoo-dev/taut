@@ -24,7 +24,7 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding, project_derived_fact_uncertainty
+from taut.policy.rules.helpers import build_finding, project_fact_uncertainty
 
 RULE_ID = RuleId("EXC001")
 RULE_VERSION = 3
@@ -109,7 +109,7 @@ class ExceptionRegistryRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.kind is not RuleTarget.PROJECT:
             raise ValueError("EXC001 requires a project target")
-        uncertainty = project_derived_fact_uncertainty(RULE_ID, target, context)
+        uncertainty = project_fact_uncertainty(RULE_ID, target, context)
         if uncertainty is not None:
             return uncertainty
         classes: dict[SymbolId, ClassFact] = {}

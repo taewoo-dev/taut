@@ -134,7 +134,6 @@ def _call_fact_state(
     fact: CallFact,
     state: ResolutionState,
     relevant: tuple[SymbolId, ...],
-    preserve_semantic_candidates: bool,
 ) -> CallFact:
     if state is ResolutionState.RESOLVED:
         return fact
@@ -148,7 +147,6 @@ def _call_fact_state(
     return replace(
         fact,
         ref=replace(fact.ref, state=state, symbol=None, candidates=candidates),
-        semantic_candidates=(tuple(sorted(relevant)) if preserve_semantic_candidates else ()),
     )
 
 
@@ -217,7 +215,6 @@ def make_context(
     incomplete_modules: frozenset[str] = frozenset(),
     fact_state: ResolutionState | None = None,
     fact_candidates: tuple[SymbolId, ...] = (),
-    preserve_semantic_candidates: bool = False,
 ) -> PolicyContext:
     snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
     if fact_state is not None:
@@ -229,9 +226,7 @@ def make_context(
                     replace(
                         module,
                         calls=tuple(
-                            _call_fact_state(
-                                call, fact_state, fact_candidates, preserve_semantic_candidates
-                            )
+                            _call_fact_state(call, fact_state, fact_candidates)
                             for call in module.calls
                         ),
                     ),

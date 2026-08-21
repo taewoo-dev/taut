@@ -217,17 +217,6 @@ def _run_regular_fixture(
         else ()
     )
     snapshot = analyze(*sources, resolver=resolver)
-    if fact_state is not None and rule_id in {"ADAPTER002", "ARCH000", "EXC001"}:
-        snapshot = replace(
-            snapshot,
-            modules=FrozenMap(
-                (
-                    module_id,
-                    replace(module, semantic_resolution_state=fact_state),
-                )
-                for module_id, module in snapshot.modules.items()
-            ),
-        )
     time_wrapper = CatalogEntry(
         SymbolId("app.clock.utc_now"),
         frozenset({Effect.TIME_NOW}),
@@ -262,7 +251,6 @@ def _run_regular_fixture(
             if inject_relevant
             else ()
         ),
-        preserve_semantic_candidates=rule_id in GROUP_C_RULES,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
 
@@ -353,17 +341,6 @@ GROUP_C_RULES = (
     "TEST002",
     "WIRING001",
 )
-GROUP_C_SEMANTIC_RULES = {
-    "ADAPTER002",
-    "ARCH000",
-    "CONFIG001",
-    "EXC001",
-    "HTTP001",
-    "LOG001",
-    "SEC001",
-    "TEST002",
-    "WIRING001",
-}
 GROUP_C_RELEVANT_SYMBOLS = {
     "CONFIG001": ("app.settings.Settings",),
     "HTTP001": ("httpx.AsyncClient",),
@@ -559,18 +536,17 @@ def test_group_c_all_resolution_states_execute_evaluators(
     evaluations = tuple(item for item in result.evaluations if item.rule_id == RuleId(rule_id))
     assert evaluations
     assert not result.engine_issues
-    if state is not ResolutionState.RESOLVED and rule_id in GROUP_C_SEMANTIC_RULES:
-        assert {item.verdict for item in evaluations} == {RuleVerdict.INDETERMINATE}
-        expected_reason = (
-            "uncertain_derived_fact"
-            if rule_id in {"ADAPTER002", "ARCH000", "EXC001"}
-            else "uncertain_symbol"
+    expected = (
+        RuleVerdict.INDETERMINATE
+        if rule_id in GROUP_C_RELEVANT_SYMBOLS
+        and state in {ResolutionState.CONDITIONAL, ResolutionState.AMBIGUOUS}
+        else (
+            RuleVerdict.PASS
+            if state is ResolutionState.RESOLVED
+            else GROUP_C_UNRELATED_EXPECTED.get(rule_id, RuleVerdict.PASS)
         )
-        assert {item.reason.code for item in evaluations if item.reason is not None} == {
-            expected_reason
-        }
-    else:
-        assert {item.verdict for item in evaluations} == {RuleVerdict.PASS}
+    )
+    assert {item.verdict for item in evaluations} == {expected}
 
 
 @pytest.mark.contract
