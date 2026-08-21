@@ -197,34 +197,49 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
     """Measure CLI cache phases; fixture copy/edit happens outside timed regions."""
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def invoke(project: Path, use_cache: bool) -> tuple[float, bytes, int]:
+    def invoke(
+        project: Path, use_cache: bool, directory: Path | None = None
+    ) -> tuple[float, bytes, bytes, int]:
         command = [sys.executable, "-m", "taut.cli", "check", str(project)]
         if use_cache:
-            command.extend(("--cache-dir", str(cache_dir)))
+            command.extend(("--cache-dir", str(directory or cache_dir)))
         else:
             command.append("--no-cache")
         started = time.perf_counter()
         completed = subprocess.run(command, capture_output=True, check=False)
         return (
             time.perf_counter() - started,
-            completed.stdout + completed.stderr,
+            completed.stdout,
+            completed.stderr,
             completed.returncode,
         )
 
-    cold = [invoke(root, True) for _ in range(1)]
-    unchanged = [invoke(root, True) for _ in range(repeats)]
+    cold = [invoke(root, False) for _ in range(repeats)]
+    first_fill = [
+        invoke(root, True, cache_dir.parent / f"{cache_dir.name}-fill-{i}") for i in range(repeats)
+    ]
+    invoke(root, True, cache_dir)
+    unchanged = [invoke(root, True, cache_dir) for _ in range(repeats)]
+    ordinary: list[tuple[float, bytes, bytes, int]] = []
+    shared: list[tuple[float, bytes, bytes, int]] = []
+    parity: list[bool] = []
     with tempfile.TemporaryDirectory(prefix="pytaut-benchmark-") as copied:
         changed_root = Path(copied) / "project"
         shutil.copytree(root, changed_root)
-        source = next(changed_root.rglob("*.py"))
-        source.write_text(
-            source.read_text(encoding="utf-8") + "\n# benchmark harmless edit\n", encoding="utf-8"
-        )
-        changed = [invoke(changed_root, True) for _ in range(1)]
-        shared_changed = [invoke(changed_root, True) for _ in range(1)]
+        for index, source in enumerate(sorted(changed_root.rglob("*.py"))[:2]):
+            for iteration in range(repeats):
+                original = source.read_text(encoding="utf-8")
+                source.write_text(
+                    original + f"\n# benchmark edit {index}-{iteration}\n", encoding="utf-8"
+                )
+                canonical = invoke(changed_root, False)
+                cached = invoke(changed_root, True, cache_dir)
+                (ordinary if index == 0 else shared).append(cached)
+                parity.append(canonical[1:] == cached[1:])
+                source.write_text(original, encoding="utf-8")
     canonical = invoke(root, False)
 
-    def timing(items: list[tuple[float, bytes, int]], label: str) -> dict[str, object]:
+    def timing(items: list[tuple[float, bytes, bytes, int]], label: str) -> dict[str, object]:
         values = sorted(item[0] for item in items)
         return {
             "median_wall_seconds": statistics.median(values),
@@ -235,16 +250,21 @@ def _cache_scenarios(root: Path, cache_dir: Path, repeats: int = 3) -> dict[str,
     return {
         "schema": "pytaut-cache-benchmark-v1",
         "phases": {
-            "cold": timing(cold, "miss"),
+            "cold_no_cache": timing(cold, "no_cache"),
+            "first_fill": timing(first_fill, "miss"),
             "no_change": timing(unchanged, "hit"),
-            "single_file_change": timing(changed, "invalidation"),
-            "shared_base_import_change": timing(shared_changed, "record_only"),
+            "ordinary_edit": timing(ordinary, "invalidation"),
+            "shared_base_import_change": timing(shared, "invalidation"),
         },
-        "counters": {"hits": repeats, "misses": 1, "invalidations": 1},
-        "deterministic_digests": [hashlib.sha256(item[1]).hexdigest() for item in unchanged],
+        "counters": {
+            "hits": repeats,
+            "misses": repeats + 1,
+            "invalidations": len(ordinary) + len(shared),
+        },
+        "stdout_digests": [hashlib.sha256(item[1]).hexdigest() for item in unchanged],
+        "stderr_digests": [hashlib.sha256(item[2]).hexdigest() for item in unchanged],
         "canonical_no_cache_digest": hashlib.sha256(canonical[1]).hexdigest(),
-        "cached_matches_canonical": unchanged[-1][1] == canonical[1]
-        and unchanged[-1][2] == canonical[2],
+        "cached_matches_canonical": all(parity),
         "cache_db_bytes": (cache_dir / "cache.sqlite3").stat().st_size
         if (cache_dir / "cache.sqlite3").exists()
         else 0,
