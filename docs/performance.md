@@ -65,18 +65,18 @@ inbound impact and the shared source with the largest. On the 952-module
 anti-monitor checkout the selected files were `app/asgi.py` (0 transitive
 importers) and `app/core/config.py` (610 transitive importers).
 
-| Scenario | Limit | Verified smoke result |
+| Scenario | Limit | Final median |
 |---|---:|---:|
-| cold daemon | 20 s | 9.82 s |
-| unchanged | 0.5 s | 0.20 s |
-| ordinary edit | 2 s | 1.69 s |
-| shared edit | 4 s | 2.85 s |
+| cold daemon | 20 s | 9.54 s |
+| unchanged | 0.5 s | 0.189 s |
+| ordinary edit | 2 s | 1.321 s |
+| shared edit | 4 s | 2.723 s |
 
-Each edit result reparsed exactly one module. The ordinary sample reused 217,446
-of 218,018 policy evaluations; the shared sample reused 216,968. The RSS sample
-was 768,720,896 bytes before and after the repeated unchanged check. These smoke
-numbers validate the benchmark mechanics; the release artifact under
-`docs/performance/` contains the multi-sample final run.
+Every edit result reparsed exactly one module. The ordinary samples reused 217,446
+of 218,018 policy evaluations; the shared samples reused 216,968. Across 30
+unchanged memory checks, RSS moved from 769,130,496 to 744,325,120 bytes, with a
+769,146,880-byte peak. The machine-readable release result is
+[`performance/anti-monitor-0.4.0.json`](performance/anti-monitor-0.4.0.json).
 
 ## Baseline enforcement
 

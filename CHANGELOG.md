@@ -10,8 +10,8 @@
 - Added a reproducible benchmark that performs a real content change for every edit sample,
   selects targets by transitive import impact, checks canonical output parity, and records daemon
   RSS over repeated checks.
-- On the 952-module anti-monitor validation checkout, measured approximately 0.20 seconds for an
-  unchanged resident check, 1.69 seconds for an ordinary edit, and 2.85 seconds for a shared edit
+- On the 952-module anti-monitor validation checkout, measured 0.189 seconds for an unchanged
+  resident check, 1.321 seconds for an ordinary edit, and 2.723 seconds for a shared edit
   affecting 610 transitive importers.
 
 ## 0.3.0

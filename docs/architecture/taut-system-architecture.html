@@ -508,7 +508,7 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
             <text x="861" y="156" text-anchor="middle" class="ttl t-green">RunReport</text>
             <text x="861" y="177" text-anchor="middle" class="sub">동일 bytes · 동일 exit</text>
 
-            <text x="350" y="326" text-anchor="middle" class="mono t-blue">0.20s unchanged · 1.69s ordinary · 2.85s shared</text>
+            <text x="350" y="326" text-anchor="middle" class="mono t-blue">0.189s unchanged · 1.321s ordinary · 2.723s shared</text>
           </svg>
         </div>
         <figcaption><strong>빠른 경로도 별도 판정기가 아니다.</strong> cache payload가 인증되지 않거나 상태가 호환되지 않으면 miss로 처리하고 전체 분석으로 돌아간다. daemon 편집 검사는 source hash를 다시 읽어 바뀐 module 하나와 dependency impact를 갱신한 뒤, 같은 provider·policy·finding 단계를 거쳐 canonical CLI와 byte-for-byte parity를 검증한다.</figcaption>

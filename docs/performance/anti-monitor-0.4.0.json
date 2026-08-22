@@ -1,0 +1,133 @@
+{
+  "schema": "pytaut-release-performance-v1",
+  "release": "0.4.0",
+  "measured_on": "2026-08-22",
+  "overall_passed": true,
+  "checkout": {
+    "kind": "staged_read_only_copy",
+    "source": "/Users/taewoo/orca/workspaces/anti-monitor/backend-taut-compliance/backend",
+    "discovered_modules": 952,
+    "source_checkout_unchanged": true
+  },
+  "environment": {
+    "python": "3.14.0",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "processor": "arm"
+  },
+  "command": "uv run python scripts/benchmark_performance.py --scale small --repeats 1 --daemon-benchmark /Users/taewoo/orca/workspaces/anti-monitor/backend-taut-compliance/backend --daemon-timing-repeats 5 --daemon-memory-checks 30",
+  "raw_result": {
+    "schema": "pytaut-daemon-benchmark-v1",
+    "sha256": "5fc8c60ce348c3db1aabe1b7926cb93a142077055d545b7b8194343fbaa42493",
+    "bytes": 73061
+  },
+  "disk_cache_contract": {
+    "passed": true,
+    "evidence_kind": "repeated_staged_checkout_validation",
+    "cold_no_cache_seconds": {
+      "limit": 20.0,
+      "observed_range": [9.94, 10.03],
+      "passed": true
+    },
+    "unchanged_seconds": {
+      "limit": 3.0,
+      "observed_range": [0.19, 0.22],
+      "passed": true
+    },
+    "ordinary_edit_seconds": {
+      "limit": 8.0,
+      "observed": [7.23, 7.80, 6.91],
+      "passed": true
+    },
+    "canonical_output_parity": true
+  },
+  "daemon_contract": {
+    "passed": true,
+    "targets": {
+      "ordinary": {
+        "path": "app/asgi.py",
+        "transitive_inbound": 0
+      },
+      "shared": {
+        "path": "app/core/config.py",
+        "transitive_inbound": 610
+      }
+    },
+    "thresholds": {
+      "cold_seconds": {
+        "limit": 20.0,
+        "actual": 9.540044917026535,
+        "statistic": "single",
+        "passed": true
+      },
+      "unchanged_seconds": {
+        "limit": 0.5,
+        "actual": 0.18863150011748075,
+        "statistic": "median_of_5",
+        "p95": 0.21065170806832612,
+        "passed": true
+      },
+      "ordinary_edit_seconds": {
+        "limit": 2.0,
+        "actual": 1.3208990001585335,
+        "statistic": "median_of_5_real_edits",
+        "p95": 1.5969106671400368,
+        "passed": true
+      },
+      "shared_edit_seconds": {
+        "limit": 4.0,
+        "actual": 2.7230456669349223,
+        "statistic": "median_of_5_real_edits",
+        "p95": 2.8939802919048816,
+        "passed": true
+      }
+    },
+    "samples_seconds": {
+      "unchanged": [
+        0.21065170806832612,
+        0.18854170804843307,
+        0.18967804196290672,
+        0.18646895908750594,
+        0.18863150011748075
+      ],
+      "ordinary_edit": [
+        1.5969106671400368,
+        1.1679414589889348,
+        1.3208990001585335,
+        1.406552999978885,
+        1.2016277080401778
+      ],
+      "shared_edit": [
+        2.4000797502230853,
+        2.7230456669349223,
+        2.8939802919048816,
+        2.295723124872893,
+        2.881476250011474
+      ]
+    },
+    "invalidation": {
+      "ordinary_reparsed_modules": [1, 1, 1, 1, 1],
+      "ordinary_reused_modules": 951,
+      "ordinary_recomputed_evaluations": 572,
+      "ordinary_reused_evaluations": 217446,
+      "shared_reparsed_modules": [1, 1, 1, 1, 1],
+      "shared_reused_modules": 951,
+      "shared_recomputed_evaluations": 1050,
+      "shared_reused_evaluations": 216968
+    },
+    "memory": {
+      "checks": 30,
+      "rss_before_bytes": 769130496,
+      "rss_after_bytes": 744325120,
+      "rss_delta_bytes": -24805376,
+      "rss_peak_bytes": 769146880,
+      "growth_detected": false
+    },
+    "canonical_parity": {
+      "passed": true,
+      "scope": "all cold, unchanged, edit, restart, concurrent, and memory samples",
+      "stdout_sha256": "4cbf8b08e9018b8437f774b68f3e30a5c70eed76408fc03ae54a74d358f10708",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 2
+    }
+  }
+}
