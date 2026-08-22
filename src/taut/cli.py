@@ -12,6 +12,7 @@ from pathlib import Path
 
 from taut import __version__
 from taut.cache import CacheStore
+from taut.cache.authenticated import load_user_signing_key
 from taut.cache.store import ReportEnvelope
 from taut.check_service import CheckRequest, run_check_request
 from taut.daemon_client import (
@@ -58,7 +59,7 @@ def _cache_context(directory: Path, *, enabled: bool) -> Generator[CacheStore | 
     if not enabled:
         yield None
         return
-    store = CacheStore(directory)
+    store = CacheStore(directory, signing_key=load_user_signing_key())
     try:
         store.__enter__()
     except Exception:
@@ -234,7 +235,11 @@ def run_check(options: CheckOptions) -> int:
                 return int(cached.exit_code)
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
-    result = run_check_request(request)
+    if cache_key is None:
+        result = run_check_request(request)
+    else:
+        with _cache_context(directory, enabled=True) as module_store:
+            result = run_check_request(request, module_store)
     output_bytes = result.stdout
     sys.stdout.buffer.write(result.stdout)
     if result.stderr:

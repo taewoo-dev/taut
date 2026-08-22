@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from dataclasses import dataclass, field
@@ -9,11 +10,14 @@ from pathlib import Path
 
 from taut import __version__
 from taut.analysis.contracts import (
+    AdapterIdentity,
     AnalysisRequest,
     ContextManagerProvider,
     LanguageSettings,
+    ModuleAnalysisResult,
     ProjectRoot,
     ResolverSettings,
+    SourceInput,
 )
 from taut.analysis.providers import (
     FactProviderV1,
@@ -22,6 +26,8 @@ from taut.analysis.providers import (
 )
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
+from taut.cache import CacheKey, CacheStore
+from taut.cache.authenticated import ModuleBundle, cache_signing_context
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.model import ProjectConfiguration
 from taut.configuration.validation import validate_classification_for_policy
@@ -95,8 +101,9 @@ class CheckResult:
 class ResidentCheckSession:
     """Incremental state for exactly one canonical project root."""
 
-    def __init__(self, project_root: Path) -> None:
+    def __init__(self, project_root: Path, module_store: CacheStore | None = None) -> None:
         self.project_root = project_root.resolve()
+        self._module_store = module_store
         self._closed = False
         self._identity: tuple[object, ...] | None = None
         self._config: ProjectConfiguration | None = None
@@ -184,9 +191,29 @@ class ResidentCheckSession:
                 ((self._adapter.identity.name, self._adapter.identity.version),)
             ),
         )
+        module_cache = None
+        if self._module_store is not None:
+            resolver_identity = hashlib.sha256(
+                repr(
+                    (
+                        __version__,
+                        analysis_request.language,
+                        analysis_request.resolver,
+                        tuple(analysis_request.adapter_versions.items()),
+                    )
+                ).encode()
+            ).hexdigest()
+            module_cache = _DiskModuleCache(
+                self._module_store,
+                self._adapter.identity,
+                resolver_identity,
+                self.project_root,
+            )
         started = time.perf_counter()
         snapshot = self._analyzer.analyze(
-            analysis_request, workers=_analysis_workers(len(analysis_request.sources))
+            analysis_request,
+            workers=_analysis_workers(len(analysis_request.sources)),
+            module_cache=module_cache,
         )
         _timed(timings, "analysis", started)
         changes = self._analyzer.last_changes
@@ -302,9 +329,103 @@ class ResidentCheckSession:
         )
 
 
-def run_check_request(request: CheckRequest) -> CheckResult:
+class _DiskModuleCache:
+    def __init__(
+        self,
+        store: CacheStore,
+        adapter: AdapterIdentity,
+        resolver_identity: str,
+        project_root: Path,
+    ) -> None:
+        self._store = store
+        self._adapter = adapter
+        self._resolver_identity = resolver_identity
+        self._bundle_context = cache_signing_context(
+            (
+                "module-bundle:1",
+                str(project_root.resolve()),
+                adapter.name,
+                adapter.version,
+                resolver_identity,
+            )
+        )
+        self._bundle_key = hashlib.sha256(self._bundle_context).hexdigest()
+        self._sources: tuple[SourceInput, ...] = ()
+        self._cached: tuple[ModuleAnalysisResult | None, ...] = ()
+        self._bundle_present = False
+
+    def get_many(self, sources: tuple[SourceInput, ...]) -> tuple[ModuleAnalysisResult | None, ...]:
+        self._sources = sources
+        if not self._store.authenticated:
+            self._cached = self._store.get_modules(tuple(self._key(source) for source in sources))
+            return self._cached
+        bundle = self._store.get_module_bundle(self._bundle_key, context=self._bundle_context)
+        self._bundle_present = bundle is not None
+        if bundle is None:
+            individual = self._store.get_modules(tuple(self._key(source) for source in sources))
+            if any(result is not None for result in individual):
+                self._cached = individual
+                return self._cached
+        indexed: dict[str, tuple[str, ModuleAnalysisResult]] = {}
+        if bundle is not None:
+            for module_identity, source_hash, result in bundle.entries:
+                if module_identity in indexed:
+                    indexed.clear()
+                    self._bundle_present = False
+                    break
+                indexed[module_identity] = (source_hash, result)
+        values: list[ModuleAnalysisResult | None] = []
+        for source in sources:
+            entry = indexed.get(source.module_id.value)
+            if (
+                entry is None
+                or entry[0] != source.content_hash
+                or entry[1].facts.module.id != source.module_id
+            ):
+                values.append(None)
+            else:
+                values.append(entry[1])
+        self._cached = tuple(values)
+        return self._cached
+
+    def put_many(self, entries: tuple[tuple[SourceInput, ModuleAnalysisResult], ...]) -> None:
+        if not self._store.authenticated:
+            self._store.put_modules(
+                tuple((self._key(source), result) for source, result in entries)
+            )
+            return
+        fresh = {source.module_id: result for source, result in entries}
+        refresh_threshold = max(32, len(self._sources) // 4)
+        if self._bundle_present and len(entries) < refresh_threshold:
+            return
+        combined: list[tuple[str, str, ModuleAnalysisResult]] = []
+        for source, cached in zip(self._sources, self._cached, strict=True):
+            result = fresh.get(source.module_id, cached)
+            if result is None or result.facts.module.id != source.module_id:
+                return
+            combined.append((source.module_id.value, source.content_hash, result))
+        stored = self._store.put_module_bundle(
+            self._bundle_key,
+            ModuleBundle(tuple(combined)),
+            context=self._bundle_context,
+        )
+        if not stored:
+            self._store.put_modules(
+                tuple((self._key(source), result) for source, result in entries)
+            )
+
+    def _key(self, source: SourceInput) -> CacheKey:
+        return CacheKey(
+            source.content_hash,
+            self._adapter,
+            self._resolver_identity,
+            source.module_id.value,
+        )
+
+
+def run_check_request(request: CheckRequest, module_store: CacheStore | None = None) -> CheckResult:
     """Run a single check through the same pipeline used by resident sessions."""
-    with ResidentCheckSession(request.project_root) as session:
+    with ResidentCheckSession(request.project_root, module_store) as session:
         return session.check(request)
 
 

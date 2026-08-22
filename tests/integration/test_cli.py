@@ -6,6 +6,8 @@ from typing import cast
 
 import pytest
 
+from taut.analysis.contracts import ModuleAnalysisResult, ResolverSettings, SourceInput
+from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.cli import main
 
 
@@ -115,11 +117,46 @@ def test_cache_stats_and_clean_commands(tmp_path: Path, capsys: pytest.CaptureFi
     capsys.readouterr()
     assert main(["cache", "stats", str(tmp_path)]) == 0
     stats = capsys.readouterr().out
+    assert "모듈: 1" in stats
     assert "리포트: 1" in stats
     assert main(["cache", "clean", str(tmp_path)]) == 0
     assert "캐시 삭제 완료" in capsys.readouterr().out
     assert main(["cache", "stats", str(tmp_path)]) == 0
     assert "리포트: 0" in capsys.readouterr().out
+
+
+@pytest.mark.integration
+def test_report_miss_reuses_unchanged_module_analysis(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    (tmp_path / "app" / "other.py").write_text("other = 1\n")
+    analyzed: list[int] = []
+    original = PythonAstAdapter.analyze_modules
+
+    def counting(
+        self: PythonAstAdapter,
+        sources: tuple[SourceInput, ...],
+        resolver: ResolverSettings,
+        workers: int,
+    ) -> tuple[ModuleAnalysisResult, ...]:
+        analyzed.append(len(sources))
+        return original(self, sources, resolver, workers)
+
+    monkeypatch.setattr(PythonAstAdapter, "analyze_modules", counting)
+    assert main(["check", str(tmp_path)]) == 0
+    capsys.readouterr()
+    (tmp_path / "app" / "service.py").write_text("value = 2\n")
+
+    assert main(["check", str(tmp_path)]) == 0
+    cached_output = capsys.readouterr().out
+    assert main(["check", str(tmp_path), "--no-cache"]) == 0
+    fresh_output = capsys.readouterr().out
+
+    assert analyzed == [2, 1, 2]
+    assert cached_output == fresh_output
 
 
 @pytest.mark.integration

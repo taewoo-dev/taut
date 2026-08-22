@@ -1,7 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import PurePosixPath
+
+
+@lru_cache(maxsize=32_768)
+def _normalized_project_path(value: str) -> str:
+    normalized = value.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if not normalized or path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"project path must be a safe relative path: {value!r}")
+    if normalized.startswith("./") or normalized != path.as_posix():
+        raise ValueError(f"project path must already be normalized: {value!r}")
+    return normalized
+
+
+@lru_cache(maxsize=4_096)
+def _normalized_config_path(value: str) -> str:
+    normalized = value.replace("\\", "/")
+    path = PurePosixPath(normalized)
+    if not normalized or ".." in path.parts:
+        raise ValueError(f"config path must not be empty or traverse parents: {value!r}")
+    if normalized.startswith("./") or normalized != path.as_posix():
+        raise ValueError(f"config path must already be normalized: {value!r}")
+    return normalized
 
 
 @dataclass(frozen=True, order=True)
@@ -9,13 +32,7 @@ class ProjectPath:
     value: str
 
     def __post_init__(self) -> None:
-        normalized = self.value.replace("\\", "/")
-        path = PurePosixPath(normalized)
-        if not normalized or path.is_absolute() or ".." in path.parts:
-            raise ValueError(f"project path must be a safe relative path: {self.value!r}")
-        if normalized.startswith("./") or normalized != path.as_posix():
-            raise ValueError(f"project path must already be normalized: {self.value!r}")
-        object.__setattr__(self, "value", normalized)
+        object.__setattr__(self, "value", _normalized_project_path(self.value))
 
     def __str__(self) -> str:
         return self.value
@@ -28,13 +45,7 @@ class ConfigPath:
     value: str
 
     def __post_init__(self) -> None:
-        normalized = self.value.replace("\\", "/")
-        path = PurePosixPath(normalized)
-        if not normalized or ".." in path.parts:
-            raise ValueError(f"config path must not be empty or traverse parents: {self.value!r}")
-        if normalized.startswith("./") or normalized != path.as_posix():
-            raise ValueError(f"config path must already be normalized: {self.value!r}")
-        object.__setattr__(self, "value", normalized)
+        object.__setattr__(self, "value", _normalized_config_path(self.value))
 
     @property
     def is_absolute(self) -> bool:

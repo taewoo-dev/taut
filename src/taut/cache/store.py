@@ -15,6 +15,15 @@ import msgspec
 
 from taut.analysis.contracts import AdapterIdentity, ModuleAnalysisResult
 from taut.analysis.module_cache import CacheMetadata, decode_module_result, encode_module_result
+from taut.cache.authenticated import MAGIC as AUTHENTICATED_MAGIC
+from taut.cache.authenticated import (
+    ModuleBundle,
+    cache_signing_context,
+    decode_authenticated_bundle,
+    decode_authenticated_module,
+    encode_authenticated_bundle,
+    encode_authenticated_module,
+)
 
 SCHEMA_VERSION = 1
 MAX_TOTAL_BYTES = 1 << 30
@@ -31,6 +40,7 @@ class CacheKey:
     source_hash: str
     adapter: AdapterIdentity
     resolver_identity: str
+    module_identity: str = ""
 
     def __post_init__(self) -> None:
         if not _HASH.fullmatch(self.source_hash):
@@ -62,10 +72,15 @@ _REPORT_DECODER = msgspec.msgpack.Decoder(ReportEnvelope)
 
 
 class CacheStore:
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, *, signing_key: bytes | None = None) -> None:
         self.directory = directory
         self.path = directory / "cache.sqlite3"
+        self._signing_key = signing_key
         self._connection: sqlite3.Connection | None = None
+
+    @property
+    def authenticated(self) -> bool:
+        return self._signing_key is not None
 
     def __enter__(self) -> CacheStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +131,9 @@ class CacheStore:
             CREATE TABLE IF NOT EXISTS report_entries (
               key TEXT PRIMARY KEY, payload BLOB NOT NULL, size INTEGER NOT NULL,
               created REAL NOT NULL, accessed REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS module_bundles (
+              key TEXT PRIMARY KEY, payload BLOB NOT NULL, module_count INTEGER NOT NULL,
+              size INTEGER NOT NULL, created REAL NOT NULL, accessed REAL NOT NULL);
             INSERT OR IGNORE INTO cache_meta(key,value) VALUES ('schema','1');"""
         )
         value = self._connection.execute(
@@ -132,27 +150,47 @@ class CacheStore:
     @staticmethod
     def _key(key: CacheKey) -> str:
         return "|".join(
-            (key.source_hash, key.adapter.name, key.adapter.version, key.resolver_identity)
+            (
+                key.source_hash,
+                key.adapter.name,
+                key.adapter.version,
+                key.resolver_identity,
+                key.module_identity,
+            )
         )
 
     def put_module(self, key: CacheKey, result: ModuleAnalysisResult) -> bool:
-        payload = encode_module_result(result, CacheMetadata(key.adapter, key.resolver_identity))
+        return self.put_modules(((key, result),))
+
+    def put_modules(self, entries: tuple[tuple[CacheKey, ModuleAnalysisResult], ...]) -> bool:
+        if not entries:
+            return True
+        encoded = tuple(
+            (
+                key,
+                self._encode_module(key, result),
+            )
+            for key, result in entries
+        )
         now = time.time()
         conn = self._conn()
         conn.execute("BEGIN IMMEDIATE")
         try:
-            conn.execute(
+            conn.executemany(
                 "INSERT OR REPLACE INTO module_entries VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    self._key(key),
-                    key.source_hash,
-                    key.adapter.name,
-                    key.adapter.version,
-                    key.resolver_identity,
-                    payload,
-                    len(payload),
-                    now,
-                    now,
+                tuple(
+                    (
+                        self._key(key),
+                        key.source_hash,
+                        key.adapter.name,
+                        key.adapter.version,
+                        key.resolver_identity,
+                        payload,
+                        len(payload),
+                        now,
+                        now,
+                    )
+                    for key, payload in encoded
                 ),
             )
             self._cleanup(conn)
@@ -168,24 +206,134 @@ class CacheStore:
         return True
 
     def get_module(self, key: CacheKey) -> ModuleAnalysisResult | None:
+        return self.get_modules((key,))[0]
+
+    def get_modules(self, keys: tuple[CacheKey, ...]) -> tuple[ModuleAnalysisResult | None, ...]:
+        if not keys:
+            return ()
+        try:
+            conn = self._conn()
+            storage_keys = tuple(self._key(key) for key in keys)
+            rows: dict[str, bytes] = {}
+            for chunk_start in range(0, len(storage_keys), 400):
+                chunk = storage_keys[chunk_start : chunk_start + 400]
+                placeholders = ",".join("?" for _ in chunk)
+                rows.update(
+                    (str(storage_key), bytes(payload))
+                    for storage_key, payload in conn.execute(
+                        f"SELECT key,payload FROM module_entries WHERE key IN ({placeholders})",
+                        chunk,
+                    )
+                )
+            values: list[ModuleAnalysisResult | None] = []
+            valid: list[tuple[float, str]] = []
+            invalid: list[tuple[str]] = []
+            now = time.time()
+            for key, storage_key in zip(keys, storage_keys, strict=True):
+                payload = rows.get(storage_key)
+                if payload is None:
+                    values.append(None)
+                    continue
+                decoded = self._decode_module(key, payload)
+                if decoded is None:
+                    invalid.append((storage_key,))
+                    values.append(None)
+                    continue
+                valid.append((now, storage_key))
+                values.append(decoded)
+            if invalid:
+                conn.executemany("DELETE FROM module_entries WHERE key=?", invalid)
+            if valid:
+                conn.executemany("UPDATE module_entries SET accessed=? WHERE key=?", valid)
+            return tuple(values)
+        except (sqlite3.DatabaseError, OSError, ValueError, TypeError):
+            return (None,) * len(keys)
+
+    def _encode_module(self, key: CacheKey, result: ModuleAnalysisResult) -> bytes:
+        if self._signing_key is not None:
+            return encode_authenticated_module(
+                result,
+                context=self._signing_context(key),
+                signing_key=self._signing_key,
+            )
+        return encode_module_result(result, CacheMetadata(key.adapter, key.resolver_identity))
+
+    def _decode_module(self, key: CacheKey, payload: bytes) -> ModuleAnalysisResult | None:
+        if payload.startswith(AUTHENTICATED_MAGIC):
+            if self._signing_key is None:
+                return None
+            return decode_authenticated_module(
+                payload,
+                context=self._signing_context(key),
+                signing_key=self._signing_key,
+            )
+        decoded = decode_module_result(payload)
+        if decoded.metadata != CacheMetadata(key.adapter, key.resolver_identity):
+            return None
+        return decoded.value
+
+    @staticmethod
+    def _signing_context(key: CacheKey) -> bytes:
+        return cache_signing_context(
+            (
+                key.source_hash,
+                key.adapter.name,
+                key.adapter.version,
+                key.resolver_identity,
+                key.module_identity,
+            )
+        )
+
+    def put_module_bundle(self, bundle_key: str, bundle: ModuleBundle, *, context: bytes) -> bool:
+        if not _HASH.fullmatch(bundle_key) or self._signing_key is None:
+            return False
+        try:
+            payload = encode_authenticated_bundle(
+                bundle, context=context, signing_key=self._signing_key
+            )
+        except (OSError, ValueError, TypeError):
+            return False
+        now = time.time()
+        conn = self._conn()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO module_bundles VALUES (?,?,?,?,?,?)",
+                (bundle_key, payload, len(bundle.entries), len(payload), now, now),
+            )
+            self._cleanup(conn)
+            conn.execute("COMMIT")
+        except (sqlite3.DatabaseError, OSError):
+            with suppress(sqlite3.DatabaseError):
+                conn.execute("ROLLBACK")
+            return False
+        except Exception:
+            with suppress(sqlite3.DatabaseError):
+                conn.execute("ROLLBACK")
+            raise
+        return True
+
+    def get_module_bundle(self, bundle_key: str, *, context: bytes) -> ModuleBundle | None:
+        if not _HASH.fullmatch(bundle_key) or self._signing_key is None:
+            return None
         try:
             row = (
                 self._conn()
-                .execute("SELECT payload FROM module_entries WHERE key=?", (self._key(key),))
+                .execute("SELECT payload FROM module_bundles WHERE key=?", (bundle_key,))
                 .fetchone()
             )
             if row is None:
                 return None
-            decoded = decode_module_result(bytes(row[0]))
-            if decoded.value is None or decoded.metadata != CacheMetadata(
-                key.adapter, key.resolver_identity
-            ):
-                self._conn().execute("DELETE FROM module_entries WHERE key=?", (self._key(key),))
+            bundle = decode_authenticated_bundle(
+                bytes(row[0]), context=context, signing_key=self._signing_key
+            )
+            if bundle is None:
+                self._conn().execute("DELETE FROM module_bundles WHERE key=?", (bundle_key,))
                 return None
             self._conn().execute(
-                "UPDATE module_entries SET accessed=? WHERE key=?", (time.time(), self._key(key))
+                "UPDATE module_bundles SET accessed=? WHERE key=?", (time.time(), bundle_key)
             )
-            return decoded.value
+            return bundle
         except (sqlite3.DatabaseError, OSError, ValueError, TypeError):
             return None
 
@@ -263,9 +411,11 @@ class CacheStore:
         try:
             conn = self._conn()
             modules, reports, total = conn.execute(
-                "SELECT (SELECT count(*) FROM module_entries), "
+                "SELECT (SELECT count(*) FROM module_entries) + "
+                "(SELECT coalesce(sum(module_count),0) FROM module_bundles), "
                 "(SELECT count(*) FROM report_entries), "
                 "(SELECT coalesce(sum(size),0) FROM module_entries) + "
+                "(SELECT coalesce(sum(size),0) FROM module_bundles) + "
                 "(SELECT coalesce(sum(size),0) FROM report_entries)"
             ).fetchone()
             return CacheStats(int(modules), int(reports), int(total))
@@ -292,6 +442,7 @@ class CacheStore:
             conn = self._conn()
             conn.execute("BEGIN IMMEDIATE")
             conn.execute("DELETE FROM module_entries")
+            conn.execute("DELETE FROM module_bundles")
             conn.execute("DELETE FROM report_entries")
             conn.execute("COMMIT")
         except (sqlite3.DatabaseError, OSError):
@@ -301,21 +452,28 @@ class CacheStore:
     def _cleanup(self, conn: sqlite3.Connection, *, force: bool = False) -> None:
         cutoff = time.time() - MAX_AGE_SECONDS
         conn.execute("DELETE FROM module_entries WHERE accessed<?", (cutoff,))
+        conn.execute("DELETE FROM module_bundles WHERE accessed<?", (cutoff,))
         conn.execute("DELETE FROM report_entries WHERE accessed<?", (cutoff,))
         while (
             int(conn.execute("SELECT coalesce(sum(size),0) FROM module_entries").fetchone()[0])
+            + int(conn.execute("SELECT coalesce(sum(size),0) FROM module_bundles").fetchone()[0])
             + int(conn.execute("SELECT coalesce(sum(size),0) FROM report_entries").fetchone()[0])
             > MAX_TOTAL_BYTES
         ):
             candidate = conn.execute(
                 "SELECT kind,key FROM ("
                 "SELECT 'module' kind,key,accessed,created FROM module_entries UNION ALL "
+                "SELECT 'bundle',key,accessed,created FROM module_bundles UNION ALL "
                 "SELECT 'report',key,accessed,created FROM report_entries) "
                 "ORDER BY accessed,created,kind,key LIMIT 1"
             ).fetchone()
             if candidate is None:
                 break
-            table = "module_entries" if candidate[0] == "module" else "report_entries"
+            table = {
+                "module": "module_entries",
+                "bundle": "module_bundles",
+                "report": "report_entries",
+            }[candidate[0]]
             conn.execute(f"DELETE FROM {table} WHERE key=?", (candidate[1],))
 
     def _close_and_quarantine(self) -> None:

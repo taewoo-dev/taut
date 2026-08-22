@@ -5,6 +5,10 @@ import dataclasses
 # Test-only SQL corruption uses the store's private connection deliberately.
 # pyright: reportPrivateUsage=false
 import hashlib
+import hmac
+import io
+import pickle
+import sys
 import time
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -17,7 +21,18 @@ from tests.utils.builders import make_source
 from taut.analysis import module_cache
 from taut.analysis.contracts import AdapterIdentity, ModuleAnalysisResult
 from taut.analysis.python.language_adapter import PythonAstAdapter
+from taut.cache import authenticated
+from taut.cache.authenticated import (
+    MAGIC,
+    ModuleBundle,
+    cache_signing_context,
+    decode_authenticated_bundle,
+    decode_authenticated_module,
+    encode_authenticated_bundle,
+    encode_authenticated_module,
+)
 from taut.cache.store import MAX_AGE_SECONDS, CacheKey, CacheStore
+from taut.domain import facts
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath, SourceRange
 
@@ -82,6 +97,155 @@ def test_module_hit_miss_invalidation_corruption_and_access(tmp_path: Path) -> N
         store._conn().execute("UPDATE module_entries SET payload=?", (b"bad",))
         assert store.get_module(_key()) is None
         assert store.stats().module_entries == 0
+
+
+def test_authenticated_module_cache_is_key_bound_and_restricted() -> None:
+    signing_key = b"k" * 32
+    context = cache_signing_context(("source", "python", "1", "resolver", "app.a"))
+    payload = encode_authenticated_module(_rich_result(), context=context, signing_key=signing_key)
+    assert (
+        decode_authenticated_module(payload, context=context, signing_key=signing_key)
+        == _rich_result()
+    )
+    assert (
+        decode_authenticated_module(payload + b"x", context=context, signing_key=signing_key)
+        is None
+    )
+    assert (
+        decode_authenticated_module(
+            payload,
+            context=cache_signing_context(("different",)),
+            signing_key=signing_key,
+        )
+        is None
+    )
+    assert decode_authenticated_module(payload, context=context, signing_key=b"x" * 32) is None
+    assert decode_authenticated_module(b"", context=context, signing_key=signing_key) is None
+    assert (
+        decode_authenticated_module(
+            b"BADMAGIC" + payload[len(MAGIC) :],
+            context=context,
+            signing_key=signing_key,
+        )
+        is None
+    )
+    version_offset = len(MAGIC)
+    wrong_version = payload[:version_offset] + b"\x00\x00" + payload[version_offset + 2 :]
+    assert (
+        decode_authenticated_module(wrong_version, context=context, signing_key=signing_key) is None
+    )
+    bundle_payload = encode_authenticated_bundle(
+        ModuleBundle((("app.a", HASH, _result()),)),
+        context=context,
+        signing_key=signing_key,
+    )
+    assert (
+        decode_authenticated_module(bundle_payload, context=context, signing_key=signing_key)
+        is None
+    )
+    assert decode_authenticated_bundle(payload, context=context, signing_key=signing_key) is None
+    with pytest.raises(ValueError):
+        encode_authenticated_module(_result(), context=context, signing_key=b"short")
+
+    class UntrustedGlobal:
+        def __reduce__(self) -> tuple[object, tuple[str]]:
+            return (eval, ("1 + 1",))
+
+    body = pickle.dumps(UntrustedGlobal(), protocol=5)
+    version = bytes((sys.version_info.major, sys.version_info.minor))
+    signature = hmac.digest(signing_key, MAGIC + version + context + body, "sha256")
+    assert (
+        decode_authenticated_module(
+            MAGIC + version + signature + body,
+            context=context,
+            signing_key=signing_key,
+        )
+        is None
+    )
+
+
+def test_authenticated_store_separates_identical_content_by_module(tmp_path: Path) -> None:
+    signing_key = b"s" * 32
+    adapter = AdapterIdentity("python", "1")
+    first = PythonAstAdapter().analyze_module(make_source("app/a.py", "value = 1"))
+    second = PythonAstAdapter().analyze_module(make_source("app/b.py", "value = 1"))
+    first_key = CacheKey(HASH, adapter, "resolver", "app.a")
+    second_key = CacheKey(HASH, adapter, "resolver", "app.b")
+    with CacheStore(tmp_path, signing_key=signing_key) as store:
+        assert store.put_modules(((first_key, first), (second_key, second)))
+        assert store.get_modules((first_key, second_key)) == (first, second)
+        assert store.stats().module_entries == 2
+    with CacheStore(tmp_path, signing_key=b"w" * 32) as store:
+        assert store.get_modules((first_key, second_key)) == (None, None)
+
+
+def test_authenticated_bundle_stats_context_and_cleanup(tmp_path: Path) -> None:
+    signing_key = b"b" * 32
+    bundle_key = hashlib.sha256(b"bundle").hexdigest()
+    context = cache_signing_context(("project", "resolver"))
+    bundle = ModuleBundle((("app.a", HASH, _result()),))
+    with CacheStore(tmp_path, signing_key=signing_key) as store:
+        assert store.get_module_bundle(bundle_key, context=context) is None
+        assert not store.put_module_bundle("bad", bundle, context=context)
+        assert store.get_module_bundle("bad", context=context) is None
+        assert store.put_module_bundle(bundle_key, bundle, context=context)
+        assert store.get_module_bundle(bundle_key, context=context) == bundle
+        assert store.stats().module_entries == 1
+        assert store.get_module_bundle(bundle_key, context=b"wrong") is None
+        assert store.stats().module_entries == 0
+
+
+def test_user_signing_key_requires_private_regular_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    key_path = tmp_path / "state" / "cache-signing.key"
+    monkeypatch.setattr(authenticated, "_signing_key_path", lambda: key_path)
+    authenticated.load_user_signing_key.cache_clear()
+    try:
+        first = authenticated.load_user_signing_key()
+        assert first is not None and len(first) == authenticated.KEY_BYTES
+        assert key_path.stat().st_mode & 0o077 == 0
+        key_path.chmod(0o644)
+        authenticated.load_user_signing_key.cache_clear()
+        assert authenticated.load_user_signing_key() is None
+        key_path.unlink()
+        target = tmp_path / "target-key"
+        target.write_bytes(b"x" * authenticated.KEY_BYTES)
+        key_path.symlink_to(target)
+        authenticated.load_user_signing_key.cache_clear()
+        assert authenticated.load_user_signing_key() is None
+        key_path.unlink()
+        key_path.write_bytes(b"short")
+        authenticated.load_user_signing_key.cache_clear()
+        assert authenticated.load_user_signing_key() is None
+        blocked_parent = tmp_path / "blocked"
+        blocked_parent.write_text("not a directory")
+        monkeypatch.setattr(authenticated, "_signing_key_path", lambda: blocked_parent / "key")
+        authenticated.load_user_signing_key.cache_clear()
+        assert authenticated.load_user_signing_key() is None
+    finally:
+        authenticated.load_user_signing_key.cache_clear()
+
+
+def test_authenticated_payload_size_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(authenticated, "MAX_PAYLOAD_BYTES", 1)
+    with pytest.raises(ValueError):
+        encode_authenticated_module(_result(), context=b"context", signing_key=b"k" * 32)
+    with CacheStore(tmp_path, signing_key=b"k" * 32) as store:
+        assert not store.put_module_bundle(
+            hashlib.sha256(b"bundle-limit").hexdigest(),
+            ModuleBundle((("app.a", HASH, _result()),)),
+            context=b"context",
+        )
+
+
+def test_authenticated_unpickler_rejects_allowed_module_non_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(facts, "NotACacheType", 1, raising=False)
+    unpickler = authenticated._DomainUnpickler(io.BytesIO(b""))
+    with pytest.raises(pickle.UnpicklingError):
+        unpickler.find_class("taut.domain.facts", "NotACacheType")
 
 
 def test_report_checksum_and_stats(tmp_path: Path) -> None:

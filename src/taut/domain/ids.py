@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 _RULE_ID = re.compile(r"^[A-Z][A-Z0-9_]*[0-9]{3}$")
 _HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
+@lru_cache(maxsize=131_072)
 def _is_dotted_identifier(value: str) -> bool:
-    parts = value.split(".")
-    return bool(parts) and all(part.isidentifier() for part in parts)
+    """Validate repeated decoded identifiers without rescanning every occurrence."""
+    return (
+        bool(value)
+        and not value.startswith(".")
+        and not value.endswith(".")
+        and ".." not in value
+        and value.replace(".", "_").isidentifier()
+    )
 
 
 @dataclass(frozen=True, order=True)

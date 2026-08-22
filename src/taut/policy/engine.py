@@ -236,6 +236,7 @@ class PolicyEngine:
             context.model.module(module_id).completeness.state is CompletenessState.COMPLETE
             for module_id in context.model.modules()
         )
+        capabilities = context.model.capabilities()
         for rule_id, definition in self._registry.definitions.items():
             setting = context.policy.rules.get(rule_id)
             if setting is None or setting.level is RuleLevel.OFF:
@@ -252,16 +253,20 @@ class PolicyEngine:
                 )
                 target_cache[target_key] = targets
             rule_evaluations = list(reuse_by_rule.get(rule_id, ()))
+            shared_reason = self._missing_shared_requirement(
+                definition.requirements,
+                capabilities,
+                project_is_complete,
+            )
             for target in targets:
                 cached = reuse.get((rule_id, target))
                 if cached is not None:
                     rule_evaluations.append(cached)
                     continue
-                reason = self._missing_requirement(
+                reason = shared_reason or self._missing_target_requirement(
                     definition.requirements,
                     target,
                     context,
-                    project_is_complete,
                 )
                 if reason is not None:
                     rule_evaluations.append(
@@ -325,14 +330,13 @@ class PolicyEngine:
         )
         return _Execution(result, reused, len(ordered) - reused)
 
-    def _missing_requirement(
-        self,
+    @staticmethod
+    def _missing_shared_requirement(
         requirements: RuleRequirements,
-        target: RuleTargetRef,
-        context: PolicyContext,
+        capabilities: frozenset[str],
         project_is_complete: bool,
     ) -> EvaluationReason | None:
-        missing_capabilities = requirements.capabilities.difference(context.model.capabilities())
+        missing_capabilities = requirements.capabilities.difference(capabilities)
         if missing_capabilities:
             return EvaluationReason(
                 "missing_capability",
@@ -344,6 +348,14 @@ class PolicyEngine:
                 "incomplete_project",
                 "프로젝트 전체 분석이 완성되지 않았습니다.",
             )
+        return None
+
+    @staticmethod
+    def _missing_target_requirement(
+        requirements: RuleRequirements,
+        target: RuleTargetRef,
+        context: PolicyContext,
+    ) -> EvaluationReason | None:
         if target.kind is not RuleTarget.PROJECT and target.module_id is not None:
             completeness = context.model.module(target.module_id).completeness
             if _STAGE_ORDER[completeness.stage] < _STAGE_ORDER[requirements.minimum_stage]:
