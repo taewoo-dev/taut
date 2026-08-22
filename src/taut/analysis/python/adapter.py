@@ -422,7 +422,8 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
     def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
         pushed_contexts = 0
         for item in node.items:
-            self.visit(item.context_expr)
+            with self._syntax.occurrence(position=SyntaxPosition.CONTEXT_MANAGER):
+                self.visit(item.context_expr)
             if isinstance(item.context_expr, ast.Call):
                 self.enclosing_contexts.append(self._resolve(item.context_expr.func))
                 pushed_contexts += 1

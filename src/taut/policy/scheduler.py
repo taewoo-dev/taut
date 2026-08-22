@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from taut.configuration.catalog import EffectResolutionState
+from taut.configuration.manifest import Zone
 from taut.domain.evaluations import RuleTarget, RuleTargetRef
 from taut.domain.ids import ModuleId
 from taut.policy.context import PolicyContext
@@ -12,22 +13,25 @@ class RuleScheduler:
         self,
         definition: RuleDefinition,
         context: PolicyContext,
+        applies_to_zones: frozenset[Zone] | None = None,
     ) -> tuple[RuleTargetRef, ...]:
-        return self._targets_for(definition, context, None)
+        return self._targets_for(definition, context, None, applies_to_zones)
 
     def targets_for_modules(
         self,
         definition: RuleDefinition,
         context: PolicyContext,
         module_ids: frozenset[ModuleId],
+        applies_to_zones: frozenset[Zone] | None = None,
     ) -> tuple[RuleTargetRef, ...]:
-        return self._targets_for(definition, context, module_ids)
+        return self._targets_for(definition, context, module_ids, applies_to_zones)
 
     def _targets_for(
         self,
         definition: RuleDefinition,
         context: PolicyContext,
         module_ids: frozenset[ModuleId] | None,
+        applies_to_zones: frozenset[Zone] | None,
     ) -> tuple[RuleTargetRef, ...]:
         target_kind = definition.target
         if target_kind is RuleTarget.PROJECT:
@@ -44,7 +48,8 @@ class RuleScheduler:
             module = context.model.module(module_id)
             if not module.module.is_policy_target:
                 continue
-            if context.classification.get(module_id).zone not in definition.applies_to_zones:
+            zones = applies_to_zones or definition.applies_to_zones
+            if context.classification.get(module_id).zone not in zones:
                 continue
             if target_kind is RuleTarget.MODULE:
                 targets.append(RuleTargetRef(RuleTarget.MODULE, module_id=module_id))

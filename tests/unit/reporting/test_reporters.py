@@ -43,6 +43,7 @@ def _report(*, level: RuleLevel = RuleLevel.ENFORCED) -> RunReport:
         engine_issues=(),
         coverage=policy_result.coverage,
         ignore_audit=processing.ignore_audit,
+        approval_audit=processing.approval_audit,
     )
 
 
@@ -58,6 +59,7 @@ def test_text_and_json_report_same_rule_and_location() -> None:
     assert diagnostics[0]["rule_id"] == "TIME001"
     assert location["path"] == "app/service.py"
     assert payload["decision_digest"] == "a" * 64
+    assert payload["approvals"] == {"used": [], "unused": []}
 
 
 def test_text_output_is_compact_by_default_and_verbose_on_request() -> None:
@@ -73,6 +75,7 @@ def test_text_output_is_compact_by_default_and_verbose_on_request() -> None:
     assert "판정 기준:" not in compact
     assert "도움: use clock" in verbose
     assert "판정 기준:" in verbose
+    assert "approval: 사용 0, 미사용 0" in verbose
 
 
 def test_text_output_uses_warning_for_advisory_findings() -> None:

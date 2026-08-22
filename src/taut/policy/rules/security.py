@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from taut.configuration.catalog import AccessPath, Effect, EffectResolutionState
-from taut.configuration.manifest import Zone
+from taut.configuration.manifest import Role, Zone
 from taut.domain.evaluations import (
     ChangeImpact,
     EvaluationReason,
@@ -21,7 +21,7 @@ from taut.policy.rules.helpers import (
 )
 
 RULE_ID = RuleId("SEC001")
-RULE_VERSION = 2
+RULE_VERSION = 3
 _SECURITY_EFFECTS = frozenset(
     {
         Effect.SECURITY_ENVIRONMENT,
@@ -61,10 +61,7 @@ class DirectSecurityAccessRule:
             effects = resolution.effects.intersection(_SECURITY_EFFECTS)
             if not effects or resolution.access_path is AccessPath.APPROVED_WRAPPER:
                 continue
-            if all(
-                role in context.policy.security.allowed_roles.get(effect, frozenset())
-                for effect in effects
-            ):
+            if all(_role_allowed(role, effect, context) for effect in effects):
                 continue
             findings.append(_call_finding(call, role.value, effects))
         for reference in module.references:
@@ -84,12 +81,20 @@ class DirectSecurityAccessRule:
             if not _is_direct_environ_reference(reference, module.calls):
                 continue
             effect = Effect.SECURITY_ENVIRONMENT
-            if role in context.policy.security.allowed_roles.get(effect, frozenset()):
+            if _role_allowed(role, effect, context):
                 continue
             findings.append(_reference_finding(reference, role.value, effect))
         if findings:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.FAIL, tuple(findings))
         return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
+
+
+def _role_allowed(role: Role, effect: Effect, context: PolicyContext) -> bool:
+    allowed = context.policy.security.allowed_roles.get(effect, frozenset())
+    if effect in {Effect.SECURITY_ENVIRONMENT, Effect.SECURITY_SECRET}:
+        allowed = allowed.union(context.policy.boundaries.configuration_roles)
+        allowed = allowed.union(context.policy.boundaries.bootstrap_roles)
+    return role in allowed
 
 
 def _is_direct_environ_reference(

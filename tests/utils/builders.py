@@ -36,6 +36,7 @@ from taut.configuration.effective_policy import (
     CodeConventionPolicy,
     EffectivePolicy,
     ImportBoundary,
+    PolicyApproval,
     SecurityPolicy,
 )
 from taut.configuration.manifest import (
@@ -201,6 +202,8 @@ def make_context(
     allowed_imports: dict[str, frozenset[str]] | None = None,
     transaction_owners: frozenset[str] = frozenset(),
     transaction_session_providers: frozenset[str] = frozenset(),
+    rule_zones: dict[str, frozenset[str]] | None = None,
+    approvals: tuple[PolicyApproval, ...] = (),
     import_boundaries: tuple[
         tuple[str, frozenset[str], tuple[str, ...]]
         | tuple[str, frozenset[str], tuple[str, ...], tuple[str, ...]],
@@ -325,6 +328,11 @@ def make_context(
         transaction_session_providers=frozenset(
             SymbolId(symbol) for symbol in transaction_session_providers
         ),
+        rule_zones=FrozenMap(
+            (RuleId(rule), frozenset(Zone(zone) for zone in zones))
+            for rule, zones in (rule_zones or {}).items()
+        ),
+        approvals=tuple(sorted(approvals, key=lambda approval: approval.key)),
         import_boundaries=tuple(
             ImportBoundary(
                 item[0],

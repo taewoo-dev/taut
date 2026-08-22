@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from tests.utils.builders import analyze, make_context, make_source
 
+from taut.configuration.effective_policy import PolicyApproval
 from taut.domain.diagnostics import FindingDisposition
 from taut.domain.evaluations import RuleLevel
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import RuleId
+from taut.domain.ids import RuleId, SymbolId
 from taut.domain.ignores import InlineIgnore
 from taut.domain.location import ProjectPath, SourceRange
 from taut.finding_processing.finding_processor import FindingProcessor
@@ -80,3 +83,55 @@ def test_ignore_for_other_rule_does_not_hide_finding() -> None:
     assert result.diagnostics[0].rule_id == RuleId("TIME001")
     assert result.diagnostics[0].disposition is FindingDisposition.ACTIVE
     assert result.diagnostics[1].rule_id == RuleId("IGNORE001")
+
+
+def test_symbol_target_approval_records_reason_and_audit_key() -> None:
+    context, policy_result = _time_result()
+    finding = policy_result.findings[0]
+    target = str(finding.arguments["symbol"])
+    approval = PolicyApproval(
+        RuleId("TIME001"),
+        SymbolId("app.service"),
+        "legacy boundary wraps the clock at runtime",
+        target=target,
+        kind="allow",
+    )
+    policy = replace(context.policy, approvals=(approval,))
+
+    result = FindingProcessor().process(
+        findings=(finding,),
+        policy=policy,
+        help_by_rule=FrozenMap(),
+        ignores=(),
+        classifications=context.classification,
+    )
+
+    assert result.diagnostics[0].disposition is FindingDisposition.IGNORED
+    assert result.ignore_audit.used == ()
+    assert result.approval_audit.used == (approval.key,)
+    assert ("approval_reason", approval.reason) in {
+        (item.key, item.value) for item in result.diagnostics[0].evidence
+    }
+
+
+def test_approval_does_not_match_another_target() -> None:
+    context, policy_result = _time_result()
+    approval = PolicyApproval(
+        RuleId("TIME001"),
+        SymbolId("app.service"),
+        "only monotonic is approved",
+        target="time.monotonic",
+    )
+    policy = replace(context.policy, approvals=(approval,))
+
+    result = FindingProcessor().process(
+        findings=(policy_result.findings[0],),
+        policy=policy,
+        help_by_rule=FrozenMap(),
+        ignores=(),
+        classifications=context.classification,
+    )
+
+    assert result.diagnostics[0].disposition is FindingDisposition.ACTIVE
+    assert result.ignore_audit.unused == ()
+    assert result.approval_audit.unused == (approval.key,)

@@ -353,8 +353,9 @@ def model_shape_rule_definitions() -> tuple[RuleDefinition, ...]:
     rows = (
         (
             DTO_RULE_ID,
-            "DTO 깊은 불변성",
-            "내부 DTO는 frozen dataclass와 변경 불가능한 필드 타입을 사용하세요.",
+            "DTO 변경 방지와 mutable concrete type 노출 금지",
+            "내부 DTO는 frozen dataclass를 사용하고 list·dict·set 같은 변경 가능한 "
+            "구체 타입을 필드 계약으로 노출하지 마세요.",
             ImmutableDtoRule(),
             "dto",
         ),

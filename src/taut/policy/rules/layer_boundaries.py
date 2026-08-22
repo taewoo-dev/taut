@@ -13,7 +13,7 @@ from taut.domain.facts import (
     ResolutionState,
 )
 from taut.domain.findings import EvidenceItem, Finding, FindingSubject
-from taut.domain.ids import ModuleId, RuleId, SymbolId
+from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
@@ -30,6 +30,7 @@ QUERY_RULE_ID = RuleId("QUERY001")
 MODEL_RULE_ID = RuleId("MODEL001")
 DEPENDENCY_RULE_ID = RuleId("DEPENDS001")
 RULE_VERSION = 1
+DEPENDENCY_RULE_VERSION = 2
 
 _ALL_ZONES = frozenset({Zone("prod"), Zone("test"), Zone("migration"), Zone("script")})
 _ENTRY_TRANSACTION_METHODS = frozenset({"begin", "begin_nested", "commit", "rollback"})
@@ -117,10 +118,11 @@ def build_boundary_finding(
     message_key: str,
     kind: str,
     value: str,
+    rule_version: int = RULE_VERSION,
 ) -> Finding:
     return build_finding(
         rule_id=rule_id,
-        rule_version=RULE_VERSION,
+        rule_version=rule_version,
         module_id=module_id,
         enclosing_symbol=enclosing_symbol,
         subject=subject,
@@ -226,10 +228,14 @@ class _RoleBoundaryRule:
         boundaries = context.policy.boundaries
         if self.mode == "entry":
             prefix = _matches_import(import_fact, boundaries.database_modules)
-            if prefix is not None:
+            if prefix is not None and not self._entry_kind_allowed(
+                "database", import_fact.module_id, context
+            ):
                 return "database", import_fact.imported_name
             prefix = _matches_import(import_fact, boundaries.external_modules)
-            if prefix is not None:
+            if prefix is not None and not self._entry_kind_allowed(
+                "external", import_fact.module_id, context
+            ):
                 return "external", import_fact.imported_name
         elif self.mode == "service":
             prefix = _matches_import(import_fact, boundaries.transport_modules)
@@ -265,16 +271,24 @@ class _RoleBoundaryRule:
         boundaries = context.policy.boundaries
         if self.mode == "entry":
             primitive = _database_primitive(call, context)
-            if primitive is not None:
+            if primitive is not None and not self._entry_kind_allowed(
+                "database", call.module_id, context
+            ):
                 return "database", primitive
             provider = _argument_uses_symbol(call, context.policy.transaction_session_providers)
-            if provider is not None:
+            if provider is not None and not self._entry_kind_allowed(
+                "session", call.module_id, context
+            ):
                 return "session", provider.value
             exception = _matches_symbol(call, boundaries.transport_exception_calls)
-            if exception is not None:
+            if exception is not None and not self._entry_kind_allowed(
+                "transport_exception", call.module_id, context
+            ):
                 return "transport_exception", exception.value
             external = _external_call(call, context)
-            if external is not None:
+            if external is not None and not self._entry_kind_allowed(
+                "external", call.module_id, context
+            ):
                 return "external", external
         elif self.mode == "service":
             primitive = _database_primitive(call, context)
@@ -307,6 +321,15 @@ class _RoleBoundaryRule:
             if transport is not None:
                 return "transport", call.ref.symbol.value if call.ref.symbol else transport.value
         return None
+
+    def _entry_kind_allowed(self, kind: str, module_id: ModuleId, context: PolicyContext) -> bool:
+        if self.mode != "entry":
+            return False
+        # The caller has already established that the module has this rule's entry role.
+        role = context.classification.get(module_id).role
+        return role is not None and kind in context.policy.boundaries.entry_allowed_kinds.get(
+            role, frozenset()
+        )
 
 
 def _is_statement_import(import_fact: ImportFact, symbols: tuple[SymbolId, ...]) -> bool:
@@ -347,7 +370,9 @@ class DependencyInjectionBoundaryRule:
             return uncertainty
         findings: list[Finding] = []
         matched = False
-        for call in context.model.calls_in(target.module_id):
+        calls = context.model.calls_in(target.module_id)
+        calls_by_id = {call.id: call for call in calls}
+        for call in calls:
             dependency = _matches_symbol(
                 call,
                 context.policy.boundaries.dependency_injection_calls,
@@ -355,7 +380,9 @@ class DependencyInjectionBoundaryRule:
             if dependency is None:
                 continue
             matched = True
-            if role in context.policy.boundaries.entry_roles:
+            if role in context.policy.boundaries.entry_roles or _dependency_registration(
+                call, calls_by_id, role, context
+            ):
                 continue
             findings.append(
                 build_boundary_finding(
@@ -367,6 +394,7 @@ class DependencyInjectionBoundaryRule:
                     message_key="dependency.outside_entry",
                     kind="dependency",
                     value=dependency.value,
+                    rule_version=DEPENDENCY_RULE_VERSION,
                 )
             )
         if findings:
@@ -378,6 +406,30 @@ class DependencyInjectionBoundaryRule:
             )
         verdict = RuleVerdict.PASS if matched else RuleVerdict.NOT_APPLICABLE
         return RuleEvaluation(DEPENDENCY_RULE_ID, target, verdict, ())
+
+
+def _dependency_registration(
+    call: CallFact,
+    calls_by_id: dict[FactId, CallFact],
+    role: Role,
+    context: PolicyContext,
+) -> bool:
+    if role not in context.policy.boundaries.dependency_registration_roles:
+        return False
+    if call.context.argument_name != "dependencies" or call.context.parent_fact_id is None:
+        return False
+    parent = calls_by_id.get(call.context.parent_fact_id)
+    return (
+        parent is not None
+        and parent.ref.symbol is not None
+        and parent.ref.symbol.value
+        in {
+            "fastapi.APIRouter",
+            "fastapi.FastAPI",
+            "fastapi.applications.FastAPI",
+            "fastapi.routing.APIRouter",
+        }
+    )
 
 
 def layer_boundary_rule_definitions() -> tuple[RuleDefinition, ...]:
@@ -431,7 +483,7 @@ def layer_boundary_rule_definitions() -> tuple[RuleDefinition, ...]:
     )
     dependency = RuleDefinition(
         DEPENDENCY_RULE_ID,
-        RULE_VERSION,
+        DEPENDENCY_RULE_VERSION,
         "Depends 사용 위치",
         "요청 의존성 주입은 Router·Consumer 같은 진입점에서만 사용하세요.",
         RuleTarget.MODULE,

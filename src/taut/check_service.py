@@ -273,6 +273,8 @@ class ResidentCheckSession:
             policy=config.policy,
             help_by_rule=help_by_rule,
             ignores=ignore_result.directives,
+            classifications=classifications,
+            preused_approval_keys=policy_result.result.approval_keys,
         )
         report = build_run_report(
             snapshot=snapshot,
@@ -290,6 +292,7 @@ class ResidentCheckSession:
             ),
             coverage=policy_result.result.coverage,
             ignore_audit=processing.ignore_audit,
+            approval_audit=processing.approval_audit,
         )
         rendered = (
             render_json(report)

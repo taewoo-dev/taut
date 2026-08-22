@@ -299,6 +299,8 @@ def build_finding(
     return Finding(
         rule_id=rule_id,
         rule_version=rule_version,
+        module_id=module_id,
+        enclosing_symbol=enclosing_symbol,
         subject=subject,
         message_key=message_key,
         arguments=FrozenMap(arguments),

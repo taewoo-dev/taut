@@ -125,6 +125,10 @@ def render_text(
     lines.append(
         f"ignore: 사용 {len(report.ignore_audit.used)}, 미사용 {len(report.ignore_audit.unused)}"
     )
+    lines.append(
+        "approval: "
+        f"사용 {len(report.approval_audit.used)}, 미사용 {len(report.approval_audit.unused)}"
+    )
     lines.append(f"판정 기준: {report.run.decision_digest}")
     reason = f" ({', '.join(report.exit_decision.reasons)})" if report.exit_decision.reasons else ""
     lines.append(f"종료 값: {report.exit_decision.code}{reason}")

@@ -4,6 +4,7 @@ from taut.domain.diagnostics import Diagnostic, FindingDisposition
 from taut.domain.evaluations import RuleLevel
 from taut.domain.issues import EngineIssue
 from taut.domain.reports import (
+    ApprovalAudit,
     CoverageReport,
     ExitDecision,
     IgnoreAudit,
@@ -22,6 +23,7 @@ def build_run_report(
     engine_issues: tuple[EngineIssue, ...],
     coverage: CoverageReport,
     ignore_audit: IgnoreAudit,
+    approval_audit: ApprovalAudit,
 ) -> RunReport:
     return RunReport(
         run=RunMetadata(engine_version, 3, snapshot.id, decision_digest),
@@ -30,6 +32,7 @@ def build_run_report(
         coverage=coverage,
         analysis_coverage=snapshot.coverage,
         ignore_audit=ignore_audit,
+        approval_audit=approval_audit,
         exit_decision=decide_exit(diagnostics, engine_issues, coverage),
     )
 

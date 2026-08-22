@@ -6,9 +6,15 @@ from tests.utils.builders import analyze, make_context, make_source
 
 from taut.analysis.contracts import SourceInput
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect
-from taut.configuration.effective_policy import BoundaryPolicy, CodeConventionPolicy
+from taut.configuration.effective_policy import (
+    BoundaryPolicy,
+    CodeConventionPolicy,
+    PolicyApproval,
+    SecurityPolicy,
+)
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import RuleVerdict
+from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.engine import PolicyEngine, PolicyRunResult
 from taut.policy.rules import builtin_rule_registry
@@ -20,6 +26,9 @@ def _run(
     allowed_imports: dict[str, frozenset[str]] | None = None,
     owners: frozenset[str] = frozenset(),
     session_providers: frozenset[str] = frozenset(),
+    zones: dict[str, tuple[str, ...]] | None = None,
+    rule_zones: dict[str, frozenset[str]] | None = None,
+    approvals: tuple[PolicyApproval, ...] = (),
     import_boundaries: tuple[
         tuple[str, frozenset[str], tuple[str, ...]]
         | tuple[str, frozenset[str], tuple[str, ...], tuple[str, ...]],
@@ -29,20 +38,25 @@ def _run(
     max_lines_by_role: dict[str, int] | None = None,
     boundary_policy: BoundaryPolicy | None = None,
     code_policy: CodeConventionPolicy | None = None,
+    security_policy: SecurityPolicy | None = None,
     entries: tuple[CatalogEntry, ...] = (),
 ) -> PolicyRunResult:
     snapshot = analyze(*sources)
     context = make_context(
         snapshot,
         roles=roles,
+        zones=zones,
         allowed_imports=allowed_imports,
         transaction_owners=owners,
         transaction_session_providers=session_providers,
+        rule_zones=rule_zones,
+        approvals=approvals,
         import_boundaries=import_boundaries,
         default_max_lines=default_max_lines,
         max_lines_by_role=max_lines_by_role,
         boundary_policy=boundary_policy,
         code_policy=code_policy,
+        security_policy=security_policy,
         extra_catalog_entries=entries,
     )
     return PolicyEngine(builtin_rule_registry()).run(context)
@@ -1735,3 +1749,205 @@ def test_raw_sql_rejects_dynamic_schema_expression_and_direct_string_execution()
 
     sql_findings = [finding for finding in result.findings if finding.rule_id == RuleId("SQL001")]
     assert len(sql_findings) == 1
+
+
+def test_session_participant_contract_distinguishes_helpers_and_owners() -> None:
+    service = make_source(
+        "app/service.py",
+        "from sqlalchemy.ext.asyncio import AsyncSession\n"
+        "def transaction_participant(fn):\n    return fn\n\n"
+        "class Producer:\n    async def commit(self):\n        return None\n\n"
+        "async def _load(session: AsyncSession):\n    return 1\n\n"
+        "async def participating(session: AsyncSession):\n    return 1\n\n"
+        "async def harmless(session: AsyncSession, producer: Producer):\n"
+        "    await producer.commit()\n\n"
+        "@transaction_participant\n"
+        "async def decorated(session: AsyncSession):\n    return 1\n\n"
+        "async def unsafe(session: AsyncSession):\n    await session.commit()",
+    )
+    approvals = (
+        PolicyApproval(
+            RuleId("SESSION003"),
+            SymbolId("app.service.participating"),
+            "public transaction participant",
+            target="sqlalchemy.ext.asyncio.AsyncSession",
+            kind="participant",
+        ),
+        PolicyApproval(
+            RuleId("SESSION003"),
+            SymbolId("app.service.unsafe"),
+            "public transaction participant",
+            target="sqlalchemy.ext.asyncio.AsyncSession",
+            kind="participant",
+        ),
+        PolicyApproval(
+            RuleId("SESSION003"),
+            SymbolId("app.service.harmless"),
+            "participant may commit a non-database producer",
+            target="sqlalchemy.ext.asyncio.AsyncSession",
+            kind="participant",
+        ),
+        PolicyApproval(
+            RuleId("SESSION003"),
+            SymbolId("app.service.transaction_participant"),
+            "decorator marks transaction participants",
+            target="sqlalchemy.ext.asyncio.AsyncSession",
+            kind="participant",
+        ),
+    )
+    result = _run(
+        service,
+        roles={"service": ("app/service.py",)},
+        allowed_imports={"service": frozenset({"service"})},
+        approvals=approvals,
+        boundary_policy=_strict_boundary_policy(),
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("SESSION003")]
+    assert len(findings) == 1
+    assert findings[0].message_key == "session.participant_owns_transaction"
+    assert findings[0].enclosing_symbol == SymbolId("app.service.unsafe")
+    assert result.approval_keys == tuple(sorted(approval.key for approval in approvals))
+
+
+def test_entry_roles_can_have_distinct_allowed_effect_kinds() -> None:
+    worker = make_source("app/worker.py", "import httpx\nclient = httpx.AsyncClient()")
+    policy = replace(
+        _strict_boundary_policy(),
+        entry_allowed_kinds=FrozenMap(((Role("task"), frozenset({"external"})),)),
+    )
+    result = _run(
+        worker,
+        roles={"task": ("app/worker.py",)},
+        allowed_imports={"task": frozenset({"task"})},
+        boundary_policy=policy,
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("ENTRY001")]
+
+
+def test_adapter_scoped_client_factory_is_allowed_only_in_context_manager() -> None:
+    adapter = make_source(
+        "app/adapter.py",
+        "import httpx\n"
+        "async def scoped():\n"
+        "    async with httpx.AsyncClient() as client:\n"
+        "        return client\n"
+        "client = httpx.AsyncClient()",
+    )
+    policy = replace(
+        _strict_boundary_policy(),
+        scoped_construction_roles=frozenset({Role("adapter")}),
+    )
+    result = _run(
+        adapter,
+        roles={"adapter": ("app/adapter.py",)},
+        allowed_imports={"adapter": frozenset({"adapter"})},
+        boundary_policy=policy,
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("WIRING001")]
+    assert len(findings) == 1
+    assert findings[0].primary_location.start_line == 4
+
+
+def test_composition_can_register_fastapi_dependencies() -> None:
+    composition = make_source(
+        "app/composition.py",
+        "from fastapi import Depends, FastAPI\n"
+        "def auth():\n    return 1\n"
+        "app = FastAPI(dependencies=[Depends(auth)])",
+    )
+    policy = replace(
+        _strict_boundary_policy(),
+        dependency_registration_roles=frozenset({Role("composition")}),
+    )
+    result = _run(
+        composition,
+        roles={"composition": ("app/composition.py",)},
+        allowed_imports={"composition": frozenset({"composition"})},
+        boundary_policy=policy,
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("DEPENDS001")]
+
+
+def test_annotated_pydantic_field_metadata_is_recognized() -> None:
+    schema = make_source(
+        "app/schema.py",
+        "from typing import Annotated\nfrom pydantic import BaseModel, Field\n"
+        "class UserResponse(BaseModel):\n"
+        "    name: Annotated[str, Field(description='name', examples=['Ada'])]",
+    )
+    result = _run(
+        schema,
+        roles={"schema": ("app/schema.py",)},
+        allowed_imports={"schema": frozenset({"schema"})},
+        code_policy=_code_policy(),
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("API002")]
+
+
+def test_schema_index_sql_and_non_native_no_constraint_exception_are_supported() -> None:
+    enum = make_source(
+        "app/enums.py",
+        "from enum import StrEnum\nclass Status(StrEnum):\n    ACTIVE = 'active'",
+    )
+    model = make_source(
+        "app/model.py",
+        "from sqlalchemy import Enum as SQLEnum, Index, text\n"
+        "from app.enums import Status\n"
+        "_ACTIVE = \"status = 'active'\"\n"
+        "index = Index('ix_active', text(_ACTIVE))\n"
+        "status = SQLEnum(Status, name='status', "
+        "values_callable=lambda enum: [item.value for item in enum], "
+        "native_enum=False, create_constraint=False)",
+    )
+    code = replace(
+        _code_policy(),
+        native_enum_false_exceptions=frozenset({SymbolId("app.enums.Status")}),
+        native_enum_no_constraint_exceptions=frozenset({SymbolId("app.enums.Status")}),
+    )
+    boundaries = replace(
+        _strict_boundary_policy(),
+        schema_sql_roles=frozenset({Role("model")}),
+        schema_sql_parent_calls=(SymbolId("sqlalchemy.Index"),),
+    )
+    result = _run(
+        enum,
+        model,
+        roles={"core": ("app/enums.py",), "model": ("app/model.py",)},
+        allowed_imports={
+            "core": frozenset({"core"}),
+            "model": frozenset({"model", "core"}),
+        },
+        boundary_policy=boundaries,
+        code_policy=code,
+    )
+
+    assert not [
+        finding
+        for finding in result.findings
+        if finding.rule_id in {RuleId("SQL001"), RuleId("ORM002")}
+    ]
+
+
+def test_rule_zone_can_exclude_test_only_lazy_import_rules() -> None:
+    test_module = make_source(
+        "tests/test_lazy.py",
+        "def load():\n    import importlib\n    return importlib.import_module('optional')",
+    )
+    result = _run(
+        test_module,
+        roles={"test": ("tests/**",)},
+        zones={"test": ("tests/**",)},
+        rule_zones={"IMPORT001": frozenset({"prod"}), "IMPORT002": frozenset({"prod"})},
+        allowed_imports={"test": frozenset({"test"})},
+    )
+
+    assert not [
+        finding
+        for finding in result.findings
+        if finding.rule_id in {RuleId("IMPORT001"), RuleId("IMPORT002")}
+    ]

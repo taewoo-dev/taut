@@ -55,6 +55,7 @@ class SyntaxPosition(StrEnum):
     DEFAULT = "default"
     ARGUMENT = "argument"
     METADATA = "metadata"
+    CONTEXT_MANAGER = "context_manager"
 
 
 class ExecutionPhase(StrEnum):

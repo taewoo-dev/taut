@@ -64,6 +64,7 @@ class RuleEvaluation:
     findings: tuple[Finding, ...]
     reason: EvaluationReason | None = None
     coverage_gaps: tuple[EvaluationReason, ...] = ()
+    approval_keys: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.verdict is RuleVerdict.FAIL and not self.findings:
@@ -76,3 +77,5 @@ class RuleEvaluation:
             raise ValueError("only indeterminate evaluation can contain a reason")
         if len(self.coverage_gaps) != len(set(self.coverage_gaps)):
             raise ValueError("coverage gaps must be unique")
+        if self.approval_keys != tuple(sorted(set(self.approval_keys))):
+            raise ValueError("approval keys must be unique and sorted")

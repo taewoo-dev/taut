@@ -74,9 +74,10 @@ class CountingScheduler(RuleScheduler):
         self,
         definition: RuleDefinition,
         context: PolicyContext,
+        applies_to_zones: frozenset[Zone] | None = None,
     ) -> tuple[RuleTargetRef, ...]:
         self.calls += 1
-        return super().targets_for(definition, context)
+        return super().targets_for(definition, context, applies_to_zones)
 
 
 class CountingEffectResolver(EffectResolver):

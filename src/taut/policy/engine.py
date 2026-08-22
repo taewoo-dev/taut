@@ -54,6 +54,7 @@ class PolicyRunResult:
     findings: tuple[Finding, ...]
     engine_issues: tuple[EngineIssue, ...]
     coverage: CoverageReport
+    approval_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -243,13 +244,16 @@ class PolicyEngine:
                 continue
             enabled_rules += 1
             selected_modules = target_modules.get(rule_id) if target_modules is not None else None
-            target_key = (definition.target, definition.applies_to_zones, selected_modules)
+            applies_to_zones = context.policy.rule_zones.get(rule_id, definition.applies_to_zones)
+            target_key = (definition.target, applies_to_zones, selected_modules)
             targets = target_cache.get(target_key)
             if targets is None:
                 targets = (
-                    self._scheduler.targets_for(definition, context)
+                    self._scheduler.targets_for(definition, context, applies_to_zones)
                     if selected_modules is None
-                    else self._scheduler.targets_for_modules(definition, context, selected_modules)
+                    else self._scheduler.targets_for_modules(
+                        definition, context, selected_modules, applies_to_zones
+                    )
                 )
                 target_cache[target_key] = targets
             rule_evaluations = list(reuse_by_rule.get(rule_id, ()))
@@ -322,7 +326,10 @@ class PolicyEngine:
             )
         )
         coverage = _coverage(enabled_rules, ordered, context)
-        result = PolicyRunResult(ordered, findings, tuple(issues), coverage)
+        approval_keys = tuple(
+            sorted({key for evaluation in ordered for key in evaluation.approval_keys})
+        )
+        result = PolicyRunResult(ordered, findings, tuple(issues), coverage, approval_keys)
         reused = (
             sum(len(items) for items in reuse_by_rule.values())
             if prior_by_rule is not None

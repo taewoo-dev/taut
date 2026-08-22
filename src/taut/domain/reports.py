@@ -52,6 +52,12 @@ class IgnoreAudit:
 
 
 @dataclass(frozen=True, order=True)
+class ApprovalAudit:
+    used: tuple[str, ...] = ()
+    unused: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, order=True)
 class RunMetadata:
     engine_version: str
     report_schema_version: int
@@ -85,4 +91,5 @@ class RunReport:
     coverage: CoverageReport
     analysis_coverage: AnalysisCoverage
     ignore_audit: IgnoreAudit
+    approval_audit: ApprovalAudit
     exit_decision: ExitDecision

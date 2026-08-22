@@ -118,6 +118,78 @@ def test_pyproject_configuration_uses_concise_tables_and_builtin_defaults(
     )
 
 
+def test_pyproject_loads_role_zone_and_reasoned_symbol_approvals(tmp_path: Path) -> None:
+    content = (
+        _PYPROJECT_VALID
+        + """
+
+[tool.taut.rule_zones]
+IMPORT001 = ["prod"]
+IMPORT002 = ["prod", "migration"]
+
+[tool.taut.boundary_extensions.entry_allowed_kinds]
+task = ["external"]
+
+[tool.taut.security]
+environment_roles = ["composition"]
+token_roles = ["security_wrapper"]
+
+[[tool.taut.approvals]]
+rule = "SESSION003"
+symbol = "app.services.notifications._persist"
+target = "sqlalchemy.ext.asyncio.AsyncSession"
+kind = "participant"
+zones = ["prod"]
+reason = "called only inside the notification transaction"
+"""
+    )
+    _write_pyproject(tmp_path, content)
+
+    policy = load_project_configuration(tmp_path).policy
+    approval = policy.approvals[0]
+
+    assert policy.rule_zones[RuleId("IMPORT001")] == frozenset({Zone("prod")})
+    assert policy.boundaries.entry_allowed_kinds[Role("task")] == frozenset({"external"})
+    assert Role("composition") in policy.security.allowed_roles[Effect.SECURITY_ENVIRONMENT]
+    assert Role("security_wrapper") in policy.security.allowed_roles[Effect.SECURITY_TOKEN]
+    assert approval.symbol == SymbolId("app.services.notifications._persist")
+    assert approval.kind == "participant"
+    assert approval.reason == "called only inside the notification transaction"
+
+
+@pytest.mark.parametrize(
+    "extension, message",
+    [
+        ("[rule_zones]\nUNKNOWN001 = ['prod']", "unknown rule_zones"),
+        ("[rule_zones]\nIMPORT001 = []", "requires at least one zone"),
+        ("[rule_zones]\nIMPORT001 = ['staging']", "unknown rule_zones"),
+        (
+            "[[approvals]]\nrule='UNKNOWN001'\nsymbol='app.x'\nreason='test'",
+            "unknown approval rule",
+        ),
+        (
+            "[[approvals]]\nrule='IMPORT001'\nsymbol='app.x'\nzones=['staging']\nreason='test'",
+            "unknown approval zones",
+        ),
+        (
+            "[[approvals]]\nrule='IMPORT001'\nsymbol='app.x'\nkind='partcipant'\nreason='test'",
+            "unknown policy approval kind",
+        ),
+        (
+            "[[approvals]]\nrule='IMPORT001'\nsymbol='app.x'\nkind='participant'\nreason='test'",
+            "only valid for SESSION003",
+        ),
+    ],
+)
+def test_policy_scope_configuration_rejects_unknown_rules_and_zones(
+    tmp_path: Path, extension: str, message: str
+) -> None:
+    _write(tmp_path, "schema_version = 3\n" + extension)
+
+    with pytest.raises(PolicyConfigError, match=message):
+        load_project_configuration(tmp_path)
+
+
 def test_pyproject_non_strict_mode_reports_builtin_rules_as_advisory(tmp_path: Path) -> None:
     _write_pyproject(tmp_path, _PYPROJECT_VALID.replace("strict = true", "strict = false"))
 

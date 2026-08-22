@@ -56,6 +56,36 @@ wrappers = ["app.adapters.external_call"]
 shared_modules = ["app.core.enums"]
 ```
 
+Rules can be scoped by zone, entrypoint roles can receive distinct effect allowances, and an
+intentional exception can be approved for one exact symbol with a required reason:
+
+```toml
+[tool.taut.rule_zones]
+IMPORT001 = ["prod", "migration", "script"]
+IMPORT002 = ["prod", "migration", "script"]
+
+[tool.taut.boundary_extensions.entry_allowed_kinds]
+task = ["external"]
+
+[tool.taut.layers]
+scoped_construction = ["adapter"]
+dependency_registration = ["composition"]
+
+[[tool.taut.approvals]]
+rule = "SESSION003"
+symbol = "app.services.notifications._persist"
+target = "sqlalchemy.ext.asyncio.AsyncSession"
+kind = "participant"
+zones = ["prod"]
+reason = "called only inside the notification transaction"
+```
+
+`allow`, `entrypoint`, `factory`, `lazy_import`, and `security_wrapper` approve the matching
+finding after normal rule evaluation. `participant` and `managed` are SESSION003 contracts:
+a participant may use a caller-owned session but may not open, commit, or roll it back; a managed
+function is an independently managed service entrypoint. Omitting `target` approves all targets
+for that rule and symbol. Module-level findings use the module ID as `symbol`.
+
 ## Commands
 
 ```bash
@@ -115,7 +145,8 @@ locations, remediation guidance, decision counts, and the decision digest.
 
 JSON report schema v3 includes resolved, unresolved, ambiguous, and dynamic call/reference counts;
 resolved and unresolved imports; unavailable capabilities; skipped evaluations; and coverage gaps.
-A rule runs only when its declared semantic capabilities are present.
+It reports used and unused symbol approvals separately from inline ignores. A rule runs only when
+its declared semantic capabilities are present.
 
 - Exit code `0`: no enforced violations
 - Exit code `1`: one or more enforced violations

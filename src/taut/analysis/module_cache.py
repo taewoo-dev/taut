@@ -15,7 +15,7 @@ from taut.domain.issues import CacheErrorCode, EngineIssue, EngineIssueKind
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath, SourceRange
 from taut.domain.relations import ModuleRelations
 
-CACHE_SCHEMA_VERSION = 2
+CACHE_SCHEMA_VERSION = 3
 MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
 MAX_UNCOMPRESSED_PAYLOAD_BYTES = 256 * 1024 * 1024
 MAX_NODES = 10_000_000
