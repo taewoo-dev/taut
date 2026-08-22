@@ -1,6 +1,6 @@
 [project]
 name = "pytaut"
-version = "0.1.0"
+version = "0.2.0"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,7 +20,9 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = []
+dependencies = [
+    "msgspec>=0.19",
+]
 
 [project.urls]
 Documentation = "https://github.com/taewoo-dev/taut#readme"
@@ -97,6 +99,9 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 
 [tool.taut]
+schema_version = 3
+packs = ["taut.backend"]
+providers = ["taut.python-core"]
 strict = true
 include = ["src/*.py", "src/**/*.py"]
 source_roots = ["src"]
@@ -114,9 +119,18 @@ finding_processing = [
   "src/taut/finding_processing/**/*.py",
 ]
 incremental = ["src/taut/incremental/*.py", "src/taut/incremental/**/*.py"]
+cache = ["src/taut/cache/*.py", "src/taut/cache/**/*.py"]
 loading = ["src/taut/loading/*.py", "src/taut/loading/**/*.py"]
 reporting = ["src/taut/reporting/*.py", "src/taut/reporting/**/*.py"]
-composition = ["src/taut/__init__.py", "src/taut/cli.py"]
+composition = [
+  "src/taut/__init__.py",
+  "src/taut/check_service.py",
+  "src/taut/cli.py",
+  "src/taut/daemon_*.py",
+  "src/taut/plugins/*.py",
+  "src/taut/semantic/*.py",
+]
+bootstrap = { include = ["src/taut/daemon_state.py"], priority = 10 }
 
 [tool.taut.allow]
 domain = ["domain"]
@@ -125,6 +139,7 @@ configuration = ["domain", "configuration"]
 policy = ["domain", "analysis", "configuration", "policy"]
 finding_processing = ["domain", "configuration", "finding_processing"]
 incremental = ["domain", "analysis", "policy", "incremental"]
+cache = ["domain", "analysis", "cache"]
 loading = ["domain", "analysis", "configuration", "loading"]
 reporting = ["domain", "reporting"]
 composition = [
@@ -136,7 +151,22 @@ composition = [
   "incremental",
   "loading",
   "reporting",
+  "cache",
   "composition",
+  "bootstrap",
+]
+bootstrap = [
+  "domain",
+  "analysis",
+  "configuration",
+  "policy",
+  "finding_processing",
+  "incremental",
+  "loading",
+  "reporting",
+  "cache",
+  "composition",
+  "bootstrap",
 ]
 
 [tool.taut.layers]
@@ -153,7 +183,9 @@ shared_modules = [
   "taut.domain.diagnostics",
   "taut.domain.evaluations",
   "taut.domain.facts",
+  "taut.domain.analysis_state",
   "taut.domain.findings",
   "taut.domain.issues",
+  "taut.domain.relations",
 ]
 uppercase_value_exceptions = ["taut.configuration.catalog.Effect"]

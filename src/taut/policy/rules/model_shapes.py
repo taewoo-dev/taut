@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 
+from taut.analysis.framework.pydantic import (
+    PYDANTIC_CONFIGS,
+    PYDANTIC_FIELDS,
+    PYDANTIC_MODELS,
+)
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
@@ -16,7 +21,10 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    rule_uncertainty,
+)
 
 DTO_RULE_ID = RuleId("DTO001")
 DTO_NAME_RULE_ID = RuleId("DTO002")
@@ -103,6 +111,16 @@ class ImmutableDtoRule:
             raise ValueError("DTO001 requires a module target")
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = rule_uncertainty(
+            DTO_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            (PYDANTIC_MODELS, PYDANTIC_FIELDS),
+            True,
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for class_fact in module.classes:
@@ -158,6 +176,11 @@ class DtoNameRule:
             raise ValueError("DTO002 requires a module target")
         if _role(target, context) not in context.policy.code.dto_roles:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = rule_uncertainty(
+            DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings = tuple(
             _finding(
@@ -186,6 +209,11 @@ class SnapshotPlacementRule:
         role = _role(target, context)
         module = context.model.module(target.module_id)
         snapshot_file = module.module.path.value.endswith("_snapshot.py")
+        if not snapshot_file and not any("Snapshot" in item.name for item in module.classes):
+            return RuleEvaluation(SNAPSHOT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = rule_uncertainty(SNAPSHOT_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for class_fact in module.classes:
             if not _is_base_model(class_fact) or (
@@ -238,6 +266,11 @@ class SchemaConfigRule:
             raise ValueError("SCHEMA001 requires a module target")
         if _role(target, context) not in context.policy.code.schema_roles:
             return RuleEvaluation(SCHEMA_CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = rule_uncertainty(
+            SCHEMA_CONFIG_RULE_ID, target, context, target.module_id, (PYDANTIC_CONFIGS,), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for class_fact in module.classes:
@@ -281,6 +314,11 @@ class SchemaInheritanceRule:
             return RuleEvaluation(
                 SCHEMA_INHERITANCE_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ()
             )
+        uncertainty = rule_uncertainty(
+            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for class_fact in context.model.module(target.module_id).classes:
             if class_fact.symbol_id in context.policy.code.generic_schema_bases:

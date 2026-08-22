@@ -9,7 +9,7 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, rule_uncertainty
 
 RULE_ID = RuleId("ENUM001")
 RULE_VERSION = 4
@@ -70,6 +70,9 @@ class EnumShapeRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ENUM001 requires a module target")
+        uncertainty = rule_uncertainty(RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for class_fact in module.classes:

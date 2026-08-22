@@ -6,6 +6,8 @@ from typing import cast
 
 import pytest
 
+from taut.analysis.contracts import ModuleAnalysisResult, ResolverSettings, SourceInput
+from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.cli import main
 
 
@@ -17,7 +19,8 @@ def _write_project(root: Path, content: str, *, role: str = "service") -> None:
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
+packs = ["taut.backend"]
 [project]
 include = ["app/*.py"]
 source_roots = ["."]
@@ -28,6 +31,17 @@ patterns = ["app/*.py"]
 [architecture.allow]
 {role} = ["{role}"]
 """.strip()
+    )
+
+
+def _add_provider_list(root: Path, providers: tuple[str, ...]) -> None:
+    path = root / ".policy" / "policy.toml"
+    values = ", ".join(f'"{item}"' for item in providers)
+    text = path.read_text()
+    path.write_text(
+        text.replace(
+            'packs = ["taut.backend"]\n', f'packs = ["taut.backend"]\nproviders = [{values}]\n'
+        )
     )
 
 
@@ -79,7 +93,74 @@ def test_cli_returns_one_and_text_diagnostic_for_violation(
 
 
 @pytest.mark.integration
-def test_cli_json_v2_is_deterministic_for_compliant_project(
+def test_cache_cli_flags_and_no_cache_do_not_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    with pytest.raises(SystemExit) as help_exit:
+        main(["check", "--help"])
+    assert help_exit.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--no-cache" in help_text and "--cache-dir" in help_text
+    with pytest.raises(SystemExit):
+        main(["cache", "--help"])
+    assert "stats" in capsys.readouterr().out
+    assert main(["check", str(tmp_path), "--no-cache"]) == 0
+    capsys.readouterr()
+    assert not (tmp_path / ".taut_cache").exists()
+
+
+@pytest.mark.integration
+def test_cache_stats_and_clean_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(tmp_path, "value = 1")
+    assert main(["check", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+    stats = capsys.readouterr().out
+    assert "모듈: 1" in stats
+    assert "리포트: 1" in stats
+    assert main(["cache", "clean", str(tmp_path)]) == 0
+    assert "캐시 삭제 완료" in capsys.readouterr().out
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+    assert "리포트: 0" in capsys.readouterr().out
+
+
+@pytest.mark.integration
+def test_report_miss_reuses_unchanged_module_analysis(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    (tmp_path / "app" / "other.py").write_text("other = 1\n")
+    analyzed: list[int] = []
+    original = PythonAstAdapter.analyze_modules
+
+    def counting(
+        self: PythonAstAdapter,
+        sources: tuple[SourceInput, ...],
+        resolver: ResolverSettings,
+        workers: int,
+    ) -> tuple[ModuleAnalysisResult, ...]:
+        analyzed.append(len(sources))
+        return original(self, sources, resolver, workers)
+
+    monkeypatch.setattr(PythonAstAdapter, "analyze_modules", counting)
+    assert main(["check", str(tmp_path)]) == 0
+    capsys.readouterr()
+    (tmp_path / "app" / "service.py").write_text("value = 2\n")
+
+    assert main(["check", str(tmp_path)]) == 0
+    cached_output = capsys.readouterr().out
+    assert main(["check", str(tmp_path), "--no-cache"]) == 0
+    fresh_output = capsys.readouterr().out
+
+    assert analyzed == [2, 1, 2]
+    assert cached_output == fresh_output
+
+
+@pytest.mark.integration
+def test_cli_json_v3_is_deterministic_for_compliant_project(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -93,7 +174,11 @@ def test_cli_json_v2_is_deterministic_for_compliant_project(
 
     assert first_code == second_code == 0
     assert first == second
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
+    coverage = cast(dict[str, object], payload["coverage"])
+    analysis = cast(dict[str, object], coverage["analysis"])
+    calls = cast(dict[str, int], analysis["calls"])
+    assert calls["total"] >= 0
     assert payload["diagnostics"] == []
     assert len(cast(str, payload["decision_digest"])) == 64
 
@@ -129,7 +214,7 @@ def test_cli_invalid_or_missing_configuration_returns_two(
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text("schema_version = 1")
     assert main(["check", str(tmp_path)]) == 2
-    assert "schema_version must be 2" in capsys.readouterr().err
+    assert "schema_version must be 3" in capsys.readouterr().err
 
 
 @pytest.mark.integration
@@ -141,7 +226,7 @@ def test_cli_configuration_error_respects_json_format(
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
 
     assert code == 2
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert cast(dict[str, object], payload["exit"])["code"] == 2
     assert cast(list[dict[str, object]], payload["engine_issues"])[0]["code"] == (
         "INVALID_CONFIGURATION"
@@ -161,6 +246,91 @@ def test_config_validate_and_rule_explanation(
     explanation = capsys.readouterr().out
     assert "강도: enforced" in explanation
     assert "적용 영역:" in explanation
+
+    assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
+    config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert config_explanation["schema_version"] == 3
+    assert config_explanation["packs"] == ["taut.backend"]
+    assert config_explanation["providers"] == [
+        "taut.python-core",
+        "taut.fastapi",
+        "taut.pydantic",
+        "taut.sqlalchemy",
+    ]
+
+
+@pytest.mark.integration
+def test_default_backend_loads_all_builtin_providers_with_provenance(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(
+        tmp_path,
+        "from fastapi import APIRouter\nfrom pydantic import BaseModel\n"
+        "class Item(BaseModel): value: int\nrouter = APIRouter()\n",
+    )
+
+    assert main(["check", str(tmp_path), "--format", "json"]) in (0, 1)
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    coverage = cast(dict[str, object], payload["coverage"])
+    analysis = cast(dict[str, object], coverage["analysis"])
+    provenance = cast(list[dict[str, object]], analysis["capability_provenance"])
+    providers = {item["provider"] for item in provenance}
+    unavailable = cast(list[dict[str, object]], analysis["unavailable_capabilities"])
+    assert {"taut.fastapi", "taut.pydantic", "taut.sqlalchemy"} <= providers
+    assert unavailable == []
+
+
+@pytest.mark.integration
+def test_explicit_provider_list_remains_predictable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    _add_provider_list(tmp_path, ("taut.python-core",))
+
+    assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["providers"] == ["taut.python-core"]
+
+
+@pytest.mark.integration
+def test_config_migrate_outputs_v3_without_modifying_source(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    policy_dir = tmp_path / ".policy"
+    policy_dir.mkdir()
+    source = policy_dir / "policy.toml"
+    source.write_text("schema_version = 2\n[project]\ninclude = ['app/*.py']\nsource_roots = ['.']")
+    original = source.read_text()
+
+    assert main(["config", "migrate", str(tmp_path)]) == 0
+    migrated = capsys.readouterr().out
+
+    assert "schema_version = 3" in migrated
+    assert 'packs = ["taut.backend"]' in migrated
+    assert (
+        'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]'
+        in migrated
+    )
+    assert source.read_text() == original
+
+
+@pytest.mark.integration
+def test_config_migrate_writes_only_to_explicit_new_output(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text("[project]\nname='sample'\nversion='0.1.0'\n\n[tool.taut]\nstrict=true\n")
+    output = tmp_path / "migrated.toml"
+
+    assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 0
+    assert capsys.readouterr().out == ""
+    assert "schema_version = 3" in output.read_text()
+    assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 2
+    assert "output already exists" in capsys.readouterr().err
 
 
 @pytest.mark.integration

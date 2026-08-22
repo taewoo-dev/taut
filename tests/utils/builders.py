@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 from taut.analysis.contracts import (
@@ -10,7 +11,23 @@ from taut.analysis.contracts import (
     ResolverSettings,
     SourceInput,
 )
+from taut.analysis.framework.fastapi import (
+    FastAPIDependencyFact,
+    FastAPIEndpointFact,
+    FastAPIResponseModelFact,
+    FastAPIRouterFact,
+)
+from taut.analysis.framework.pydantic_facts import (
+    PydanticConfigFact,
+    PydanticFieldFact,
+    PydanticModelFact,
+    PydanticOperationFact,
+    PydanticSerializerFact,
+    PydanticValidatorFact,
+)
+from taut.analysis.framework.sqlalchemy_facts import SQLAlchemyRawSQLFact
 from taut.analysis.project_analyzer import ProjectAnalyzer
+from taut.analysis.providers import apply_fact_providers
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.configuration.catalog import CatalogEntry, EffectCatalog, EffectResolver
@@ -28,14 +45,16 @@ from taut.configuration.manifest import (
     Zone,
     ZoneMatcher,
 )
+from taut.domain.analysis_state import AnalysisStage, CompletenessState
 from taut.domain.evaluations import RuleLevel, RuleSetting
-from taut.domain.facts import SourceKind
+from taut.domain.facts import CallFact, ResolutionState, SourceKind
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ProjectPath
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.loading.config_loader import default_project_configuration
 from taut.policy.context import PolicyContext
+from taut.policy.packs import builtin_backend_providers
 
 RULE_IDS = tuple(
     RuleId(value)
@@ -90,6 +109,47 @@ RULE_IDS = tuple(
         "IGNORE001",
     )
 )
+
+
+def _provider_fact_state(fact: object, state: ResolutionState) -> object:
+    if isinstance(
+        fact,
+        (
+            FastAPIDependencyFact,
+            FastAPIEndpointFact,
+            FastAPIResponseModelFact,
+            FastAPIRouterFact,
+            PydanticConfigFact,
+            PydanticFieldFact,
+            PydanticModelFact,
+            PydanticOperationFact,
+            PydanticSerializerFact,
+            PydanticValidatorFact,
+            SQLAlchemyRawSQLFact,
+        ),
+    ):
+        return replace(fact, confidence=state)
+    return fact
+
+
+def _call_fact_state(
+    fact: CallFact,
+    state: ResolutionState,
+    relevant: tuple[SymbolId, ...],
+) -> CallFact:
+    if state is ResolutionState.RESOLVED:
+        return fact
+    candidates: tuple[SymbolId, ...]
+    if state is ResolutionState.AMBIGUOUS:
+        candidates = (relevant or (SymbolId("candidate.one"),)) + (SymbolId("candidate.two"),)
+    elif state is ResolutionState.CONDITIONAL:
+        candidates = relevant or (SymbolId("candidate.one"),)
+    else:
+        candidates = ()
+    return replace(
+        fact,
+        ref=replace(fact.ref, state=state, symbol=None, candidates=candidates),
+    )
 
 
 def make_source(
@@ -152,7 +212,91 @@ def make_context(
     code_policy: CodeConventionPolicy | None = None,
     security_policy: SecurityPolicy | None = None,
     extra_catalog_entries: tuple[CatalogEntry, ...] = (),
+    provider_state: ResolutionState | None = None,
+    missing_capability: str | None = None,
+    incomplete_modules: frozenset[str] = frozenset(),
+    fact_state: ResolutionState | None = None,
+    fact_candidates: tuple[SymbolId, ...] = (),
 ) -> PolicyContext:
+    snapshot = apply_fact_providers(snapshot, builtin_backend_providers())
+    if fact_state is not None:
+        snapshot = replace(
+            snapshot,
+            modules=FrozenMap(
+                (
+                    module_id,
+                    replace(
+                        module,
+                        calls=tuple(
+                            _call_fact_state(call, fact_state, fact_candidates)
+                            for call in module.calls
+                        ),
+                    ),
+                )
+                for module_id, module in snapshot.modules.items()
+            ),
+            capabilities=FrozenMap(
+                (
+                    capability,
+                    tuple(_provider_fact_state(fact, fact_state) for fact in facts),
+                )
+                for capability, facts in snapshot.capabilities.items()
+            ),
+        )
+    if incomplete_modules:
+        modules = FrozenMap(
+            (
+                module_id,
+                replace(
+                    module,
+                    completeness=replace(
+                        module.completeness,
+                        state=CompletenessState.PARTIAL,
+                        stage=AnalysisStage.PARSED,
+                    ),
+                )
+                if module_id.value in incomplete_modules
+                else module,
+            )
+            for module_id, module in snapshot.modules.items()
+        )
+        incomplete_count = sum(
+            module_id.value in incomplete_modules for module_id in snapshot.modules
+        )
+        snapshot = replace(
+            snapshot,
+            modules=modules,
+            coverage=replace(
+                snapshot.coverage,
+                complete_modules=snapshot.coverage.complete_modules - incomplete_count,
+                partial_modules=snapshot.coverage.partial_modules + incomplete_count,
+            ),
+        )
+    if provider_state is not None:
+        snapshot = replace(
+            snapshot,
+            capabilities=FrozenMap(
+                (
+                    capability,
+                    tuple(_provider_fact_state(fact, provider_state) for fact in facts),
+                )
+                for capability, facts in snapshot.capabilities.items()
+            ),
+        )
+    if missing_capability is not None:
+        snapshot = replace(
+            snapshot,
+            capabilities=FrozenMap(
+                (name, values)
+                for name, values in snapshot.capabilities.items()
+                if name != missing_capability
+            ),
+            capability_provenance=FrozenMap(
+                (name, provenance)
+                for name, provenance in snapshot.capability_provenance.items()
+                if name != missing_capability
+            ),
+        )
     location = ConfigLocation(ProjectPath("policy.toml"))
     matchers = tuple(
         RoleMatcher(Role(role), patterns, location) for role, patterns in roles.items()

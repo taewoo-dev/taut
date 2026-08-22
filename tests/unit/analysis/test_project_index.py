@@ -4,6 +4,7 @@ from tests.utils.builders import analyze, make_source
 
 from taut.analysis.contracts import ContextManagerProvider, ResolverSettings
 from taut.analysis.semantic_model import SnapshotSemanticModel
+from taut.domain.facts import GuardKind
 from taut.domain.ids import ModuleId, SymbolId
 
 
@@ -16,6 +17,43 @@ def test_project_index_builds_symmetric_graph_and_cycle() -> None:
     assert snapshot.project.imports[ModuleId("app.a")] == (ModuleId("app.b"),)
     assert snapshot.project.imported_by[ModuleId("app.b")] == (ModuleId("app.a"),)
     assert snapshot.project.cycles[0].modules == (ModuleId("app.a"), ModuleId("app.b"))
+    assert tuple((edge.importer, edge.target) for edge in snapshot.project.cycles[0].edges) == (
+        (ModuleId("app.a"), ModuleId("app.b")),
+        (ModuleId("app.b"), ModuleId("app.a")),
+    )
+
+
+def test_type_checking_imports_are_excluded_from_runtime_graph() -> None:
+    first = make_source(
+        "app/a.py",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from app.b import B",
+    )
+    second = make_source(
+        "app/b.py",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from app.a import A",
+    )
+
+    snapshot = analyze(first, second)
+
+    assert snapshot.project.imports[ModuleId("app.a")] == ()
+    assert snapshot.project.type_imports[ModuleId("app.a")] == (ModuleId("app.b"),)
+    assert snapshot.project.cycles == ()
+    assert snapshot.project.import_edges[0].context.guard is GuardKind.TYPE_CHECKING_ONLY
+
+
+def test_cycle_reports_real_edges_instead_of_sorted_component() -> None:
+    first = make_source("app/a.py", "import app.c")
+    second = make_source("app/b.py", "import app.a")
+    third = make_source("app/c.py", "import app.b")
+
+    cycle = analyze(first, second, third).project.cycles[0]
+
+    assert cycle.modules == (ModuleId("app.a"), ModuleId("app.c"), ModuleId("app.b"))
+    assert tuple((edge.importer, edge.target) for edge in cycle.edges) == (
+        (ModuleId("app.a"), ModuleId("app.c")),
+        (ModuleId("app.c"), ModuleId("app.b")),
+        (ModuleId("app.b"), ModuleId("app.a")),
+    )
 
 
 def test_relative_import_is_resolved_from_package() -> None:

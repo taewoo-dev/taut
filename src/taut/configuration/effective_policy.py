@@ -190,8 +190,8 @@ class EffectivePolicy:
     security: SecurityPolicy = field(default_factory=SecurityPolicy)
 
     def __post_init__(self) -> None:
-        if not 1 <= self.default_max_lines <= 700:
-            raise ValueError("default maximum lines must be between 1 and the built-in limit 700")
+        if self.default_max_lines < 1:
+            raise ValueError("default maximum lines must be positive")
         if any(
             not 1 <= maximum <= self.default_max_lines
             for maximum in self.max_lines_by_role.values()

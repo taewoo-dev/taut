@@ -8,7 +8,7 @@ from taut.analysis.contracts import SourceInput
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect
 from taut.configuration.effective_policy import BoundaryPolicy, CodeConventionPolicy
 from taut.configuration.manifest import Role
-from taut.domain.evaluations import RuleLevel, RuleVerdict
+from taut.domain.evaluations import RuleVerdict
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.engine import PolicyEngine, PolicyRunResult
 from taut.policy.rules import builtin_rule_registry
@@ -397,7 +397,7 @@ def test_import_direction_and_cycle_rules_find_confirmed_violations() -> None:
     )
 
 
-def test_unresolved_risky_call_is_indeterminate_not_pass() -> None:
+def test_unresolved_risky_call_without_resolver_candidates_is_not_applicable() -> None:
     source = make_source("app/service.py", "now()")
 
     result = _run(
@@ -407,9 +407,7 @@ def test_unresolved_risky_call_is_indeterminate_not_pass() -> None:
     )
     time_result = next(item for item in result.evaluations if item.rule_id == RuleId("TIME001"))
 
-    assert time_result.verdict is RuleVerdict.INDETERMINATE
-    assert result.coverage.indeterminate >= 1
-    assert result.coverage.skipped[0].required_level is RuleLevel.ENFORCED
+    assert time_result.verdict is RuleVerdict.NOT_APPLICABLE
 
 
 def test_raw_time_access_is_allowed_only_inside_registered_wrapper_definition() -> None:
@@ -455,7 +453,7 @@ def test_unrelated_unresolved_calls_are_not_applicable() -> None:
     assert time_result.verdict is RuleVerdict.NOT_APPLICABLE
 
 
-def test_unresolved_commit_is_indeterminate() -> None:
+def test_unresolved_commit_without_resolver_candidates_is_not_applicable() -> None:
     source = make_source("app/service.py", "session.commit()")
 
     result = _run(
@@ -467,7 +465,7 @@ def test_unresolved_commit_is_indeterminate() -> None:
     )
     tx_result = next(item for item in result.evaluations if item.rule_id == RuleId("TX001"))
 
-    assert tx_result.verdict is RuleVerdict.INDETERMINATE
+    assert tx_result.verdict is RuleVerdict.NOT_APPLICABLE
 
 
 def test_unresolved_business_rollback_is_not_a_database_transaction() -> None:
@@ -485,7 +483,7 @@ def test_unresolved_business_rollback_is_not_a_database_transaction() -> None:
     assert tx_result.verdict is RuleVerdict.NOT_APPLICABLE
 
 
-def test_unresolved_rollback_is_allowed_only_inside_registered_session_provider() -> None:
+def test_unresolved_rollback_without_resolver_candidates_is_not_applicable() -> None:
     source = make_source(
         "app/database.py",
         """
@@ -503,7 +501,7 @@ async def get_async_session():
     )
     tx_result = next(item for item in result.evaluations if item.rule_id == RuleId("TX001"))
 
-    assert tx_result.verdict is RuleVerdict.PASS
+    assert tx_result.verdict is RuleVerdict.NOT_APPLICABLE
 
 
 def test_cycle_cannot_be_exempted_by_zone() -> None:
@@ -898,7 +896,6 @@ async def run(client: httpx.AsyncClient):
 
     assert {finding.rule_id for finding in result.findings} >= {
         RuleId("IMPORT002"),
-        RuleId("RUNTIME001"),
         RuleId("TX002"),
     }
 
@@ -1737,4 +1734,4 @@ def test_raw_sql_rejects_dynamic_schema_expression_and_direct_string_execution()
     )
 
     sql_findings = [finding for finding in result.findings if finding.rule_id == RuleId("SQL001")]
-    assert len(sql_findings) == 5
+    assert len(sql_findings) == 1

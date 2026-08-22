@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from pathlib import Path
-from typing import cast
 
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect, EffectCatalog
 from taut.configuration.effective_policy import (
@@ -24,9 +22,17 @@ from taut.domain.evaluations import RuleLevel, RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 from taut.loading.boundary_extension_schema import BOUNDARY_EXTENSION_KEYS
 from taut.loading.builtin_catalog import builtin_catalog_entries
 from taut.loading.code_conventions import load_code_conventions
+from taut.loading.config_values import ensure_unique as _ensure_unique
+from taut.loading.config_values import integer as _integer
+from taut.loading.config_values import reject_unknown as _reject_unknown
+from taut.loading.config_values import string as _string
+from taut.loading.config_values import strings as _strings
+from taut.loading.config_values import table as _table
+from taut.loading.config_values import table_list as _table_list
 from taut.loading.configuration_document import (
     PYPROJECT_CONFIG_PATH,
     read_configuration_document,
@@ -41,6 +47,9 @@ _ZONES = frozenset({"prod", "test", "migration", "script"})
 _ROOT_KEYS = frozenset(
     {
         "schema_version",
+        "packs",
+        "providers",
+        "cache",
         "project",
         "roles",
         "zones",
@@ -63,50 +72,6 @@ _RISKY_PREFIXES = (
 )
 
 
-def _table(value: object, label: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise PolicyConfigError(f"{label} must be a table")
-    unknown_table = cast(dict[object, object], value)
-    if not all(isinstance(key, str) for key in unknown_table):
-        raise PolicyConfigError(f"{label} must be a table")
-    return cast(dict[str, object], value)
-
-
-def _table_list(value: object, label: str) -> tuple[dict[str, object], ...]:
-    if not isinstance(value, list):
-        raise PolicyConfigError(f"{label} must be an array of tables")
-    return tuple(_table(item, label) for item in cast(list[object], value))
-
-
-def _string(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise PolicyConfigError(f"{label} must be a non-empty string")
-    return value
-
-
-def _strings(value: object, label: str) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        raise PolicyConfigError(f"{label} must be an array of non-empty strings")
-    items = cast(list[object], value)
-    if not all(isinstance(item, str) and item.strip() for item in items):
-        raise PolicyConfigError(f"{label} must be an array of non-empty strings")
-    result = tuple(cast(list[str], items))
-    _ensure_unique(result, label)
-    return result
-
-
-def _integer(value: object, label: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise PolicyConfigError(f"{label} must be an integer")
-    return value
-
-
-def _reject_unknown(table: dict[str, object], allowed: frozenset[str], label: str) -> None:
-    unknown = set(table).difference(allowed)
-    if unknown:
-        raise PolicyConfigError(f"unknown {label} keys: {', '.join(sorted(unknown))}")
-
-
 def load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None = None,
@@ -125,8 +90,17 @@ def _load_project_configuration(
     root = document.root
     _reject_unknown(root, _ROOT_KEYS, "config")
     version = root.get("schema_version")
-    if version != 2:
-        raise PolicyConfigError("schema_version must be 2; migrate the project policy first")
+    if version != 3:
+        raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
+
+    packs = _strings(root.get("packs", ["taut.backend"]), "packs")
+    providers = _strings(root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)), "providers")
+    cache = _table(root.get("cache", {}), "cache")
+    _reject_unknown(cache, frozenset({"enabled", "directory"}), "cache")
+    cache_enabled = cache.get("enabled", True)
+    if not isinstance(cache_enabled, bool):
+        raise ValueError("cache.enabled must be a boolean")
+    cache_directory = ProjectPath(_string(cache.get("directory", ".taut_cache"), "cache.directory"))
 
     location = ConfigLocation(document.path)
     project = _table(root.get("project", {}), "project")
@@ -154,18 +128,39 @@ def _load_project_configuration(
     policy = _load_policy(root, strict=document.strict)
     manifest = ProjectManifest(roles, zones, default_zone, location)
     _validate_manifest_policy(manifest, policy)
-    return ProjectConfiguration(include, exclude, source_roots, manifest, catalog, policy)
+    return ProjectConfiguration(
+        include,
+        exclude,
+        source_roots,
+        manifest,
+        catalog,
+        policy,
+        schema_version=3,
+        packs=packs,
+        providers=providers,
+        cache_enabled=cache_enabled,
+        cache_directory=cache_directory,
+    )
 
 
 def _load_roles(root: dict[str, object], location: ConfigLocation) -> tuple[RoleMatcher, ...]:
     values: list[RoleMatcher] = []
     for item in _table_list(root.get("roles", []), "roles"):
-        _reject_unknown(item, frozenset({"name", "patterns"}), "roles")
+        _reject_unknown(
+            item,
+            frozenset({"name", "patterns", "include", "exclude", "priority"}),
+            "roles",
+        )
+        include_value = item.get("include", item.get("patterns"))
+        if "include" in item and "patterns" in item:
+            raise PolicyConfigError("roles cannot define both include and patterns")
         values.append(
             RoleMatcher(
                 Role(_string(item.get("name"), "roles.name")),
-                _strings(item.get("patterns"), "roles.patterns"),
+                _strings(include_value, "roles.include"),
                 location,
+                _strings(item.get("exclude", []), "roles.exclude"),
+                _integer(item.get("priority", 0), "roles.priority"),
             )
         )
     _ensure_unique((matcher.role.value for matcher in values), "role")
@@ -480,9 +475,3 @@ def _validate_manifest_policy(manifest: ProjectManifest, policy: EffectivePolicy
     if unknown:
         names = ", ".join(sorted(role.value for role in unknown))
         raise PolicyConfigError(f"architecture.allow contains undeclared roles: {names}")
-
-
-def _ensure_unique(values: Iterable[str], label: str) -> None:
-    sequence = tuple(values)
-    if len(sequence) != len(set(sequence)):
-        raise PolicyConfigError(f"duplicate {label}")

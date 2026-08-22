@@ -1,0 +1,222 @@
+from typing import cast
+
+from tests.utils.builders import analyze, make_source
+
+from taut.analysis.framework.fastapi import (
+    FASTAPI_DEPENDENCIES,
+    FASTAPI_ENDPOINTS,
+    FASTAPI_RESPONSE_MODELS,
+    FASTAPI_ROUTERS,
+    FastAPIConfidence,
+    FastAPIDependencyFact,
+    FastAPIEndpointFact,
+    FastAPIProvider,
+    FastAPIResponseModelFact,
+)
+from taut.analysis.providers import apply_fact_providers
+
+
+def test_fastapi_indexed_outputs_ignore_unrelated_same_line_module() -> None:
+    source = make_source(
+        "app/api.py",
+        "from fastapi import APIRouter\nrouter = APIRouter()\n@router.get('/')\ndef endpoint(): pass",  # noqa: E501
+    )
+    result = apply_fact_providers(
+        analyze(source, make_source("other/x.py", "router = object()")), (FastAPIProvider(),)
+    )
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    assert len(endpoints) == 1 and endpoints[0].module_id.value == "app.api"
+
+
+def test_fastapi_unresolved_dependency_is_local_to_call_module() -> None:
+    result = apply_fact_providers(
+        analyze(
+            make_source(
+                "app/api.py",
+                "from fastapi import Depends\ndef endpoint(x: int = Depends(Unknown)): pass",
+            ),
+            make_source("other/api.py", "Unknown = object()"),
+        ),
+        (FastAPIProvider(),),
+    )
+    dependencies = cast(
+        tuple[FastAPIDependencyFact, ...], result.capabilities[FASTAPI_DEPENDENCIES]
+    )
+    assert len(dependencies) == 1 and dependencies[0].provider is None
+
+
+def test_fastapi_response_model_fact_preserves_unresolved_reference() -> None:
+    result = apply_fact_providers(
+        analyze(
+            make_source(
+                "app/api.py",
+                "from fastapi import APIRouter\nr = APIRouter()\n@r.get('/', response_model=Missing)\ndef x(): pass",  # noqa: E501
+            )
+        ),
+        (FastAPIProvider(),),
+    )
+    models = cast(
+        tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
+    )
+    assert (
+        models
+        and models[0].model is None
+        and models[0].model_ref.state is FastAPIConfidence.UNRESOLVED
+    )
+
+
+def test_fastapi_provider_extracts_alias_reexported_router_and_typed_contracts() -> None:
+    snapshot = analyze(
+        make_source("app/routes.py", "from fastapi import APIRouter as Router\nrouter = Router()"),
+        make_source(
+            "app/api.py",
+            """from fastapi import Depends
+from app.routes import router as api_router
+from app.models import UserResponse
+
+def load_user():
+    return UserResponse()
+
+def other_dep():
+    return None
+
+@api_router.get('/users', response_model=UserResponse)
+def users(other: int = Depends(other_dep), limit: int = Depends(load_user)):
+    return load_user()
+
+@api_router.get('/other')
+def other_users(
+    limit: int = Depends(load_user),
+):
+    return load_user()
+""",
+        ),
+        make_source(
+            "app/models.py",
+            "from pydantic import BaseModel as Schema\nclass UserResponse(Schema):\n    name: str",
+        ),
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+
+    routers = result.capabilities[FASTAPI_ROUTERS]
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    dependencies = cast(
+        tuple[FastAPIDependencyFact, ...], result.capabilities[FASTAPI_DEPENDENCIES]
+    )
+    models = cast(
+        tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
+    )
+    assert len(routers) == 1
+    assert len(endpoints) == 2
+    assert isinstance(endpoints[0], FastAPIEndpointFact)
+    assert endpoints[0].router.value == "app.routes.router"
+    assert endpoints[0].path == "'/users'"
+    assert endpoints[0].response_model is not None
+    assert endpoints[0].confidence is FastAPIConfidence.RESOLVED
+    assert len(dependencies) == 3
+    dependency = next(item for item in dependencies if item.parameter == "limit")
+    assert dependency.provider is not None
+    assert dependency.provider.value == "app.api.load_user"
+    assert dependency.provider_ref is not None
+    assert dependency.provider_ref.symbol == dependency.provider
+    assert len(models) == 1
+
+
+def test_fastapi_provider_preserves_conditional_and_ambiguous_resolution() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import APIRouter
+router = APIRouter()
+if enabled:
+    route = router
+else:
+    route = router
+@route.get('/')
+def index():
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    assert len(endpoints) == 1
+    assert endpoints[0].confidence is FastAPIConfidence.CONDITIONAL
+
+
+def test_fastapi_app_instance_and_unresolved_dynamic_decorators_are_precise() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import FastAPI
+app = FastAPI()
+@app.post('/users')
+def create():
+    pass
+
+@app.get(route_path)
+def variable_path():
+    pass
+
+@unknown.get('/ignored')
+def unresolved():
+    pass
+
+@make_router().get('/dynamic')
+def dynamic():
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    endpoints = cast(tuple[FastAPIEndpointFact, ...], result.capabilities[FASTAPI_ENDPOINTS])
+    assert len(endpoints) == 2
+    post = next(item for item in endpoints if item.symbol.value.endswith(".create"))
+    assert post.router.value == "app.api.app"
+    assert post.method == "post"
+    assert post.confidence is FastAPIConfidence.RESOLVED
+    variable = next(item for item in endpoints if item.symbol.value.endswith(".variable_path"))
+    assert variable.path is None
+
+
+def test_response_model_resolution_state_is_preserved() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import APIRouter
+router = APIRouter()
+@router.get('/', response_model=UnknownModel)
+def unknown():
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    models = cast(
+        tuple[FastAPIResponseModelFact, ...], result.capabilities[FASTAPI_RESPONSE_MODELS]
+    )
+    assert len(models) == 1
+    assert models[0].model is None
+    assert models[0].model_ref.state is FastAPIConfidence.UNRESOLVED
+
+
+def test_unresolved_dependency_preserves_provider_ref() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/api.py",
+            """from fastapi import Depends
+def endpoint(
+    value: int = Depends(UnknownDependency),
+):
+    pass
+""",
+        )
+    )
+    result = apply_fact_providers(snapshot, (FastAPIProvider(),))
+    dependencies = cast(
+        tuple[FastAPIDependencyFact, ...], result.capabilities[FASTAPI_DEPENDENCIES]
+    )
+    assert len(dependencies) == 1
+    assert dependencies[0].provider is None
+    assert dependencies[0].provider_ref is not None
+    assert dependencies[0].provider_ref.state is FastAPIConfidence.UNRESOLVED

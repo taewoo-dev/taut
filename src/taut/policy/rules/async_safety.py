@@ -13,7 +13,11 @@ from taut.domain.findings import EvidenceItem
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    target_uncertainty,
+    unresolved_effect_evaluation,
+)
 
 RULE_ID = RuleId("ASYNC001")
 RULE_VERSION = 1
@@ -24,6 +28,9 @@ class BlockingCallInAsyncRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None:
             raise ValueError("ASYNC001 requires a call target")
+        incomplete = target_uncertainty(RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
         enclosing = (
             context.indexes.functions_by_symbol.get(call.enclosing_symbol)
@@ -32,6 +39,11 @@ class BlockingCallInAsyncRule:
         )
         if enclosing is None or not enclosing.is_async:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertain = unresolved_effect_evaluation(
+            RULE_ID, target, context, call.id, frozenset({Effect.IO_BLOCKING})
+        )
+        if uncertain is not None:
+            return uncertain
         resolution = context.effect_of(call)
         if resolution.state is EffectResolutionState.SYMBOL_UNRESOLVED:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -41,7 +53,9 @@ class BlockingCallInAsyncRule:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if resolution.access_path is AccessPath.APPROVED_WRAPPER:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
-        symbol = call.ref.symbol.value if call.ref.symbol else call.ref.written_name
+        if call.ref.symbol is None:
+            return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        symbol = call.ref.symbol.value
         finding = build_finding(
             rule_id=RULE_ID,
             rule_version=RULE_VERSION,

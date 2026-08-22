@@ -4,6 +4,7 @@ from taut.configuration.catalog import EffectResolutionState
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import (
     ChangeImpact,
+    EvaluationReason,
     RuleLevel,
     RuleTarget,
     RuleTargetRef,
@@ -14,7 +15,7 @@ from taut.domain.findings import EvidenceItem
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, target_uncertainty
 
 RULE_ID = RuleId("CAT001")
 RULE_VERSION = 1
@@ -25,8 +26,26 @@ class RiskyCatalogCoverageRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None:
             raise ValueError("CAT001 requires a call target")
+        incomplete = target_uncertainty(RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
         if call.ref.state is not ResolutionState.RESOLVED or call.ref.symbol is None:
+            prefixes = context.policy.security.risky_symbol_prefixes
+            if any(
+                candidate.value.startswith(prefix)
+                for candidate in call.ref.candidates
+                for prefix in prefixes
+            ):
+                return RuleEvaluation(
+                    RULE_ID,
+                    target,
+                    RuleVerdict.INDETERMINATE,
+                    (),
+                    EvaluationReason(
+                        "uncertain_symbol", "위험 호출의 symbol을 확정하지 못했습니다."
+                    ),
+                )
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         resolution = context.effect_of(call)
         if resolution.state is not EffectResolutionState.NO_MATCH:

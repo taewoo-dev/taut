@@ -14,7 +14,7 @@ from taut.domain.ids import RuleId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, module_fact_uncertainty
 
 IMPORT_RULE_ID = RuleId("IMPORT001")
 SIZE_RULE_ID = RuleId("SIZE001")
@@ -29,6 +29,9 @@ class ImportPlacementRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("IMPORT001 requires a module target")
+        uncertainty = module_fact_uncertainty(IMPORT_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         seen_statements: set[tuple[str, int, int, int, int, str, str]] = set()
@@ -79,6 +82,9 @@ class FileSizeRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SIZE001 requires a module target")
+        uncertainty = module_fact_uncertainty(SIZE_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         classification = context.classification.get(target.module_id)
         if classification.role is None:
             return RuleEvaluation(

@@ -19,7 +19,7 @@ from taut.domain.location import SourceRange
 
 
 class PythonAstAdapter:
-    identity = AdapterIdentity(name="python-ast", version="4")
+    identity = AdapterIdentity(name="python-ast", version="6")
 
     def analyze_module(
         self,
@@ -33,9 +33,11 @@ class PythonAstAdapter:
             lifecycle.advance(AnalysisStage.PARSED)
             lifecycle.advance(AnalysisStage.INDEXED)
             lifecycle.advance(AnalysisStage.RESOLVED)
-            facts = PythonFactExtractor(source, resolver_settings).extract(tree)
+            extractor = PythonFactExtractor(source, resolver_settings)
+            facts = extractor.extract(tree)
+            relations = extractor.relations(facts)
             lifecycle.advance(AnalysisStage.FACTS_READY)
-            return ModuleAnalysisResult(facts=facts, issues=())
+            return ModuleAnalysisResult(facts=facts, issues=(), relations=relations)
         except SyntaxError as error:
             lifecycle.fail()
             line = max((error.lineno or 1) - 1, 0)
@@ -50,13 +52,14 @@ class PythonAstAdapter:
             )
             return ModuleAnalysisResult(facts=failed_facts(source), issues=(issue,))
         except Exception as error:  # analyzer failures must become explicit issues
-            lifecycle.fail()
+            if lifecycle.stage is not AnalysisStage.FACTS_READY:
+                lifecycle.fail()
             issue = EngineIssue(
                 code="PY_ANALYSIS_001",
                 kind=EngineIssueKind.ANALYSIS_FAILURE,
                 message=f"Python 파일 분석을 완료하지 못했습니다: {source.path.value}",
                 location=SourceRange(source.path, 0, 0, 0, 0),
-                cause=error.__class__.__name__,
+                cause=f"{error.__class__.__name__}: {error}",
             )
             return ModuleAnalysisResult(facts=failed_facts(source), issues=(issue,))
 

@@ -8,6 +8,7 @@ from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, Rul
 from taut.domain.facts import (
     AnalysisStage,
     CallFact,
+    GuardKind,
     ImportFact,
     ResolutionState,
 )
@@ -16,7 +17,12 @@ from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+    unresolved_use_evaluation,
+)
 
 ENTRY_RULE_ID = RuleId("ENTRY001")
 SERVICE_RULE_ID = RuleId("SERVICE001")
@@ -69,33 +75,10 @@ def _symbol_in_modules(call: CallFact, modules: tuple[ModuleId, ...]) -> ModuleI
     return matches_module_prefix(symbol.value, modules)
 
 
-def _written_owner_and_method(call: CallFact) -> tuple[str, str] | None:
-    parts = call.ref.written_name.split(".")
-    if len(parts) < 2:
-        return None
-    return parts[-2], parts[-1]
-
-
 def _database_primitive(call: CallFact, context: PolicyContext) -> str | None:
     statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls)
     if statement is not None:
         return statement.value
-    owner_method = _written_owner_and_method(call)
-    if owner_method is None:
-        return None
-    owner, method = owner_method
-    if (
-        owner in context.policy.boundaries.database_owner_names
-        and method in context.policy.boundaries.database_primitive_methods
-    ):
-        return call.ref.written_name
-    symbol = call.ref.symbol
-    if (
-        symbol is not None
-        and method in context.policy.boundaries.database_primitive_methods
-        and "Session" in symbol.value.rsplit(".", maxsplit=1)[0]
-    ):
-        return symbol.value
     return None
 
 
@@ -171,9 +154,35 @@ class _RoleBoundaryRule:
         roles: frozenset[Role] = getattr(context.policy.boundaries, self.roles_attribute)
         if role is None or role not in roles:
             return RuleEvaluation(self.rule_id, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(self.rule_id, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        candidates = tuple(
+            value
+            for name in (
+                "database_statement_calls",
+                "transport_exception_calls",
+                "dependency_injection_calls",
+                "external_client_constructors",
+                "raw_sql_calls",
+            )
+            for value in getattr(context.policy.boundaries, name)
+        )
+        uncertainty = unresolved_call_evaluation(
+            self.rule_id, target, context, target.module_id, candidates
+        )
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_use_evaluation(
+            self.rule_id, target, context, target.module_id, candidates
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for import_fact in module.imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             violation = self._import_violation(import_fact, context)
             if violation is None:
                 continue
@@ -261,12 +270,6 @@ class _RoleBoundaryRule:
             provider = _argument_uses_symbol(call, context.policy.transaction_session_providers)
             if provider is not None:
                 return "session", provider.value
-            owner_method = _written_owner_and_method(call)
-            if owner_method is not None and (
-                owner_method[0] in boundaries.database_owner_names
-                and owner_method[1] in _ENTRY_TRANSACTION_METHODS
-            ):
-                return "transaction", call.ref.written_name
             exception = _matches_symbol(call, boundaries.transport_exception_calls)
             if exception is not None:
                 return "transport_exception", exception.value
@@ -288,16 +291,6 @@ class _RoleBoundaryRule:
                 and matches_module_prefix(symbol.value, boundaries.database_modules) is not None
             ):
                 return "write", symbol.value
-            owner_method = _written_owner_and_method(call)
-            if owner_method is not None:
-                owner, method = owner_method
-                if owner in boundaries.database_owner_names and method in _QUERY_WRITE_METHODS:
-                    return "write", call.ref.written_name
-                owner_written = call.ref.written_name.rsplit(".", maxsplit=1)[0]
-                if owner_written.rsplit(".", maxsplit=1)[-1][:1].isupper() and any(
-                    method.startswith(prefix) for prefix in boundaries.query_write_method_prefixes
-                ):
-                    return "model_write", call.ref.written_name
             if (
                 _matches_symbol(call, tuple(context.policy.transaction_session_providers))
                 is not None
@@ -340,6 +333,18 @@ class DependencyInjectionBoundaryRule:
         role = context.classification.get(target.module_id).role
         if role is None:
             return RuleEvaluation(DEPENDENCY_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(DEPENDENCY_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_call_evaluation(
+            DEPENDENCY_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            context.policy.boundaries.dependency_injection_calls,
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         matched = False
         for call in context.model.calls_in(target.module_id):

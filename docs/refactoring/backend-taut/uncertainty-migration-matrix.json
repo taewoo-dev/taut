@@ -1,0 +1,2677 @@
+{
+  "schema": "taut.backend_uncertainty_migration.v2",
+  "version": "0.2.0",
+  "expected_builtin_count": 48,
+  "implemented_evidence": {
+    "scope": "groups A-D",
+    "status": "implemented",
+    "shared_helpers": [
+      "taut.policy.rules.helpers.target_uncertainty",
+      "taut.policy.rules.helpers.uncertain_provider_evaluation",
+      "taut.policy.rules.helpers.incomplete_module_evaluation"
+    ],
+    "provider_capabilities": [
+      "taut.fastapi.endpoints@1",
+      "taut.fastapi.response_models@1",
+      "taut.fastapi.routers@1",
+      "taut.pydantic.fields@1",
+      "taut.pydantic.models@1",
+      "taut.pydantic.configs@1",
+      "taut.pydantic.operations@1",
+      "taut.sqlalchemy.raw_sql@1"
+    ],
+    "tests": "tests/contract/test_uncertainty_migration_matrix.py plus evaluator/provider contracts in tests/contract",
+    "semantics": "five-state verdict policies are explicit per row; relevant uncertain facts and incomplete modules return INDETERMINATE, while unrelated uncertainty remains compatible"
+  },
+  "state_values": [
+    "resolved",
+    "conditional",
+    "ambiguous",
+    "unresolved",
+    "dynamic"
+  ],
+  "verdict_values": [
+    "pass",
+    "fail",
+    "indeterminate",
+    "not_applicable"
+  ],
+  "missing_capability_or_completeness": "indeterminate",
+  "groups": {
+    "A": {
+      "scope": "API/model/enum/ignore evaluators",
+      "files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "depends_on": []
+    },
+    "B": {
+      "scope": "architecture/boundary evaluators",
+      "files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "depends_on": [
+        "A"
+      ]
+    },
+    "C": {
+      "scope": "construction/convention/test/classification/exception/external/security evaluators",
+      "files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "depends_on": [
+        "A",
+        "B"
+      ]
+    },
+    "D": {
+      "scope": "persistence/runtime/session/effect evaluators",
+      "files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "depends_on": [
+        "A",
+        "B",
+        "C"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "id": "ADAPTER001",
+      "source_module": "src/taut/policy/rules/responsibility_boundaries.py",
+      "evaluator": {
+        "class": "AdapterBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "imports",
+        "calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/responsibility_boundaries.py",
+        "anchors": [
+          "AdapterBoundaryRule.evaluate",
+          "ADAPTER001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "ADAPTER002",
+      "source_module": "src/taut/policy/rules/construction_boundaries.py",
+      "evaluator": {
+        "class": "AdapterTypeLeakRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "exported symbols",
+        "annotations"
+      ],
+      "resolution_source": "analyzer-owned annotation symbols and module completeness; no confidence-bearing SymbolRef is consumed",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/construction_boundaries.py",
+        "anchors": [
+          "AdapterTypeLeakRule.evaluate",
+          "ADAPTER002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "preserve evaluator behavior for all resolution states; incomplete module facts remain INDETERMINATE",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "API001",
+      "source_module": "src/taut/policy/rules/api_contracts.py",
+      "evaluator": {
+        "class": "EndpointDocumentationRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "route decorators",
+        "endpoint metadata"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/api_contracts.py",
+        "anchors": [
+          "EndpointDocumentationRule.evaluate",
+          "API001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "API002",
+      "source_module": "src/taut/policy/rules/api_contracts.py",
+      "evaluator": {
+        "class": "PublicFieldDocumentationRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "public fields",
+        "annotations/docstrings"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/api_contracts.py",
+        "anchors": [
+          "PublicFieldDocumentationRule.evaluate",
+          "API002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "API003",
+      "source_module": "src/taut/policy/rules/api_contracts.py",
+      "evaluator": {
+        "class": "RouterMetadataRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "router metadata",
+        "query parameters"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/api_contracts.py",
+        "anchors": [
+          "RouterMetadataRule.evaluate",
+          "API003 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ARCH000",
+      "source_module": "src/taut/policy/rules/classification.py",
+      "evaluator": {
+        "class": "AssignedRoleRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module classification role"
+      ],
+      "resolution_source": "manifest classification and module completeness; no SymbolRef state is consumed",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/classification.py",
+        "anchors": [
+          "AssignedRoleRule.evaluate",
+          "ARCH000 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "preserve evaluator behavior for all resolution states; incomplete module facts remain INDETERMINATE",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "ARCH001",
+      "source_module": "src/taut/policy/rules/architecture.py",
+      "evaluator": {
+        "class": "ImportDirectionRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "import edges",
+        "boundary config"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/architecture.py",
+        "anchors": [
+          "ImportDirectionRule.evaluate",
+          "ARCH001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "ARCH002",
+      "source_module": "src/taut/policy/rules/architecture.py",
+      "evaluator": {
+        "class": "ImportCycleRule",
+        "function": "evaluate"
+      },
+      "target": "project",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "project import graph",
+        "non-type-only edges"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/architecture.py",
+        "anchors": [
+          "ImportCycleRule.evaluate",
+          "ARCH002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "BOUNDARY001",
+      "source_module": "src/taut/policy/rules/boundary.py",
+      "evaluator": {
+        "class": "ForbiddenImportRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "import/call edges",
+        "import boundaries"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/boundary.py",
+        "anchors": [
+          "ForbiddenImportRule.evaluate",
+          "BOUNDARY001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "BOUNDARY002",
+      "source_module": "src/taut/policy/rules/responsibility_boundaries.py",
+      "evaluator": {
+        "class": "_ImportBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "imports/calls",
+        "service boundaries"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/responsibility_boundaries.py",
+        "anchors": [
+          "_ImportBoundaryRule.evaluate",
+          "BOUNDARY002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "BOUNDARY003",
+      "source_module": "src/taut/policy/rules/responsibility_boundaries.py",
+      "evaluator": {
+        "class": "_ImportBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "imports/calls",
+        "contract boundaries"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/responsibility_boundaries.py",
+        "anchors": [
+          "_ImportBoundaryRule.evaluate",
+          "BOUNDARY003 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "CAT001",
+      "source_module": "src/taut/policy/rules/catalog_coverage.py",
+      "evaluator": {
+        "class": "RiskyCatalogCoverageRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "call ref",
+        "effect catalog",
+        "risky prefixes"
+      ],
+      "resolution_source": "call_ref",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/catalog_coverage.py",
+        "anchors": [
+          "RiskyCatalogCoverageRule.evaluate",
+          "CAT001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate for relevant catalog candidates; unresolved/dynamic=not_applicable without a target"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none; relevance uses resolved call refs and the effect catalog",
+        "provider_opportunity": "effect catalog/provider registration is consumed before evaluation"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "CONFIG001",
+      "source_module": "src/taut/policy/rules/construction_boundaries.py",
+      "evaluator": {
+        "class": "SettingsConstructionRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "settings classes",
+        "calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/construction_boundaries.py",
+        "anchors": [
+          "SettingsConstructionRule.evaluate",
+          "CONFIG001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "DB001",
+      "source_module": "src/taut/policy/rules/persistence.py",
+      "evaluator": {
+        "class": "TimezoneColumnRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "ORM columns",
+        "datetime annotations"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/persistence.py",
+        "anchors": [
+          "TimezoneColumnRule.evaluate",
+          "DB001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "DEPENDS001",
+      "source_module": "src/taut/policy/rules/layer_boundaries.py",
+      "evaluator": {
+        "class": "DependencyInjectionBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "dependency declarations",
+        "function params"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/layer_boundaries.py",
+        "anchors": [
+          "DependencyInjectionBoundaryRule.evaluate",
+          "DEPENDS001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "DTO001",
+      "source_module": "src/taut/policy/rules/model_shapes.py",
+      "evaluator": {
+        "class": "ImmutableDtoRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "DTO fields",
+        "mutability/annotations"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/model_shapes.py",
+        "anchors": [
+          "ImmutableDtoRule.evaluate",
+          "DTO001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "DTO002",
+      "source_module": "src/taut/policy/rules/model_shapes.py",
+      "evaluator": {
+        "class": "DtoNameRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "DTO symbol names"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/model_shapes.py",
+        "anchors": [
+          "DtoNameRule.evaluate",
+          "DTO002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ENTRY001",
+      "source_module": "src/taut/policy/rules/layer_boundaries.py",
+      "evaluator": {
+        "class": "_RoleBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "calls",
+        "external/DB effects"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/layer_boundaries.py",
+        "anchors": [
+          "_RoleBoundaryRule.evaluate",
+          "ENTRY001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "ENUM001",
+      "source_module": "src/taut/policy/rules/enums.py",
+      "evaluator": {
+        "class": "EnumShapeRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "enum declarations",
+        "bases",
+        "members"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/enums.py",
+        "anchors": [
+          "EnumShapeRule.evaluate",
+          "ENUM001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "EXC001",
+      "source_module": "src/taut/policy/rules/exceptions.py",
+      "evaluator": {
+        "class": "ExceptionRegistryRule",
+        "function": "evaluate"
+      },
+      "target": "project",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "all calls",
+        "exception classes",
+        "error registry"
+      ],
+      "resolution_source": "call_ref",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/exceptions.py",
+        "anchors": [
+          "ExceptionRegistryRule.evaluate",
+          "EXC001 RuleDefinition"
+        ],
+      "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous relevant candidates=indeterminate; unresolved/dynamic without candidates=evaluate"
+      },
+      "required_code_test_change": "propagate only relevant conditional/ambiguous constructor candidates; unresolved/dynamic without candidates remain compatible evaluation",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none; constructor relevance uses resolved call refs and candidates",
+        "provider_opportunity": "resolved exception/error-code provider facts"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "HTTP001",
+      "source_module": "src/taut/policy/rules/external_calls.py",
+      "evaluator": {
+        "class": "HttpTimeoutRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "external-call effects",
+        "timeout arguments"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/external_calls.py",
+        "anchors": [
+          "HttpTimeoutRule.evaluate",
+          "HTTP001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "IGNORE001",
+      "source_module": "src/taut/policy/rules/ignore_audit.py",
+      "evaluator": {
+        "class": "InlineIgnoreAuditRule",
+        "function": "evaluate"
+      },
+      "target": "project",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "inline ignores",
+        "registry IDs"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/ignore_audit.py",
+        "anchors": [
+          "InlineIgnoreAuditRule.evaluate",
+          "IGNORE001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "IMPORT001",
+      "source_module": "src/taut/policy/rules/conventions.py",
+      "evaluator": {
+        "class": "ImportPlacementRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": true,
+      "semantic_facts_consumed": [
+        "module imports",
+        "import placement"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "not_applicable",
+        "conditional": "not_applicable",
+        "ambiguous": "not_applicable",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/conventions.py",
+        "anchors": [
+          "ImportPlacementRule.evaluate",
+          "IMPORT001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "retain syntax-only verdict behavior; add path fixture coverage",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "IMPORT002",
+      "source_module": "src/taut/policy/rules/runtime_safety.py",
+      "evaluator": {
+        "class": "DynamicImportRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "dynamic import calls",
+        "expression arguments"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/runtime_safety.py",
+        "anchors": [
+          "DynamicImportRule.evaluate",
+          "IMPORT002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "LOG001",
+      "source_module": "src/taut/policy/rules/external_calls.py",
+      "evaluator": {
+        "class": "ExternalCallLoggingRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "external-call effects",
+        "logging calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/external_calls.py",
+        "anchors": [
+          "ExternalCallLoggingRule.evaluate",
+          "LOG001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "MODEL001",
+      "source_module": "src/taut/policy/rules/layer_boundaries.py",
+      "evaluator": {
+        "class": "_RoleBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "model fields",
+        "external calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/layer_boundaries.py",
+        "anchors": [
+          "_RoleBoundaryRule.evaluate",
+          "MODEL001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "ORM001",
+      "source_module": "src/taut/policy/rules/persistence.py",
+      "evaluator": {
+        "class": "RelationshipLoadingRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "relationship facts",
+        "lazy options"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/persistence.py",
+        "anchors": [
+          "RelationshipLoadingRule.evaluate",
+          "ORM001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "ORM002",
+      "source_module": "src/taut/policy/rules/persistence.py",
+      "evaluator": {
+        "class": "DatabaseEnumRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "enum columns",
+        "enum declarations"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/persistence.py",
+        "anchors": [
+          "DatabaseEnumRule.evaluate",
+          "ORM002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "QUERY001",
+      "source_module": "src/taut/policy/rules/layer_boundaries.py",
+      "evaluator": {
+        "class": "_RoleBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "write effects",
+        "query calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/layer_boundaries.py",
+        "anchors": [
+          "_RoleBoundaryRule.evaluate",
+          "QUERY001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "RUNTIME001",
+      "source_module": "src/taut/policy/rules/runtime_safety.py",
+      "evaluator": {
+        "class": "RuntimeShortcutRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module calls",
+        "runtime shortcut symbols"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/runtime_safety.py",
+        "anchors": [
+          "RuntimeShortcutRule.evaluate",
+          "RUNTIME001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "SCHEMA001",
+      "source_module": "src/taut/policy/rules/model_shapes.py",
+      "evaluator": {
+        "class": "SchemaConfigRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "schema role",
+        "config assignments",
+        "model metadata"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/model_shapes.py",
+        "anchors": [
+          "SchemaConfigRule.evaluate",
+          "SCHEMA001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "SCHEMA002",
+      "source_module": "src/taut/policy/rules/model_shapes.py",
+      "evaluator": {
+        "class": "SchemaInheritanceRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "schema role",
+        "class bases",
+        "fields"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/model_shapes.py",
+        "anchors": [
+          "SchemaInheritanceRule.evaluate",
+          "SCHEMA002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "SCHEMA003",
+      "source_module": "src/taut/policy/rules/api_contracts.py",
+      "evaluator": {
+        "class": "ResponseMappingRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "schema role",
+        "response mapping calls",
+        "DTO/model symbols"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/api_contracts.py",
+        "anchors": [
+          "ResponseMappingRule.evaluate",
+          "SCHEMA003 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "SEC001",
+      "source_module": "src/taut/policy/rules/security.py",
+      "evaluator": {
+        "class": "DirectSecurityAccessRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "security access calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/security.py",
+        "anchors": [
+          "DirectSecurityAccessRule.evaluate",
+          "SEC001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "SERVICE001",
+      "source_module": "src/taut/policy/rules/layer_boundaries.py",
+      "evaluator": {
+        "class": "_RoleBoundaryRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "DB/transport calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/layer_boundaries.py",
+        "anchors": [
+          "_RoleBoundaryRule.evaluate",
+          "SERVICE001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "B",
+      "group_files": [
+        "src/taut/policy/rules/architecture.py",
+        "src/taut/policy/rules/boundary.py",
+        "src/taut/policy/rules/responsibility_boundaries.py",
+        "src/taut/policy/rules/layer_boundaries.py"
+      ],
+      "dependencies": [
+        "A"
+      ]
+    },
+    {
+      "id": "SESSION001",
+      "source_module": "src/taut/policy/rules/session.py",
+      "evaluator": {
+        "class": "SessionOwnerRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "call ref",
+        "session providers",
+        "enclosing symbol",
+        "module role"
+      ],
+      "resolution_source": "call_ref",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/session.py",
+        "anchors": [
+          "SessionOwnerRule.evaluate",
+          "SESSION001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed; unresolved provider currently becomes not_applicable",
+        "provider_opportunity": "resolved provider identity capability"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "SESSION002",
+      "source_module": "src/taut/policy/rules/session.py",
+      "evaluator": {
+        "class": "NestedSessionRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "call ref",
+        "session providers",
+        "enclosing contexts"
+      ],
+      "resolution_source": "call_ref",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/session.py",
+        "anchors": [
+          "NestedSessionRule.evaluate",
+          "SESSION002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed; missing provider symbol becomes not_applicable",
+        "provider_opportunity": "resolved session-provider identity capability"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "SESSION003",
+      "source_module": "src/taut/policy/rules/session.py",
+      "evaluator": {
+        "class": "ServiceSessionParameterRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "service role",
+        "function parameter annotations"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/session.py",
+        "anchors": [
+          "ServiceSessionParameterRule.evaluate",
+          "SESSION003 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "SIZE001",
+      "source_module": "src/taut/policy/rules/conventions.py",
+      "evaluator": {
+        "class": "FileSizeRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": true,
+      "semantic_facts_consumed": [
+        "module role",
+        "line count",
+        "configured limits"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "not_applicable",
+        "conditional": "not_applicable",
+        "ambiguous": "not_applicable",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/conventions.py",
+        "anchors": [
+          "FileSizeRule.evaluate",
+          "SIZE001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "retain syntax-only verdict behavior; add path fixture coverage",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "SNAPSHOT001",
+      "source_module": "src/taut/policy/rules/model_shapes.py",
+      "evaluator": {
+        "class": "SnapshotPlacementRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "snapshot declarations",
+        "version metadata"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/model_shapes.py",
+        "anchors": [
+          "SnapshotPlacementRule.evaluate",
+          "SNAPSHOT001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "A",
+      "group_files": [
+        "src/taut/policy/rules/api_contracts.py",
+        "src/taut/policy/rules/model_shapes.py",
+        "src/taut/policy/rules/enums.py",
+        "src/taut/policy/rules/ignore_audit.py"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "SQL001",
+      "source_module": "src/taut/policy/rules/persistence.py",
+      "evaluator": {
+        "class": "RawSqlRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "SQLAlchemyRawSQLFact call/ref/confidence",
+        "SQL call arguments",
+        "literal/dynamic strings"
+      ],
+      "resolution_source": "taut.sqlalchemy.raw_sql@1 provider facts (call/ref/confidence/operation/argument metadata)",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "indeterminate",
+        "dynamic": "indeterminate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/persistence.py",
+        "anchors": [
+          "RawSqlRule.evaluate",
+          "SQL001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=indeterminate from SQLAlchemyRawSQLFact confidence"
+      },
+      "required_code_test_change": "contract provider capability and all five SQLAlchemyRawSQLFact confidence states with exact verdict/reason, missing capability, incomplete facts, and unrelated custom-call behavior",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none; SQLAlchemy relevance and confidence come from the registered provider fact",
+        "provider_opportunity": "taut.sqlalchemy.raw_sql@1 is produced before evaluation"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "TEST001",
+      "source_module": "src/taut/policy/rules/test_boundaries.py",
+      "evaluator": {
+        "class": "TestFixtureLayoutRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": true,
+      "semantic_facts_consumed": [
+        "module path",
+        "conftest placement"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "not_applicable",
+        "conditional": "not_applicable",
+        "ambiguous": "not_applicable",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/test_boundaries.py",
+        "anchors": [
+          "TestFixtureLayoutRule.evaluate",
+          "TEST001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "retain syntax-only verdict behavior; add path fixture coverage",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "TEST002",
+      "source_module": "src/taut/policy/rules/test_boundaries.py",
+      "evaluator": {
+        "class": "TestRawHttpRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "test role",
+        "raw HTTP calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/test_boundaries.py",
+        "anchors": [
+          "TestRawHttpRule.evaluate",
+          "TEST002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "TIME001",
+      "source_module": "src/taut/policy/rules/time_access.py",
+      "evaluator": {
+        "class": "TimeAccessRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "call ref symbol/state",
+        "effect catalog",
+        "enclosing symbol"
+      ],
+      "resolution_source": "effect_resolution",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/time_access.py",
+        "anchors": [
+          "TimeAccessRule.evaluate",
+          "TIME001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate when a relevant effect candidate exists; unresolved/dynamic remain compatible when no candidate exists"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none; written call spelling is display evidence only",
+        "provider_opportunity": "configured resolver-owned time effect/catalog capability"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "TX001",
+      "source_module": "src/taut/policy/rules/transaction.py",
+      "evaluator": {
+        "class": "TransactionOwnerRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "call ref symbol/state",
+        "transaction effects",
+        "enclosing symbol",
+        "configured transaction ownership"
+      ],
+      "resolution_source": "effect_resolution",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/transaction.py",
+        "anchors": [
+          "TransactionOwnerRule.evaluate",
+          "TX001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous=indeterminate when a relevant transaction effect candidate exists; unresolved/dynamic remain compatible when no candidate exists"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none; method and receiver spelling are not semantic signals",
+        "provider_opportunity": "typed transaction effect and configured ownership capability"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "TX002",
+      "source_module": "src/taut/policy/rules/runtime_safety.py",
+      "evaluator": {
+        "class": "ExternalCallTransactionRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module calls",
+        "transaction/external effects"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/runtime_safety.py",
+        "anchors": [
+          "ExternalCallTransactionRule.evaluate",
+          "TX002 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "WIRING001",
+      "source_module": "src/taut/policy/rules/construction_boundaries.py",
+      "evaluator": {
+        "class": "ImplementationConstructionRule",
+        "function": "evaluate"
+      },
+      "target": "module",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "module role",
+        "implementation/client construction calls"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/construction_boundaries.py",
+        "anchors": [
+          "ImplementationConstructionRule.evaluate",
+          "WIRING001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=indeterminate for relevant candidates; ambiguous=indeterminate for relevant candidates; unresolved/dynamic=evaluate when unrelated"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "C",
+      "group_files": [
+        "src/taut/policy/rules/construction_boundaries.py",
+        "src/taut/policy/rules/conventions.py",
+        "src/taut/policy/rules/test_boundaries.py",
+        "src/taut/policy/rules/classification.py",
+        "src/taut/policy/rules/exceptions.py",
+        "src/taut/policy/rules/external_calls.py",
+        "src/taut/policy/rules/security.py"
+      ],
+      "dependencies": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "ASYNC001",
+      "source_module": "src/taut/policy/rules/async_safety.py",
+      "evaluator": {
+        "class": "BlockingCallInAsyncRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "enclosing function asyncness",
+        "effect catalog",
+        "access path"
+      ],
+      "resolution_source": "effect_resolution",
+      "resolution_policy": {
+        "resolved": "not_applicable",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/async_safety.py",
+        "anchors": [
+          "BlockingCallInAsyncRule.evaluate",
+          "ASYNC001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed; unknown effect currently becomes not_applicable",
+        "provider_opportunity": "complete blocking-effect provider facts"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    }
+  ]
+}

@@ -13,48 +13,32 @@ from taut.domain.findings import EvidenceItem
 from taut.domain.ids import RuleId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    target_uncertainty,
+    unresolved_effect_evaluation,
+)
 
 RULE_ID = RuleId("TX001")
 RULE_VERSION = 3
 TRANSACTION_EFFECTS = frozenset({Effect.TX_COMMIT, Effect.TX_ROLLBACK})
-_RISKY_NAMES = frozenset({"commit", "rollback"})
-
-
-def _looks_like_database_owner(written_name: str, owner_names: tuple[str, ...]) -> bool:
-    parts = written_name.rsplit(".", maxsplit=1)
-    if len(parts) != 2:
-        return False
-    receiver = parts[0].rsplit(".", maxsplit=1)[-1].lower()
-    return any(receiver == owner or receiver.endswith(f"_{owner}") for owner in owner_names)
 
 
 class TransactionOwnerRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None or target.module_id is None:
             raise ValueError("TX001 requires a call target")
+        incomplete = target_uncertainty(RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
+        uncertain = unresolved_effect_evaluation(
+            RULE_ID, target, context, call.id, TRANSACTION_EFFECTS
+        )
+        if uncertain is not None:
+            return uncertain
         resolution = context.effect_of(call)
         if resolution.state is EffectResolutionState.SYMBOL_UNRESOLVED:
-            final_name = call.ref.written_name.rsplit(".", maxsplit=1)[-1]
-            if final_name in _RISKY_NAMES:
-                if call.enclosing_symbol in context.policy.transaction_session_providers:
-                    return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
-                if not _looks_like_database_owner(
-                    call.ref.written_name,
-                    context.policy.boundaries.database_owner_names,
-                ):
-                    return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-                return RuleEvaluation(
-                    RULE_ID,
-                    target,
-                    RuleVerdict.INDETERMINATE,
-                    (),
-                    EvaluationReason(
-                        "unresolved_transaction_call",
-                        "transaction 종료 호출일 수 있는 대상을 확인하지 못했습니다.",
-                    ),
-                )
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if resolution.state is not EffectResolutionState.MATCHED:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())

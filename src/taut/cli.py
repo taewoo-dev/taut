@@ -1,47 +1,42 @@
 from __future__ import annotations
 
 import argparse
-import os
+import hashlib
+import json
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
 from taut import __version__
-from taut.analysis.contracts import (
-    AnalysisRequest,
-    ContextManagerProvider,
-    LanguageSettings,
-    ProjectRoot,
-    ResolverSettings,
+from taut.cache import CacheStore
+from taut.cache.authenticated import load_user_signing_key
+from taut.cache.store import ReportEnvelope
+from taut.check_service import CheckRequest, run_check_request
+from taut.daemon_client import (
+    DaemonError,
+    check_daemon,
+    daemon_status,
+    restart_daemon,
+    start_daemon,
+    stop_daemon,
 )
-from taut.analysis.project_analyzer import ProjectAnalyzer
-from taut.analysis.python.language_adapter import PythonAstAdapter
-from taut.analysis.semantic_model import SnapshotSemanticModel
-from taut.configuration.catalog import EffectResolver
-from taut.configuration.validation import validate_classification_for_policy
-from taut.domain.frozen import FrozenMap
-from taut.domain.ids import RuleId, SymbolId
+from taut.domain.ids import RuleId
 from taut.domain.location import ConfigPath
-from taut.finding_processing.finding_processor import FindingProcessor
-from taut.finding_processing.report_builder import build_run_report
 from taut.loading.config_loader import (
     load_project_configuration,
 )
+from taut.loading.config_migration import (
+    migrate_configuration_text,
+    write_migrated_configuration,
+)
 from taut.loading.errors import PolicyConfigError
-from taut.loading.inline_ignores import load_inline_ignores
 from taut.loading.source_discovery import discover_sources
-from taut.policy.context import PolicyContext
-from taut.policy.decision_digest import build_decision_digest
-from taut.policy.engine import PolicyEngine
 from taut.policy.rules import builtin_rule_registry
-from taut.reporting.json import render_configuration_error_json, render_json
-from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH, render_text
-
-_ASYNC_SESSION_TYPE = SymbolId("sqlalchemy.ext.asyncio.AsyncSession")
-_MINIMUM_PARALLEL_SOURCES = 100
-_MAXIMUM_ANALYSIS_WORKERS = 4
+from taut.reporting.json import render_configuration_error_json
+from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH
 
 
 @dataclass(frozen=True)
@@ -53,6 +48,28 @@ class CheckOptions:
     verbose: bool
     color: str
     width: int | None
+    no_cache: bool = False
+    cache_dir: Path | None = None
+    daemon_mode: str = "never"
+
+
+@contextmanager
+def _cache_context(directory: Path, *, enabled: bool) -> Generator[CacheStore | None, None, None]:
+    """Best-effort cache resource; cache failures never affect check output."""
+    if not enabled:
+        yield None
+        return
+    store = CacheStore(directory, signing_key=load_user_signing_key())
+    try:
+        store.__enter__()
+    except Exception:
+        yield None
+        return
+    try:
+        yield store
+    finally:
+        with suppress(Exception):
+            store.__exit__(None, None, None)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -65,6 +82,9 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
     )
+    check.add_argument("--no-cache", action="store_true")
+    check.add_argument("--cache-dir")
+    check.add_argument("--daemon", choices=("auto", "never", "required"), default="never")
     check.add_argument("--format", choices=("text", "json"), default="text")
     check.add_argument("--show-inactive", action="store_true")
     check.add_argument("-v", "--verbose", action="store_true")
@@ -84,6 +104,26 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
     )
+    migrate = config_commands.add_parser("migrate", help="v1/v2 설정을 v3로 변환합니다.")
+    migrate.add_argument("project_root", nargs="?", default=".")
+    migrate.add_argument("--config", help="변환할 별도 TOML 설정 파일입니다.")
+    migrate.add_argument("--output", help="변환 결과를 저장할 새 파일입니다.")
+    migrate.add_argument("--force", action="store_true", help="기존 출력 파일을 덮어씁니다.")
+    explain = config_commands.add_parser("explain", help="실제로 적용되는 설정을 설명합니다.")
+    explain.add_argument("project_root", nargs="?", default=".")
+    explain.add_argument("--config", help="설명할 별도 TOML 설정 파일입니다.")
+    explain.add_argument("--format", choices=("text", "json"), default="text")
+    cache = subparsers.add_parser("cache", help="persistent report cache 관리")
+    cache_commands = cache.add_subparsers(dest="cache_command", required=True)
+    for name, help_text in (("stats", "캐시 통계"), ("clean", "캐시 비우기")):
+        command_parser = cache_commands.add_parser(name, help=help_text)
+        command_parser.add_argument("project_root", nargs="?", default=".")
+        command_parser.add_argument("--cache-dir")
+    daemon = subparsers.add_parser("daemon", help="상주 분석 daemon 관리")
+    daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
+    for name in ("start", "status", "stop", "restart"):
+        command_parser = daemon_commands.add_parser(name)
+        command_parser.add_argument("project_root", nargs="?", default=".")
     return parser
 
 
@@ -95,6 +135,9 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
     verbose = namespace.verbose
     color = namespace.color
     width = namespace.width
+    no_cache = namespace.no_cache
+    daemon_mode = namespace.daemon
+    cache_dir = Path(namespace.cache_dir).resolve() if namespace.cache_dir else None
     if not isinstance(root_value, str):
         raise ValueError("project_root must be a string")
     if config_value is not None and not isinstance(config_value, str):
@@ -109,6 +152,8 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
         raise ValueError("color must be a string")
     if width is not None and (not isinstance(width, int) or width < MINIMUM_TEXT_WIDTH):
         raise ValueError(f"width must be at least {MINIMUM_TEXT_WIDTH}")
+    if daemon_mode not in {"auto", "never", "required"}:
+        raise ValueError("daemon mode is invalid")
     return CheckOptions(
         project_root=Path(root_value).resolve(),
         config_path=ConfigPath(config_value) if config_value is not None else None,
@@ -117,88 +162,113 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
         verbose=verbose,
         color=color,
         width=width,
+        no_cache=no_cache,
+        cache_dir=cache_dir,
+        daemon_mode=daemon_mode,
     )
 
 
 def run_check(options: CheckOptions) -> int:
+    request = _check_request(options)
+    if options.daemon_mode != "never":
+        try:
+            result = check_daemon(request)
+        except (DaemonError, OSError, TimeoutError):
+            if options.daemon_mode == "required":
+                raise
+            if options.verbose:
+                print("taut daemon: unavailable; using local pipeline", file=sys.stderr)
+        else:
+            sys.stdout.buffer.write(result.stdout)
+            if result.stderr:
+                sys.stderr.buffer.write(result.stderr)
+            if options.verbose:
+                counters = result.counters
+                print(
+                    "taut daemon: "
+                    f"reparsed={counters.reparsed_modules} "
+                    f"reused={counters.reused_modules} "
+                    f"evaluated={counters.recomputed_evaluations}",
+                    file=sys.stderr,
+                )
+            return result.exit_code
     config = load_project_configuration(options.project_root, options.config_path)
     discovery = discover_sources(options.project_root, config)
-    adapter = PythonAstAdapter()
-    context_manager_providers = {
-        ContextManagerProvider(symbol, _ASYNC_SESSION_TYPE)
-        for symbol in config.policy.transaction_session_providers
-    }
-    context_manager_providers.update(
-        ContextManagerProvider(symbol, symbol)
-        for symbol in config.policy.boundaries.http_timeout_calls
-    )
-    request = AnalysisRequest(
-        project_root=ProjectRoot(options.project_root),
-        sources=discovery.sources,
-        language=LanguageSettings(),
-        resolver=ResolverSettings(
-            source_roots=config.source_roots,
-            context_manager_providers=tuple(sorted(context_manager_providers)),
-        ),
-        adapter_versions=FrozenMap(((adapter.identity.name, adapter.identity.version),)),
-    )
-    snapshot = ProjectAnalyzer(adapter).analyze(
-        request,
-        workers=_analysis_workers(len(request.sources)),
-    )
-    classifications = config.manifest.classify(snapshot)
-    validate_classification_for_policy(classifications, config.policy)
-    model = SnapshotSemanticModel(snapshot)
-    context = PolicyContext(
-        model=model,
-        classification=classifications,
-        effects=EffectResolver(),
-        catalog=config.catalog,
-        policy=config.policy,
-    )
-    registry = builtin_rule_registry()
-    ignore_result = load_inline_ignores(
-        discovery.sources,
-        frozenset(registry.definitions),
-    )
-    policy_result = PolicyEngine(registry).run(context)
-    help_by_rule = FrozenMap(
-        (rule_id, definition.help) for rule_id, definition in registry.definitions.items()
-    )
-    processing = FindingProcessor().process(
-        findings=policy_result.findings,
-        policy=config.policy,
-        help_by_rule=help_by_rule,
-        ignores=ignore_result.directives,
-    )
-    report = build_run_report(
-        snapshot=snapshot,
-        engine_version=__version__,
-        decision_digest=build_decision_digest(config, registry, adapter.identity),
-        diagnostics=processing.diagnostics,
-        engine_issues=(
-            *discovery.issues,
-            *snapshot.issues,
-            *policy_result.engine_issues,
-            *processing.engine_issues,
-            *ignore_result.issues,
-        ),
-        coverage=policy_result.coverage,
-        ignore_audit=processing.ignore_audit,
-    )
-    if options.output_format == "json":
-        print(render_json(report))
+    cache_key = None
+    directory = options.cache_dir or (options.project_root / config.cache_directory.value)
+    with _cache_context(
+        directory, enabled=not options.no_cache and config.cache_enabled
+    ) as cache_store:
+        if (
+            cache_store is None
+            and not options.no_cache
+            and config.cache_enabled
+            and options.verbose
+        ):
+            print("taut cache: error", file=sys.stderr)
+        if cache_store is not None:
+            fingerprint = hashlib.sha256(
+                (
+                    __version__
+                    + "|report-schema:1|"
+                    + config.digest()
+                    + options.output_format
+                    + str(options.show_inactive)
+                    + str(options.verbose)
+                    + options.color
+                    + str(options.width)
+                    + "python-target:3.11|adapter:python:1|"
+                    + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
+                ).encode()
+            ).hexdigest()
+            cache_key = fingerprint
+            try:
+                cached = cache_store.get_report_envelope(fingerprint)
+            except Exception:
+                cached = None
+            if cached is not None:
+                sys.stdout.buffer.write(cached.stdout)
+                if cached.stderr:
+                    sys.stderr.buffer.write(cached.stderr)
+                if options.verbose:
+                    print("taut cache: hit", file=sys.stderr)
+                return int(cached.exit_code)
+            if options.verbose:
+                print("taut cache: miss", file=sys.stderr)
+    if cache_key is None:
+        result = run_check_request(request)
     else:
-        print(
-            render_text(
-                report,
-                show_inactive=options.show_inactive,
-                verbose=options.verbose,
-                color=_use_color(options.color),
-                width=_output_width(options.width),
-            )
-        )
-    return report.exit_decision.code
+        with _cache_context(directory, enabled=True) as module_store:
+            result = run_check_request(request, module_store)
+    output_bytes = result.stdout
+    sys.stdout.buffer.write(result.stdout)
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
+    if cache_key is not None:
+        try:
+            with _cache_context(directory, enabled=True) as write_store:
+                if write_store is not None:
+                    write_store.put_report_envelope(
+                        cache_key,
+                        ReportEnvelope(
+                            1,
+                            cache_key,
+                            output_bytes,
+                            b"",
+                            result.exit_code,
+                            {
+                                "format": options.output_format,
+                                "show_inactive": str(options.show_inactive),
+                                "verbose": str(options.verbose),
+                                "color": options.color,
+                                "width": str(options.width),
+                            },
+                        ),
+                    )
+        except Exception:
+            if options.verbose:
+                print("taut cache: error", file=sys.stderr)
+    return result.exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -226,17 +296,95 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"수정 방법: {selected_definition.help}")
             return 0
         if command == "config":
-            if namespace.config_command != "validate":
-                parser.error("unknown config command")
             root = Path(namespace.project_root).resolve()
             config_path = ConfigPath(namespace.config) if namespace.config is not None else None
+            if namespace.config_command == "migrate":
+                _, migrated = migrate_configuration_text(root, config_path)
+                output = namespace.output
+                if output is None:
+                    print(migrated, end="")
+                else:
+                    write_migrated_configuration(
+                        Path(output).resolve(), migrated, force=bool(namespace.force)
+                    )
+                return 0
+            if namespace.config_command == "explain":
+                loaded = load_project_configuration(root, config_path)
+                payload = {
+                    "schema_version": loaded.schema_version,
+                    "configuration_digest": loaded.digest(),
+                    "packs": loaded.packs,
+                    "providers": loaded.providers,
+                    "source_roots": tuple(path.value for path in loaded.source_roots),
+                    "roles": tuple(
+                        {
+                            "name": role.role.value,
+                            "include": role.patterns,
+                            "exclude": role.exclude,
+                            "priority": role.priority,
+                        }
+                        for role in loaded.manifest.roles
+                    ),
+                    "default_zone": loaded.manifest.default_zone.value,
+                    "default_max_lines": loaded.policy.default_max_lines,
+                }
+                if namespace.format == "json":
+                    print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
+                else:
+                    print(f"스키마: v{loaded.schema_version}")
+                    print(f"규칙 팩: {', '.join(loaded.packs)}")
+                    print(f"분석 provider: {', '.join(loaded.providers) or '(없음)'}")
+                    print(f"기본 영역: {loaded.manifest.default_zone.value}")
+                    print(f"최대 파일 길이: {loaded.policy.default_max_lines}")
+                    print(f"설정 digest: {loaded.digest()}")
+                return 0
+            if namespace.config_command != "validate":
+                parser.error("unknown config command")
             config = load_project_configuration(root, config_path)
             print(f"설정 정상: {config.manifest.source.path} ({config.digest()})")
             return 0
+        if command == "cache":
+            root = Path(namespace.project_root).resolve()
+            directory = (
+                Path(namespace.cache_dir).resolve() if namespace.cache_dir else root / ".taut_cache"
+            )
+            with CacheStore(directory) as store:
+                if namespace.cache_command == "clean":
+                    store.clean()
+                    print("캐시 삭제 완료")
+                else:
+                    stats = store.stats()
+                    print(f"모듈: {stats.module_entries}")
+                    print(f"리포트: {stats.report_entries}")
+                    print(f"바이트: {stats.total_bytes}")
+            return 0
+        if command == "daemon":
+            root = Path(namespace.project_root).resolve()
+            daemon_command = namespace.daemon_command
+            if daemon_command == "start":
+                status = start_daemon(root)
+                print(f"daemon running: pid={status.pid} port={status.port}")
+                return 0
+            if daemon_command == "status":
+                running = daemon_status(root)
+                if running is None:
+                    print("daemon stopped")
+                    return 1
+                print(f"daemon running: pid={running.pid} port={running.port}")
+                return 0
+            if daemon_command == "stop":
+                stopped = stop_daemon(root)
+                print("daemon stopped" if stopped else "daemon not running")
+                return 0 if stopped else 1
+            if daemon_command == "restart":
+                status = restart_daemon(root)
+                print(f"daemon running: pid={status.pid} port={status.port}")
+                return 0
+            parser.error("unknown daemon command")
         if command != "check":
             parser.error("unknown command")
         return run_check(_check_options(namespace))
-    except (PolicyConfigError, ValueError, OSError) as error:
+    except (DaemonError, PolicyConfigError, ValueError, OSError) as error:
         message = f"configuration error: {error}"
         if _requests_json(raw_arguments):
             print(render_configuration_error_json(__version__, message))
@@ -249,6 +397,18 @@ def _requests_json(arguments: tuple[str, ...]) -> bool:
     return "--format=json" in arguments or any(
         argument == "--format" and index + 1 < len(arguments) and arguments[index + 1] == "json"
         for index, argument in enumerate(arguments)
+    )
+
+
+def _check_request(options: CheckOptions) -> CheckRequest:
+    return CheckRequest(
+        project_root=options.project_root,
+        config_path=options.config_path,
+        output_format=options.output_format,
+        show_inactive=options.show_inactive,
+        verbose=options.verbose,
+        use_color=_use_color(options.color),
+        width=_output_width(options.width),
     )
 
 
@@ -267,13 +427,6 @@ def _output_width(configured: int | None) -> int:
         return DEFAULT_TEXT_WIDTH
     terminal_width = shutil.get_terminal_size(fallback=(DEFAULT_TEXT_WIDTH, 24)).columns
     return max(terminal_width, MINIMUM_TEXT_WIDTH)
-
-
-def _analysis_workers(source_count: int) -> int:
-    if source_count < _MINIMUM_PARALLEL_SOURCES:
-        return 1
-    available = os.cpu_count() or 1
-    return max(1, min(available, _MAXIMUM_ANALYSIS_WORKERS, source_count))
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import build_finding, target_uncertainty, unresolved_call_evaluation
 
 OWNER_RULE_ID = RuleId("SESSION001")
 NESTED_RULE_ID = RuleId("SESSION002")
@@ -24,7 +24,21 @@ class SessionOwnerRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None or target.module_id is None:
             raise ValueError("SESSION001 requires a call target")
+        incomplete = target_uncertainty(OWNER_RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
+        if call.ref.state is not ResolutionState.RESOLVED:
+            uncertain = unresolved_call_evaluation(
+                OWNER_RULE_ID,
+                target,
+                context,
+                call.module_id,
+                tuple(context.policy.transaction_session_providers),
+            )
+            if uncertain is not None:
+                return uncertain
+            return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if call.ref.state is not ResolutionState.RESOLVED or call.ref.symbol is None:
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if call.ref.symbol not in context.policy.transaction_session_providers:
@@ -65,7 +79,21 @@ class NestedSessionRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.fact_id is None:
             raise ValueError("SESSION002 requires a call target")
+        incomplete = target_uncertainty(NESTED_RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         call = context.model.call(target.fact_id)
+        if call.ref.state is not ResolutionState.RESOLVED:
+            uncertain = unresolved_call_evaluation(
+                NESTED_RULE_ID,
+                target,
+                context,
+                call.module_id,
+                tuple(context.policy.transaction_session_providers),
+            )
+            if uncertain is not None:
+                return uncertain
+            return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         provider = call.ref.symbol
         if provider is None or provider not in context.policy.transaction_session_providers:
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -110,6 +138,9 @@ class ServiceSessionParameterRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("SESSION003 requires a module target")
+        incomplete = target_uncertainty(PARAMETER_RULE_ID, target, context)
+        if incomplete is not None:
+            return incomplete
         role = context.classification.get(target.module_id).role
         if role is None or role not in context.policy.boundaries.service_roles:
             return RuleEvaluation(PARAMETER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())

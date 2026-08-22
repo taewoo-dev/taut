@@ -3,12 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
-from taut.domain.facts import AnalysisStage, CallFact, ImportFact, ResolutionState
+from taut.domain.facts import AnalysisStage, CallFact, GuardKind, ImportFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_finding,
+    module_fact_uncertainty,
+    unresolved_call_evaluation,
+    unresolved_import_evaluation,
+)
 
 SERVICE_RULE_ID = RuleId("BOUNDARY002")
 CONTRACT_RULE_ID = RuleId("BOUNDARY003")
@@ -45,10 +50,20 @@ class _ImportBoundaryRule:
         role = classification.role
         if role is None or role not in roles:
             return RuleEvaluation(self.rule_id, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(self.rule_id, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         prefixes = getattr(context.policy.boundaries, self.prefix_set_name)
+        uncertainty = unresolved_import_evaluation(
+            self.rule_id, target, context, target.module_id, prefixes
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         seen: set[tuple[str, int, int]] = set()
         for import_fact in context.model.module(target.module_id).imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             prefix = next(
                 (item for item in prefixes if _matches_module(import_fact, item)),
                 None,
@@ -111,10 +126,33 @@ class AdapterBoundaryRule:
         role = classification.role
         if role is None or role not in boundaries.adapter_roles:
             return RuleEvaluation(ADAPTER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = module_fact_uncertainty(ADAPTER_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_import_evaluation(
+            ADAPTER_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            boundaries.adapter_forbidden_modules,
+        )
+        if uncertainty is not None:
+            return uncertainty
+        uncertainty = unresolved_call_evaluation(
+            ADAPTER_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            boundaries.adapter_forbidden_calls,
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         seen_imports: set[tuple[str, int, int]] = set()
         for import_fact in module.imports:
+            if import_fact.context.guard is GuardKind.TYPE_CHECKING_ONLY:
+                continue
             import_prefix = next(
                 (
                     item

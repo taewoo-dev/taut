@@ -7,6 +7,7 @@ from taut.domain.findings import Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
+from taut.policy.rules.helpers import module_fact_uncertainty, unresolved_call_evaluation
 from taut.policy.rules.layer_boundaries import (
     RULE_VERSION,
     boundary_result,
@@ -25,6 +26,9 @@ class ImplementationConstructionRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("WIRING001 requires a module target")
+        uncertainty = module_fact_uncertainty(WIRING_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         role = context.classification.get(target.module_id).role
         if role is None:
             return RuleEvaluation(WIRING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -35,6 +39,11 @@ class ImplementationConstructionRule:
         allowed_roles = boundaries.bootstrap_roles.union(
             boundaries.implementation_construction_roles
         )
+        uncertainty = unresolved_call_evaluation(
+            WIRING_RULE_ID, target, context, target.module_id, tuple(constructors)
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol
@@ -75,6 +84,11 @@ class AdapterTypeLeakRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("ADAPTER002 requires a module target")
+        uncertainty = module_fact_uncertainty(
+            ADAPTER_TYPE_RULE_ID, target, context, target.module_id
+        )
+        if uncertainty is not None:
+            return uncertainty
         role = context.classification.get(target.module_id).role
         boundaries = context.policy.boundaries
         if role is None or role not in boundaries.adapter_roles:
@@ -117,6 +131,9 @@ class SettingsConstructionRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("CONFIG001 requires a module target")
+        uncertainty = module_fact_uncertainty(CONFIG_RULE_ID, target, context, target.module_id)
+        if uncertainty is not None:
+            return uncertainty
         role = context.classification.get(target.module_id).role
         if role is None:
             return RuleEvaluation(CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -124,6 +141,11 @@ class SettingsConstructionRule:
         settings_classes = context.indexes.settings_constructor_symbols
         if not settings_classes:
             return RuleEvaluation(CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = unresolved_call_evaluation(
+            CONFIG_RULE_ID, target, context, target.module_id, tuple(settings_classes)
+        )
+        if uncertainty is not None:
+            return uncertainty
         allowed = boundaries.configuration_roles.union(boundaries.bootstrap_roles)
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from taut.domain.location import ConfigPath
+from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
 from taut.loading.errors import PolicyConfigError
 
 PYPROJECT_CONFIG_PATH = ConfigPath("pyproject.toml")
@@ -13,6 +14,9 @@ LEGACY_CONFIG_PATH = ConfigPath(".policy/policy.toml")
 
 _TOOL_KEYS = frozenset(
     {
+        "schema_version",
+        "packs",
+        "providers",
         "strict",
         "include",
         "exclude",
@@ -138,7 +142,11 @@ def _tool_section(raw: dict[str, object]) -> dict[str, object] | None:
 
 def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     _reject_unknown(section, _TOOL_KEYS, "tool.taut")
-    root: dict[str, object] = {"schema_version": 2}
+    root: dict[str, object] = {
+        "schema_version": section.get("schema_version", 3),
+        "packs": section.get("packs", ["taut.backend"]),
+        "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
+    }
 
     project_keys = ("include", "exclude", "source_roots", "default_zone")
     project = {key: section[key] for key in project_keys if key in section}
@@ -146,7 +154,7 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
         root["project"] = project
 
     roles = _table(section.get("roles", {}), "tool.taut.roles")
-    root["roles"] = [{"name": name, "patterns": patterns} for name, patterns in roles.items()]
+    root["roles"] = [_normalized_role(name, value) for name, value in roles.items()]
     zones = _table(section.get("zones", {}), "tool.taut.zones")
     root["zones"] = [{"name": name, "patterns": patterns} for name, patterns in zones.items()]
 
@@ -184,6 +192,19 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     if conventions:
         root["code_conventions"] = conventions
     return root
+
+
+def _normalized_role(name: str, value: object) -> dict[str, object]:
+    if isinstance(value, list):
+        return {"name": name, "include": value}
+    table = _table(value, f"tool.taut.roles.{name}")
+    _reject_unknown(table, frozenset({"include", "exclude", "priority"}), f"roles.{name}")
+    return {
+        "name": name,
+        "include": table.get("include", []),
+        "exclude": table.get("exclude", []),
+        "priority": table.get("priority", 0),
+    }
 
 
 def _merge_aliases(

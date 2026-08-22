@@ -63,6 +63,7 @@ class RuleEvaluation:
     verdict: RuleVerdict
     findings: tuple[Finding, ...]
     reason: EvaluationReason | None = None
+    coverage_gaps: tuple[EvaluationReason, ...] = ()
 
     def __post_init__(self) -> None:
         if self.verdict is RuleVerdict.FAIL and not self.findings:
@@ -73,3 +74,5 @@ class RuleEvaluation:
             raise ValueError("indeterminate evaluation requires a reason")
         if self.verdict is not RuleVerdict.INDETERMINATE and self.reason is not None:
             raise ValueError("only indeterminate evaluation can contain a reason")
+        if len(self.coverage_gaps) != len(set(self.coverage_gaps)):
+            raise ValueError("coverage gaps must be unique")

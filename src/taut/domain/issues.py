@@ -17,6 +17,14 @@ class EngineIssueKind(StrEnum):
     OUTPUT_FAILURE = "output_failure"
 
 
+class CacheErrorCode(StrEnum):
+    DECODE = "decode"
+    LIMIT = "limit"
+    SCHEMA = "schema"
+    TYPE = "type"
+    DOMAIN = "domain"
+
+
 @dataclass(frozen=True, order=True)
 class EngineIssue:
     code: str

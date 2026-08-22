@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from taut.analysis.framework.fastapi import (
+    FASTAPI_ENDPOINTS,
+    FASTAPI_RESPONSE_MODELS,
+    FASTAPI_ROUTERS,
+)
+from taut.analysis.framework.pydantic import PYDANTIC_FIELDS, PYDANTIC_OPERATIONS
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
     AnalysisStage,
@@ -9,12 +15,14 @@ from taut.domain.facts import (
     ExpressionSummary,
     FieldFact,
 )
-from taut.domain.findings import EvidenceItem, Finding
-from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
-from taut.domain.location import SourceRange
+from taut.domain.findings import Finding
+from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding
+from taut.policy.rules.helpers import (
+    build_policy_finding,
+    target_uncertainty,
+)
 
 ENDPOINT_RULE_ID = RuleId("API001")
 FIELD_RULE_ID = RuleId("API002")
@@ -34,33 +42,6 @@ _ROUTER_REGISTRATIONS = frozenset(
     }
 )
 _ROUTER_REGISTRATION_SYMBOLS = tuple(SymbolId(symbol) for symbol in sorted(_ROUTER_REGISTRATIONS))
-
-
-def _finding(
-    rule_id: RuleId,
-    module_id: ModuleId,
-    enclosing_symbol: SymbolId,
-    subject: FactId,
-    location: SourceRange,
-    message_key: str,
-    missing: str,
-    rule_version: int = RULE_VERSION,
-) -> Finding:
-    return build_finding(
-        rule_id=rule_id,
-        rule_version=rule_version,
-        module_id=module_id,
-        enclosing_symbol=enclosing_symbol,
-        subject=subject,
-        normalized_subject=f"{missing}:{subject.value}",
-        message_key=message_key,
-        arguments=(("symbol", enclosing_symbol.value), ("missing", missing)),
-        location=location,
-        evidence=(
-            EvidenceItem("symbol", enclosing_symbol.value),
-            EvidenceItem("missing", missing),
-        ),
-    )
 
 
 def _is_endpoint(decorator: DecoratorFact) -> bool:
@@ -105,6 +86,11 @@ class EndpointDocumentationRule:
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.router_roles:
             return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = target_uncertainty(
+            ENDPOINT_RULE_ID, target, context, (FASTAPI_ENDPOINTS, FASTAPI_RESPONSE_MODELS), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         functions = {function.symbol_id: function for function in module.functions}
         findings: list[Finding] = []
@@ -116,7 +102,7 @@ class EndpointDocumentationRule:
                 continue
             if not function.has_docstring:
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         ENDPOINT_RULE_ID,
                         target.module_id,
                         function.symbol_id,
@@ -128,7 +114,7 @@ class EndpointDocumentationRule:
                 )
             if _keyword(decorator, "responses") is None:
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         ENDPOINT_RULE_ID,
                         target.module_id,
                         function.symbol_id,
@@ -142,7 +128,7 @@ class EndpointDocumentationRule:
                 decorator, function.return_annotation
             ):
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         ENDPOINT_RULE_ID,
                         target.module_id,
                         function.symbol_id,
@@ -182,6 +168,9 @@ class PublicFieldDocumentationRule:
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.schema_roles:
             return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,), True)
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         classes = {
             class_fact.symbol_id: class_fact
@@ -210,7 +199,7 @@ class PublicFieldDocumentationRule:
                     missing.append("examples")
             if missing:
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         FIELD_RULE_ID,
                         target.module_id,
                         field.owner_symbol,
@@ -299,6 +288,11 @@ class RouterMetadataRule:
                 RuleVerdict.NOT_APPLICABLE,
                 (),
             )
+        uncertainty = target_uncertainty(
+            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         findings: list[Finding] = []
         registrations = _router_registration_tags(target, context)
         for call in context.model.module(target.module_id).calls:
@@ -310,7 +304,7 @@ class RouterMetadataRule:
                     registrations,
                 ):
                     findings.append(
-                        _finding(
+                        build_policy_finding(
                             ROUTER_METADATA_RULE_ID,
                             target.module_id,
                             call.enclosing_symbol or SymbolId(f"{target.module_id.value}.router"),
@@ -325,7 +319,7 @@ class RouterMetadataRule:
                 argument.name for argument in call.arguments
             }:
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         ROUTER_METADATA_RULE_ID,
                         target.module_id,
                         call.enclosing_symbol or SymbolId(f"{target.module_id.value}.query"),
@@ -351,6 +345,16 @@ class ResponseMappingRule:
         if target.module_id is None:
             raise ValueError("SCHEMA003 requires a module target")
         role = context.classification.get(target.module_id).role
+        if (
+            role not in context.policy.code.schema_roles
+            and role not in context.policy.code.router_roles
+        ):
+            return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        uncertainty = target_uncertainty(
+            MAPPING_RULE_ID, target, context, (PYDANTIC_OPERATIONS,), True
+        )
+        if uncertainty is not None:
+            return uncertainty
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         if role in context.policy.code.schema_roles:
@@ -362,7 +366,7 @@ class ResponseMappingRule:
                 method = functions.get(method_symbol)
                 if method is None:
                     findings.append(
-                        _finding(
+                        build_policy_finding(
                             MAPPING_RULE_ID,
                             target.module_id,
                             class_fact.symbol_id,
@@ -379,12 +383,15 @@ class ResponseMappingRule:
                     if call.enclosing_symbol == method_symbol
                     and (
                         call.has_keyword_unpack
-                        or call.ref.written_name.rsplit(".", maxsplit=1)[-1]
-                        in {"asdict", "model_dump", "model_validate", "vars"}
+                        or (
+                            call.ref.symbol is not None
+                            and call.ref.symbol.value.rsplit(".", maxsplit=1)[-1]
+                            in {"asdict", "model_dump", "model_validate", "vars"}
+                        )
                     )
                 )
                 findings.extend(
-                    _finding(
+                    build_policy_finding(
                         MAPPING_RULE_ID,
                         target.module_id,
                         class_fact.symbol_id,
@@ -406,7 +413,7 @@ class ResponseMappingRule:
                 if not class_name.endswith("Response"):
                     continue
                 findings.append(
-                    _finding(
+                    build_policy_finding(
                         MAPPING_RULE_ID,
                         target.module_id,
                         call.enclosing_symbol or symbol,

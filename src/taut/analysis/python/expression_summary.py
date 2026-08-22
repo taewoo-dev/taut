@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable
 
-from taut.analysis.python.symbol_resolver import written_name
+from taut.analysis.python.resolver_primitives import written_name
 from taut.domain.facts import (
     CallArgument,
     ExpressionSummary,
@@ -12,15 +12,22 @@ from taut.domain.facts import (
     SymbolRef,
 )
 from taut.domain.ids import SymbolId
+from taut.domain.location import SourceRange
 
 type Resolve = Callable[[ast.AST], SymbolRef]
 type Write = Callable[[ast.AST], str]
 
 
 class ExpressionSummarizer:
-    def __init__(self, resolve: Resolve, write: Write = written_name) -> None:
+    def __init__(
+        self,
+        resolve: Resolve,
+        write: Write = written_name,
+        location: Callable[[ast.AST], SourceRange] | None = None,
+    ) -> None:
         self._resolve = resolve
         self._write = write
+        self._location = location
         self._expressions: dict[ast.AST, ExpressionSummary] = {}
         self._arguments: dict[ast.Call, tuple[CallArgument, ...]] = {}
         self._symbols_by_node: dict[ast.AST, tuple[SymbolId, ...]] = {}
@@ -103,6 +110,12 @@ class ExpressionSummarizer:
                 argument.arg,
                 self.expression(argument.annotation) if argument.annotation is not None else None,
                 index >= default_start,
+                self.expression(node.args.defaults[index - default_start])
+                if index >= default_start
+                else None,
+                self._location(node.args.defaults[index - default_start])
+                if index >= default_start and self._location is not None
+                else None,
             )
             for index, argument in enumerate(positional)
         ]
@@ -111,6 +124,8 @@ class ExpressionSummarizer:
                 argument.arg,
                 self.expression(argument.annotation) if argument.annotation is not None else None,
                 default is not None,
+                self.expression(default) if default is not None else None,
+                self._location(default) if default is not None and self._location else None,
             )
             for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
         )
@@ -123,6 +138,8 @@ class ExpressionSummarizer:
                         if argument.annotation is not None
                         else None,
                         False,
+                        None,
+                        None,
                     )
                 )
         return tuple(result)

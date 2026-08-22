@@ -5,11 +5,13 @@ from typing import Protocol
 from taut.domain.facts import (
     CallFact,
     ImportCycle,
+    ImportEdge,
     ModuleFacts,
     SymbolRef,
     UnresolvedImport,
 )
 from taut.domain.ids import FactId, ModuleId, SnapshotId
+from taut.domain.relations import Binding, UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
 
@@ -23,6 +25,8 @@ class SemanticModel(Protocol):
 
     def imports_of(self, module_id: ModuleId) -> tuple[ModuleId, ...]: ...
 
+    def import_edges_of(self, module_id: ModuleId) -> tuple[ImportEdge, ...]: ...
+
     def imported_by(self, module_id: ModuleId) -> tuple[ModuleId, ...]: ...
 
     def import_cycles(self) -> tuple[ImportCycle, ...]: ...
@@ -35,6 +39,14 @@ class SemanticModel(Protocol):
 
     def resolve(self, ref: SymbolRef) -> SymbolRef: ...
 
+    def capabilities(self) -> frozenset[str]: ...
+
+    def capability_values(self, capability: str) -> tuple[object, ...]: ...
+
+    def bindings(self, module_id: ModuleId | None = None) -> tuple[Binding, ...]: ...
+
+    def uses(self, module_id: ModuleId | None = None) -> tuple[UseEdge, ...]: ...
+
 
 class SnapshotSemanticModel:
     def __init__(self, snapshot: AnalysisSnapshot) -> None:
@@ -42,6 +54,8 @@ class SnapshotSemanticModel:
         self._calls = {
             call.id: call for module in snapshot.modules.values() for call in module.calls
         }
+        self._bindings_by_module = snapshot.relations.bindings_by_module
+        self._uses_by_module = snapshot.relations.use_edges_by_module
 
     @property
     def snapshot_id(self) -> SnapshotId:
@@ -55,6 +69,11 @@ class SnapshotSemanticModel:
 
     def imports_of(self, module_id: ModuleId) -> tuple[ModuleId, ...]:
         return self._snapshot.project.imports[module_id]
+
+    def import_edges_of(self, module_id: ModuleId) -> tuple[ImportEdge, ...]:
+        return tuple(
+            edge for edge in self._snapshot.project.import_edges if edge.importer == module_id
+        )
 
     def imported_by(self, module_id: ModuleId) -> tuple[ModuleId, ...]:
         return self._snapshot.project.imported_by[module_id]
@@ -73,3 +92,19 @@ class SnapshotSemanticModel:
 
     def resolve(self, ref: SymbolRef) -> SymbolRef:
         return ref
+
+    def capabilities(self) -> frozenset[str]:
+        return frozenset(self._snapshot.capabilities)
+
+    def capability_values(self, capability: str) -> tuple[object, ...]:
+        return self._snapshot.capabilities.get(capability, ())
+
+    def bindings(self, module_id: ModuleId | None = None) -> tuple[Binding, ...]:
+        if module_id is None:
+            return self._snapshot.relations.bindings
+        return tuple(self._bindings_by_module.get(module_id, ()))
+
+    def uses(self, module_id: ModuleId | None = None) -> tuple[UseEdge, ...]:
+        if module_id is None:
+            return self._snapshot.relations.use_edges
+        return tuple(self._uses_by_module.get(module_id, ()))
