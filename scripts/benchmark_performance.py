@@ -100,7 +100,7 @@ def _transitive_inbound(index: ProjectIndex, module: ModuleId) -> int:
     return len(seen)
 
 
-def _process_rss_bytes(pid: int) -> int:
+def process_rss_bytes(pid: int) -> int:
     """Return current RSS for a live process without an optional psutil dependency."""
     proc_statm = Path(f"/proc/{pid}/statm")
     if proc_statm.exists():
@@ -116,7 +116,7 @@ def _process_rss_bytes(pid: int) -> int:
     return int(result.stdout.strip()) * 1024
 
 
-def _benchmark_revision(seed: str, marker: str, revision: int) -> str:
+def benchmark_revision(seed: str, marker: str, revision: int) -> str:
     token = f"{revision:08d}"
     if revision < 0 or len(token) != 8:
         raise ValueError("benchmark revision must fit in eight decimal digits")
@@ -240,7 +240,7 @@ def daemon_benchmark(
                 seed = seeds[source.path.value]
                 for revision in range(1, timing_repeats + 1):
                     path.write_text(
-                        _benchmark_revision(seed, markers[label], revision), encoding="utf-8"
+                        benchmark_revision(seed, markers[label], revision), encoding="utf-8"
                     )
                     samples[label].append(invoke())
                 path.write_text(seed, encoding="utf-8")
@@ -257,12 +257,12 @@ def daemon_benchmark(
             if status is None:
                 raise RuntimeError("daemon disappeared before memory benchmark")
             memory_pid = status.pid
-            rss_before = _process_rss_bytes(memory_pid)
+            rss_before = process_rss_bytes(memory_pid)
             for _ in range(memory_checks):
                 sample = invoke()
-                sample["rss_bytes"] = _process_rss_bytes(memory_pid)
+                sample["rss_bytes"] = process_rss_bytes(memory_pid)
                 samples.setdefault("memory", []).append(sample)
-            rss_after = _process_rss_bytes(memory_pid)
+            rss_after = process_rss_bytes(memory_pid)
             daemon_stop_ok = stop_daemon(staged)
             if daemon_status(staged) is not None or not daemon_stop_ok:
                 raise RuntimeError("daemon leaked status after benchmark")
