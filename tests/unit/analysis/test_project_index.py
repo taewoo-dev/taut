@@ -114,3 +114,54 @@ def test_semantic_model_exposes_read_only_project_views() -> None:
     assert model.imported_by(ModuleId("app.b")) == (ModuleId("app.a"),)
     assert model.calls_in(ModuleId("app.a")) == ()
     assert model.unresolved_imports() == ()
+
+
+def test_semantic_model_canonicalizes_transitive_re_exports() -> None:
+    origin = make_source("app/enums/status.py", "class Status:\n    pass")
+    middle = make_source("app/enums/public.py", "from .status import Status as PublicStatus")
+    package = make_source("app/enums/__init__.py", "from .public import PublicStatus as Status")
+    model = SnapshotSemanticModel(analyze(package, middle, origin))
+
+    assert model.canonical_symbol(SymbolId("app.enums.Status")) == SymbolId(
+        "app.enums.status.Status"
+    )
+    assert model.canonical_symbol(SymbolId("app.enums.public.PublicStatus")) == SymbolId(
+        "app.enums.status.Status"
+    )
+    assert model.canonical_symbol(SymbolId("app.enums.status.Status")) == SymbolId(
+        "app.enums.status.Status"
+    )
+    assert model.canonical_symbol(SymbolId("app.enums.Status.ACTIVE")) == SymbolId(
+        "app.enums.status.Status.ACTIVE"
+    )
+
+
+def test_re_export_canonicalization_respects_final_module_binding() -> None:
+    origin = make_source("app/status.py", "class Status:\n    pass")
+    facade = make_source(
+        "app/facade.py",
+        "from .status import Status\nStatus = object()",
+    )
+    model = SnapshotSemanticModel(analyze(facade, origin))
+
+    assert model.canonical_symbol(SymbolId("app.facade.Status")) == SymbolId("app.facade.Status")
+
+
+def test_re_export_canonicalization_uses_a_later_import_binding() -> None:
+    origin = make_source("app/status.py", "class Status:\n    pass")
+    facade = make_source(
+        "app/facade.py",
+        "class Status:\n    pass\nfrom .status import Status",
+    )
+    model = SnapshotSemanticModel(analyze(facade, origin))
+
+    assert model.canonical_symbol(SymbolId("app.facade.Status")) == SymbolId("app.status.Status")
+
+
+def test_re_export_cycles_do_not_claim_a_canonical_symbol() -> None:
+    first = make_source("app/a.py", "from .b import Value")
+    second = make_source("app/b.py", "from .a import Value")
+    model = SnapshotSemanticModel(analyze(first, second))
+
+    assert model.canonical_symbol(SymbolId("app.a.Value")) == SymbolId("app.a.Value")
+    assert model.canonical_symbol(SymbolId("app.b.Value")) == SymbolId("app.b.Value")

@@ -10,7 +10,7 @@ from taut.domain.facts import (
     SymbolRef,
     UnresolvedImport,
 )
-from taut.domain.ids import FactId, ModuleId, SnapshotId
+from taut.domain.ids import FactId, ModuleId, SnapshotId, SymbolId
 from taut.domain.relations import Binding, UseEdge
 from taut.domain.snapshot import AnalysisSnapshot
 
@@ -39,6 +39,8 @@ class SemanticModel(Protocol):
 
     def resolve(self, ref: SymbolRef) -> SymbolRef: ...
 
+    def canonical_symbol(self, symbol: SymbolId) -> SymbolId: ...
+
     def capabilities(self) -> frozenset[str]: ...
 
     def capability_values(self, capability: str) -> tuple[object, ...]: ...
@@ -56,6 +58,12 @@ class SnapshotSemanticModel:
         }
         self._bindings_by_module = snapshot.relations.bindings_by_module
         self._uses_by_module = snapshot.relations.use_edges_by_module
+        self._canonical_prefixes = tuple(
+            sorted(
+                snapshot.project.canonical_symbols.items(),
+                key=lambda item: (-len(item[0].value), item[0].value),
+            )
+        )
 
     @property
     def snapshot_id(self) -> SnapshotId:
@@ -92,6 +100,15 @@ class SnapshotSemanticModel:
 
     def resolve(self, ref: SymbolRef) -> SymbolRef:
         return ref
+
+    def canonical_symbol(self, symbol: SymbolId) -> SymbolId:
+        for alias, canonical in self._canonical_prefixes:
+            if symbol == alias:
+                return canonical
+            prefix = f"{alias.value}."
+            if symbol.value.startswith(prefix):
+                return SymbolId(f"{canonical.value}.{symbol.value[len(prefix) :]}")
+        return symbol
 
     def capabilities(self) -> frozenset[str]:
         return frozenset(self._snapshot.capabilities)

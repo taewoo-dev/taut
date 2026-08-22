@@ -1153,6 +1153,44 @@ items = relationship(lazy="raise_on_sql")
     assert not [finding for finding in result.findings if finding.rule_id in persistence_rules]
 
 
+def test_database_enum_exception_matches_original_symbol_through_re_export() -> None:
+    enum = make_source(
+        "app/core/enums/status.py",
+        'from enum import StrEnum\nclass Status(StrEnum):\n    ACTIVE = "active"',
+    )
+    facade = make_source(
+        "app/core/enums/__init__.py",
+        "from .status import Status",
+    )
+    model = make_source(
+        "app/models/item.py",
+        "from sqlalchemy import Enum as SQLEnum\n"
+        "from app.core.enums import Status\n"
+        "status = SQLEnum(Status, name='status', "
+        "values_callable=lambda enum: [item.value for item in enum], "
+        "native_enum=False, create_constraint=False)",
+    )
+    code_policy = replace(
+        _code_policy(),
+        native_enum_false_exceptions=frozenset({SymbolId("app.core.enums.status.Status")}),
+        native_enum_no_constraint_exceptions=frozenset({SymbolId("app.core.enums.status.Status")}),
+    )
+
+    result = _run(
+        enum,
+        facade,
+        model,
+        roles={"core": ("app/core/**",), "model": ("app/models/**",)},
+        allowed_imports={
+            "core": frozenset({"core"}),
+            "model": frozenset({"model", "core"}),
+        },
+        code_policy=code_policy,
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("ORM002")]
+
+
 def test_exception_registry_reports_unregistered_and_duplicate_names() -> None:
     base = make_source("app/errors.py", "class AppException(Exception):\n    pass")
     codes = make_source(

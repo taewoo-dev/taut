@@ -14,7 +14,7 @@ from taut.configuration.catalog import (
 from taut.configuration.effective_policy import EffectivePolicy
 from taut.configuration.manifest import ClassificationIndex
 from taut.domain.facts import CallFact
-from taut.domain.ids import FactId
+from taut.domain.ids import FactId, SymbolId
 from taut.policy.indexes import PolicyIndexes
 
 
@@ -42,3 +42,9 @@ class PolicyContext:
 
     def effect_of(self, call: CallFact) -> EffectResolution:
         return self.effect_resolutions[call.id]
+
+    def symbol_in(self, symbol: SymbolId | None, candidates: frozenset[SymbolId]) -> bool:
+        if symbol is None:
+            return False
+        canonical = self.model.canonical_symbol(symbol)
+        return any(self.model.canonical_symbol(candidate) == canonical for candidate in candidates)

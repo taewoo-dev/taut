@@ -131,12 +131,14 @@ class DatabaseEnumRule:
             if native is None or native.literal_kind != "bool":
                 missing.append("native_enum")
             elif native.literal_value == "False":
-                if enum_symbol not in context.policy.code.native_enum_false_exceptions:
+                if not context.symbol_in(
+                    enum_symbol, context.policy.code.native_enum_false_exceptions
+                ):
                     missing.append("native_enum=True")
                 constraint = _keyword(call, "create_constraint")
-                if enum_symbol not in context.policy.code.native_enum_no_constraint_exceptions and (
-                    constraint is None or constraint.literal_value != "True"
-                ):
+                if not context.symbol_in(
+                    enum_symbol, context.policy.code.native_enum_no_constraint_exceptions
+                ) and (constraint is None or constraint.literal_value != "True"):
                     missing.append("create_constraint=True")
             if missing:
                 findings.append(
