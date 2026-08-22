@@ -1,6 +1,6 @@
 [project]
 name = "pytaut"
-version = "0.2.0"
+version = "0.4.0"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
 requires-python = ">=3.12"

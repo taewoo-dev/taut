@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>taut 0.2.0 시스템 구조</title>
+<title>taut 0.4.0 시스템 구조</title>
 <style>
 :root {
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -172,15 +172,15 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
   </div>
 
   <header>
-    <p class="eyebrow">PYTAUT 0.2.0 · CURRENT IMPLEMENTATION MAP</p>
+    <p class="eyebrow">PYTAUT 0.4.0 · CURRENT IMPLEMENTATION MAP</p>
     <h1>taut 시스템 구조</h1>
     <p class="thesis">
       taut는 Python 백엔드 소스에서 <strong>언어 사실을 먼저 확정</strong>하고, framework provider가
-      의미 사실을 보강한 뒤, capability가 충분한 규칙만 실행한다. 정책과 분석을 분리해 같은 분석 결과를
-      다른 저장소 설정으로 다시 판정할 수 있고, 불확실한 사실은 통과로 간주하지 않는다.
+      의미 사실을 보강한 뒤, capability가 충분한 규칙만 실행한다. disk cache와 resident daemon은 이
+      canonical pipeline의 중간 상태만 재사용하며, 불확실한 사실이나 cache 실패를 통과로 간주하지 않는다.
     </p>
     <dl class="facts">
-      <div class="fact"><dt>PYTHON MODULES</dt><dd>109개<small>src/taut 기준</small></dd></div>
+      <div class="fact"><dt>PYTHON MODULES</dt><dd>125개<small>src/taut 기준</small></dd></div>
       <div class="fact"><dt>BUILT-IN RULES</dt><dd>48개<small>47 enforced + CAT001 advisory</small></dd></div>
       <div class="fact"><dt>FACT PROVIDERS</dt><dd>4개<small>Python · FastAPI · Pydantic · SQLAlchemy</small></dd></div>
       <div class="fact"><dt>CORE CONTRACT</dt><dd>결정적 판정<small>동일 입력 → 동일 결과</small></dd></div>
@@ -254,7 +254,7 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
             <defs><marker id="arrow-layer" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--faint)"></path></marker></defs>
             <rect x="30" y="25" width="900" height="64" rx="3" class="node-blue"></rect>
             <text x="480" y="51" text-anchor="middle" class="ttl t-blue">composition</text>
-            <text x="480" y="72" text-anchor="middle" class="sub">cli.py · plugins/v1.py · semantic/v1.py — 모든 부품을 연결하는 유일한 바깥 진입점</text>
+            <text x="480" y="72" text-anchor="middle" class="sub">CLI · CheckService · daemon — 같은 canonical pipeline을 조립하는 바깥 진입점</text>
 
             <line x1="480" y1="89" x2="480" y2="126" class="edge" marker-end="url(#arrow-layer)"></line>
             <rect x="30" y="126" width="160" height="78" rx="3" class="node"></rect>
@@ -304,7 +304,7 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
 
     <section aria-labelledby="semantic-title">
       <div class="sec-head"><span class="sec-num">03</span><h2 id="semantic-title">심볼 해석은 철자 추측이 아니라 발생 위치별 상태를 만든다</h2></div>
-      <p class="lede">0.2.0의 중심 변화는 이름 문자열을 맞춰 보는 대신 scope와 control flow를 따라 각 참조의 후보와 확실성을 보존하는 것이다.</p>
+      <p class="lede">이름 문자열을 맞춰 보는 대신 scope와 control flow를 따라 각 참조의 후보와 확실성을 보존한다.</p>
       <figure>
         <div class="scroll">
           <svg class="dg" viewBox="0 0 960 370" role="img" aria-label="Python AST에서 lexical scope, 분기 merge, occurrence별 symbol reference와 다섯 resolution 상태를 만드는 과정">
@@ -470,8 +470,53 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
       </div>
     </section>
 
+    <section aria-labelledby="incremental-title">
+      <div class="sec-head"><span class="sec-num">06</span><h2 id="incremental-title">반복 검사는 같은 판정 경로에서 계산만 재사용한다</h2></div>
+      <p class="lede">disk cache는 프로세스 사이에서 분석 결과를 복원하고, daemon은 메모리 안에서 변경 영향만 다시 계산한다.</p>
+      <figure>
+        <div class="scroll">
+          <svg class="dg" viewBox="0 0 960 350" role="img" aria-label="검사 요청이 canonical cold 분석, 인증된 disk cache, resident daemon 중 하나로 들어가고 모두 같은 CheckService와 RunReport로 합쳐지는 반복 검사 흐름">
+            <defs><marker id="arrow-inc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--faint)"></path></marker></defs>
+            <rect x="28" y="132" width="132" height="64" rx="3" class="node"></rect>
+            <text x="94" y="158" text-anchor="middle" class="ttl">검사 요청</text>
+            <text x="94" y="178" text-anchor="middle" class="sub">root · config · 출력 옵션</text>
+
+            <path d="M160 164 H205 V65 H246" class="edge" marker-end="url(#arrow-inc)"></path>
+            <path d="M160 164 H246" class="edge" marker-end="url(#arrow-inc)"></path>
+            <path d="M160 164 H205 V263 H246" class="edge" marker-end="url(#arrow-inc)"></path>
+
+            <rect x="246" y="30" width="208" height="70" rx="3" class="node"></rect>
+            <text x="350" y="57" text-anchor="middle" class="ttl">cold · no cache</text>
+            <text x="350" y="78" text-anchor="middle" class="sub">952개 module 전체 분석</text>
+            <rect x="246" y="129" width="208" height="70" rx="3" class="node-blue"></rect>
+            <text x="350" y="156" text-anchor="middle" class="ttl t-blue">인증된 disk cache</text>
+            <text x="350" y="177" text-anchor="middle" class="sub">source hash 비교 · bundle 복원</text>
+            <rect x="246" y="228" width="208" height="70" rx="3" class="node-green"></rect>
+            <text x="350" y="255" text-anchor="middle" class="ttl t-green">resident daemon</text>
+            <text x="350" y="276" text-anchor="middle" class="sub">변경 module · 역의존만 invalidation</text>
+
+            <path d="M454 65 H520 V143 H566" class="edge" marker-end="url(#arrow-inc)"></path>
+            <line x1="454" y1="164" x2="566" y2="164" class="edge-blue" marker-end="url(#arrow-inc)"></line>
+            <path d="M454 263 H520 V185 H566" class="edge" marker-end="url(#arrow-inc)"></path>
+            <rect x="566" y="118" width="170" height="92" rx="3" class="node-amber"></rect>
+            <text x="651" y="146" text-anchor="middle" class="ttl t-amber">CheckService</text>
+            <text x="651" y="168" text-anchor="middle" class="sub">provider · policy · finding</text>
+            <text x="651" y="187" text-anchor="middle" class="sub">동일한 canonical 조립</text>
+
+            <line x1="736" y1="164" x2="790" y2="164" class="edge" marker-end="url(#arrow-inc)"></line>
+            <rect x="790" y="129" width="142" height="70" rx="3" class="node-green"></rect>
+            <text x="861" y="156" text-anchor="middle" class="ttl t-green">RunReport</text>
+            <text x="861" y="177" text-anchor="middle" class="sub">동일 bytes · 동일 exit</text>
+
+            <text x="350" y="326" text-anchor="middle" class="mono t-blue">0.20s unchanged · 1.69s ordinary · 2.85s shared</text>
+          </svg>
+        </div>
+        <figcaption><strong>빠른 경로도 별도 판정기가 아니다.</strong> cache payload가 인증되지 않거나 상태가 호환되지 않으면 miss로 처리하고 전체 분석으로 돌아간다. daemon 편집 검사는 source hash를 다시 읽어 바뀐 module 하나와 dependency impact를 갱신한 뒤, 같은 provider·policy·finding 단계를 거쳐 canonical CLI와 byte-for-byte parity를 검증한다.</figcaption>
+      </figure>
+    </section>
+
     <section aria-labelledby="packages-title">
-      <div class="sec-head"><span class="sec-num">06</span><h2 id="packages-title">코드 디렉터리별 실제 책임</h2></div>
+      <div class="sec-head"><span class="sec-num">07</span><h2 id="packages-title">코드 디렉터리별 실제 책임</h2></div>
       <p class="lede">파일을 찾을 때는 아래 표의 “질문”을 기준으로 들어가면 된다.</p>
       <div class="table-wrap">
         <table>
@@ -486,14 +531,17 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
             <tr><td>taut/policy</td><td>rule pack, registry, scheduler, engine, 48개 내장 규칙</td><td>사실과 정책을 결합했을 때 무엇이 위반인가?</td></tr>
             <tr><td>taut/finding_processing</td><td>finding 메시지, ignore 적용·감사, 종료 결정</td><td>판정 결과를 사용자에게 어떤 진단으로 보여줄 것인가?</td></tr>
             <tr><td>taut/reporting</td><td>하나의 RunReport를 text와 JSON으로 직렬화</td><td>동일한 결과를 사람과 자동화에 어떻게 전달할 것인가?</td></tr>
-            <tr><td>taut/cli.py</td><td>전체 use case 조립과 명령 라우팅</td><td>검사·설정 검증·migration·규칙 조회를 어떻게 실행하는가?</td></tr>
+            <tr><td>taut/incremental</td><td>source hash, module·provider·evaluation 재사용과 영향 범위 계산</td><td>무엇이 바뀌었고 어디까지 다시 계산해야 하는가?</td></tr>
+            <tr><td>taut/cache</td><td>SQLite 저장소, context-bound key, 인증된 module bundle</td><td>프로세스가 끝난 뒤 어떤 분석 결과를 안전하게 재사용하는가?</td></tr>
+            <tr><td>taut/daemon_*</td><td>project별 lifecycle, 인증 protocol, resident session</td><td>어떻게 하나의 분석 상태를 여러 CLI 요청이 안전하게 공유하는가?</td></tr>
+            <tr><td>taut/cli.py · check_service.py</td><td>명령 라우팅과 canonical 검사 use case 조립</td><td>cold·cache·daemon 경로를 어떻게 동일한 판정으로 합치는가?</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
     <section aria-labelledby="config-title">
-      <div class="sec-head"><span class="sec-num">07</span><h2 id="config-title">범용 엔진과 저장소별 정책이 만나는 지점</h2></div>
+      <div class="sec-head"><span class="sec-num">08</span><h2 id="config-title">범용 엔진과 저장소별 정책이 만나는 지점</h2></div>
       <p class="lede">taut 자체에는 특정 회사나 서비스의 폴더 이름이 없고, 적용 저장소의 <code>pyproject.toml</code>이 현실 구조를 공통 역할에 연결한다.</p>
       <figure>
         <div class="scroll">
@@ -529,8 +577,8 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
       </figure>
       <div class="notes">
         <div class="note">
-          <h3>현재 0.2.0이 강하게 보장하는 것</h3>
-          <p>결정적 정적 분석, occurrence-aware symbol 관계, capability-gated 규칙, 분석 coverage, provider provenance, 엄격한 설정 검증, 정확한 한 줄 ignore, 재현 가능한 text/JSON 결과다.</p>
+          <h3>현재 0.4.0이 강하게 보장하는 것</h3>
+          <p>결정적 정적 분석, occurrence-aware symbol 관계, capability-gated 규칙, 분석 coverage, 인증된 cross-process cache, dependency-aware resident invalidation, 재현 가능한 text/JSON 결과다.</p>
         </div>
         <div class="note secondary">
           <h3>의도적으로 범위 밖에 둔 것</h3>
@@ -542,7 +590,7 @@ footer { margin-top: 58px; padding-top: 18px; border-top: 1px solid var(--line);
 
   <footer>
     SOURCE OF TRUTH · src/taut · pyproject.toml · README.md · docs/architecture/foundation-abstractions.md<br>
-    Generated from repository state at commit 621f5c6 · 2026-08-21
+    Updated for pytaut 0.4.0 performance architecture · 2026-08-22
   </footer>
 </div>
 <script>

@@ -4,11 +4,12 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.2.0 adds occurrence-aware symbol relations, capability-gated rule packs, and explicit
-analysis coverage. It supports Python 3.12 or newer on platforms supported by Python:
+Version 0.4.0 adds authenticated cross-process analysis caching and a supervised incremental
+daemon while preserving canonical CLI output. It supports Python 3.12 or newer on platforms
+supported by Python:
 
 ```bash
-uv add --dev pytaut==0.2.0
+uv add --dev pytaut==0.4.0
 uv run taut check .
 ```
 
@@ -64,9 +65,28 @@ taut config migrate .
 taut check .
 taut check . --verbose
 taut check . --format json
+taut check . --daemon auto
 taut rules
 taut rules ASYNC001
 ```
+
+Normal CLI checks use the project-local `.taut_cache` by default. Repeated editor or local
+development checks can use the resident analyzer with `--daemon auto`; CI should normally keep
+the default `--daemon never` for process isolation. The daemon is scoped to one canonical project
+root, exits after 30 minutes of inactivity, and can be managed explicitly:
+
+```bash
+taut daemon start .
+taut daemon status .
+taut daemon restart .
+taut daemon stop .
+taut cache stats .
+taut cache clean .
+```
+
+Use `--no-cache` for a canonical cold run. Cache failures are treated as misses and never change
+findings. See [`docs/performance.md`](docs/performance.md) for the measured contract and
+[`docs/operations.md`](docs/operations.md) for lifecycle and security details.
 
 To check another local repository:
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.0
+
+- Added a supervised, per-project incremental daemon with authenticated localhost requests,
+  concurrent-client serialization, safe lifecycle management, automatic idle shutdown, and exact
+  output parity with the canonical non-daemon pipeline.
+- Added dependency-aware resident invalidation for unchanged, ordinary-file, and shared-base
+  edits, with reusable module, provider, and policy-evaluation state.
+- Added a reproducible benchmark that performs a real content change for every edit sample,
+  selects targets by transitive import impact, checks canonical output parity, and records daemon
+  RSS over repeated checks.
+- On the 952-module anti-monitor validation checkout, measured approximately 0.20 seconds for an
+  unchanged resident check, 1.69 seconds for an ordinary edit, and 2.85 seconds for a shared edit
+  affecting 610 transitive importers.
+
+## 0.3.0
+
+- Added persistent report and module-analysis caches with bulk SQLite operations and deterministic
+  cache keys that include project, configuration, adapter, resolver, source, and module identity.
+- Added an authenticated project bundle for fast cross-process reuse. Payloads are HMAC-bound to
+  their context and Python version, decoded through a closed domain-type allowlist, and treated as
+  misses on any validation failure.
+- Added incremental source hashing so unchanged projects reuse all modules and one-file edits
+  reparse only the changed module while retaining exact no-cache output parity.
+- On the anti-monitor validation checkout, measured about 10 seconds cold, 0.2 seconds unchanged,
+  and 6.9–7.8 seconds for repeated single-file disk-cache edits.
+
 ## 0.2.0
 
 - Added versioned plugin/semantic contracts, capability-gated packs, deterministic provider
