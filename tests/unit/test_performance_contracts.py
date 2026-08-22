@@ -7,6 +7,8 @@ from typing import cast
 from scripts.benchmark_performance import (
     BASELINE_SCHEMA,
     TimedProvider,
+    _benchmark_revision,
+    _process_rss_bytes,
     compare,
     measure,
     real_checkout,
@@ -59,6 +61,19 @@ def test_all_builtin_providers_are_invoked_once_per_snapshot() -> None:
 def test_rss_conversion_is_platform_correct() -> None:
     assert rss_bytes(2_000_000, system="darwin") == 2_000_000
     assert rss_bytes(2_000, system="linux") == 2_048_000
+
+
+def test_current_process_rss_is_available() -> None:
+    import os
+
+    assert _process_rss_bytes(os.getpid()) > 0
+
+
+def test_benchmark_revision_changes_only_fixed_width_marker() -> None:
+    seed = "value = 1\n# pytaut-benchmark-ordinary=00000000\n"
+    revised = _benchmark_revision(seed, "# pytaut-benchmark-ordinary=", 42)
+    assert revised == "value = 1\n# pytaut-benchmark-ordinary=00000042\n"
+    assert len(revised) == len(seed)
 
 
 def test_measurement_runs_policy_engine_and_reports_real_engine_issues() -> None:

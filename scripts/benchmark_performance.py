@@ -63,6 +63,7 @@ from taut.policy.packs import (
     load_rule_pack,
 )
 from taut.policy.registry import RuleRegistry
+from taut.reporting.text import DEFAULT_TEXT_WIDTH
 
 SCALES = {"small": 8, "medium": 32, "large": 96}
 BASELINE_SCHEMA = "pytaut-performance-baseline-v1"
@@ -99,6 +100,32 @@ def _transitive_inbound(index: ProjectIndex, module: ModuleId) -> int:
     return len(seen)
 
 
+def _process_rss_bytes(pid: int) -> int:
+    """Return current RSS for a live process without an optional psutil dependency."""
+    proc_statm = Path(f"/proc/{pid}/statm")
+    if proc_statm.exists():
+        fields = proc_statm.read_text(encoding="ascii").split()
+        if len(fields) < 2:
+            raise RuntimeError(f"cannot read RSS for daemon process {pid}")
+        return int(fields[1]) * int(os.sysconf("SC_PAGE_SIZE"))
+    result = subprocess.run(
+        ["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, check=False, text=True
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        raise RuntimeError(f"cannot read RSS for daemon process {pid}")
+    return int(result.stdout.strip()) * 1024
+
+
+def _benchmark_revision(seed: str, marker: str, revision: int) -> str:
+    token = f"{revision:08d}"
+    if revision < 0 or len(token) != 8:
+        raise ValueError("benchmark revision must fit in eight decimal digits")
+    expected = f"{marker}00000000"
+    if seed.count(expected) != 1:
+        raise RuntimeError("benchmark marker is missing or ambiguous")
+    return seed.replace(expected, f"{marker}{token}")
+
+
 def daemon_benchmark(
     root: Path, *, timing_repeats: int = 5, memory_checks: int = 30
 ) -> dict[str, object]:
@@ -124,13 +151,6 @@ def daemon_benchmark(
         config_destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / config_rel, config_destination)
         staged = staged.resolve()
-        request = CheckRequest(staged)
-        baseline = subprocess.run(
-            [sys.executable, "-m", "taut.cli", "check", str(staged), "--daemon", "never"],
-            capture_output=True,
-            check=False,
-        )
-        baseline_tuple = (baseline.stdout, baseline.stderr, baseline.returncode)
         # Build the real ProjectIndex from the staged project, then choose deterministic targets.
         staged_config = load_project_configuration(staged)
         staged_sources = discover_sources(staged, staged_config).sources
@@ -145,13 +165,51 @@ def daemon_benchmark(
         eligible = [item for item in staged_sources if not item.path.value.endswith("__init__.py")]
         if not eligible:
             eligible = list(staged_sources)
-        ordinary = min(eligible, key=lambda item: item.path.value)
         shared = max(
             eligible, key=lambda item: (_transitive_inbound(index, item.module_id), item.path.value)
         )
+        ordinary_candidates = [item for item in eligible if item.path != shared.path] or eligible
+        ordinary = min(
+            ordinary_candidates,
+            key=lambda item: (_transitive_inbound(index, item.module_id), item.path.value),
+        )
+        ordinary_impact = _transitive_inbound(index, ordinary.module_id)
         shared_impact = _transitive_inbound(index, shared.module_id)
         if shared_impact <= 0:
             raise RuntimeError("shared source has empty transitive inbound impact")
+        markers = {
+            "ordinary_edit": "# pytaut-benchmark-ordinary=",
+            "shared_edit": "# pytaut-benchmark-shared=",
+        }
+        seeds: dict[str, str] = {}
+        for label, source in (("ordinary_edit", ordinary), ("shared_edit", shared)):
+            path = staged / source.path.value
+            current = path.read_text(encoding="utf-8")
+            marker = markers[label]
+            if marker in current:
+                raise RuntimeError(f"benchmark marker already exists in {source.path.value}")
+            path.write_text(f"{current.rstrip()}\n{marker}00000000\n", encoding="utf-8")
+        for source in (ordinary, shared):
+            seeds[source.path.value] = (staged / source.path.value).read_text(encoding="utf-8")
+        request = CheckRequest(staged, width=DEFAULT_TEXT_WIDTH)
+        baseline = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "taut.cli",
+                "check",
+                str(staged),
+                "--daemon",
+                "never",
+                "--color",
+                "never",
+                "--width",
+                str(DEFAULT_TEXT_WIDTH),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        baseline_tuple = (baseline.stdout, baseline.stderr, baseline.returncode)
         runtime = Path(temp) / "runtime"
         old_runtime = os.environ.get("TAUT_RUNTIME_DIR")
         os.environ["TAUT_RUNTIME_DIR"] = str(runtime)
@@ -179,19 +237,32 @@ def daemon_benchmark(
                 samples["warm_unchanged"].append(invoke())
             for label, source in (("ordinary_edit", ordinary), ("shared_edit", shared)):
                 path = staged / source.path.value
-                original = path.read_text(encoding="utf-8")
-                path.write_text(original + "\n# benchmark semantic-safe edit\n", encoding="utf-8")
-                for _ in range(timing_repeats):
+                seed = seeds[source.path.value]
+                for revision in range(1, timing_repeats + 1):
+                    path.write_text(
+                        _benchmark_revision(seed, markers[label], revision), encoding="utf-8"
+                    )
                     samples[label].append(invoke())
-                path.write_text(original, encoding="utf-8")
-            restart_daemon(staged)
+                path.write_text(seed, encoding="utf-8")
+                invoke()  # Settle the restoration outside the measured phase.
             for _ in range(timing_repeats):
-                samples["restart"].append(invoke())
+                started = time.perf_counter()
+                restart_daemon(staged)
+                result = check_daemon(request)
+                samples["restart"].append(_daemon_sample(result, time.perf_counter() - started))
             with ThreadPoolExecutor(max_workers=4) as pool:
                 futures = [pool.submit(invoke) for _ in range(4)]
                 samples["concurrent_clients"] = [future.result() for future in futures]
+            status = daemon_status(staged)
+            if status is None:
+                raise RuntimeError("daemon disappeared before memory benchmark")
+            memory_pid = status.pid
+            rss_before = _process_rss_bytes(memory_pid)
             for _ in range(memory_checks):
-                samples.setdefault("memory", []).append(invoke())
+                sample = invoke()
+                sample["rss_bytes"] = _process_rss_bytes(memory_pid)
+                samples.setdefault("memory", []).append(sample)
+            rss_after = _process_rss_bytes(memory_pid)
             daemon_stop_ok = stop_daemon(staged)
             if daemon_status(staged) is not None or not daemon_stop_ok:
                 raise RuntimeError("daemon leaked status after benchmark")
@@ -202,14 +273,24 @@ def daemon_benchmark(
                 os.environ.pop("TAUT_RUNTIME_DIR", None)
             else:
                 os.environ["TAUT_RUNTIME_DIR"] = old_runtime
-        for group in samples.values():
-            for sample in group:
-                if (sample["stdout_sha256"], sample["stderr_sha256"], sample["exit_code"]) != (
-                    _digest(baseline_tuple[0]),
-                    _digest(baseline_tuple[1]),
-                    baseline_tuple[2],
-                ):
-                    raise RuntimeError("daemon output does not exactly match --daemon never")
+        expected_output = (
+            _digest(baseline_tuple[0]),
+            _digest(baseline_tuple[1]),
+            baseline_tuple[2],
+        )
+        for group_name, group in samples.items():
+            for sample_index, sample in enumerate(group):
+                actual_output = (
+                    sample["stdout_sha256"],
+                    sample["stderr_sha256"],
+                    sample["exit_code"],
+                )
+                if actual_output != expected_output:
+                    raise RuntimeError(
+                        "daemon output does not exactly match --daemon never: "
+                        f"phase={group_name} sample={sample_index} "
+                        f"expected={expected_output} actual={actual_output}"
+                    )
         final_status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=root, capture_output=True, check=True
         ).stdout
@@ -231,8 +312,18 @@ def daemon_benchmark(
         "memory_checks": memory_checks,
         "selected_paths": {
             "ordinary": ordinary.path.value,
+            "ordinary_transitive_inbound": ordinary_impact,
             "shared": shared.path.value,
             "shared_transitive_inbound": shared_impact,
+        },
+        "memory": {
+            "pid": memory_pid,
+            "rss_before_bytes": rss_before,
+            "rss_after_bytes": rss_after,
+            "rss_delta_bytes": rss_after - rss_before,
+            "rss_peak_bytes": max(
+                int(cast(int, sample["rss_bytes"])) for sample in samples["memory"]
+            ),
         },
         "phases": {key: summary(value) for key, value in samples.items()},
     }
