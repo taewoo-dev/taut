@@ -1,6 +1,6 @@
 {
   "schema": "pytaut-release-performance-v1",
-  "release": "0.4.0",
+  "release": "0.2.0",
   "measured_on": "2026-08-22",
   "overall_passed": true,
   "checkout": {

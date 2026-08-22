@@ -42,7 +42,7 @@ synthetic 952-source experiments must not be labeled as that evidence. A
 successful 952/952 result has `requested=952`, `discovered=952`,
 `complete=952`, `partial=0`, `failed=0`, and `status=complete`.
 
-## 0.3.0 disk-cache contract
+## 0.2.0 disk-cache contract
 
 The project-local cache must preserve exact stdout, stderr, and exit-code parity
 with `--no-cache`. The release thresholds on the anti-monitor validation checkout
@@ -58,7 +58,7 @@ The fast bundle is an optimization, not a source of truth. A missing key, invali
 signature, incompatible interpreter, malformed payload, disallowed type, or I/O
 failure becomes a cache miss and falls back to canonical analysis.
 
-## 0.4.0 resident-daemon contract
+## 0.2.0 resident-daemon contract
 
 The daemon benchmark selects the ordinary source with the smallest transitive
 inbound impact and the shared source with the largest. On the 952-module
@@ -76,7 +76,7 @@ Every edit result reparsed exactly one module. The ordinary samples reused 217,4
 of 218,018 policy evaluations; the shared samples reused 216,968. Across 30
 unchanged memory checks, RSS moved from 769,130,496 to 744,325,120 bytes, with a
 769,146,880-byte peak. The machine-readable release result is
-[`performance/anti-monitor-0.4.0.json`](performance/anti-monitor-0.4.0.json).
+[`performance/anti-monitor-0.2.0.json`](performance/anti-monitor-0.2.0.json).
 
 ## Baseline enforcement
 

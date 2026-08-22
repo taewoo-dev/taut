@@ -4,12 +4,12 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.4.0 adds authenticated cross-process analysis caching and a supervised incremental
+Version 0.2.0 adds authenticated cross-process analysis caching and a supervised incremental
 daemon while preserving canonical CLI output. It supports Python 3.12 or newer on platforms
 supported by Python:
 
 ```bash
-uv add --dev pytaut==0.4.0
+uv add --dev pytaut==0.2.0
 uv run taut check .
 ```
 

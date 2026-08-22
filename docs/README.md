@@ -1,7 +1,7 @@
 # 문서 안내
 
 릴리스 사용자는 [`../MIGRATION.md`](../MIGRATION.md)와 [`VALIDATION_REPORT.md`](VALIDATION_REPORT.md)를
-먼저 확인한다. 이 문서 세트는 pytaut 0.4.0, 설정 schema v3, Python 3.12+ 기준이다.
+먼저 확인한다. 이 문서 세트는 pytaut 0.2.0, 설정 schema v3, Python 3.12+ 기준이다.
 
 ## 현재 구현 기준
 
