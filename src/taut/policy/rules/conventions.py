@@ -8,9 +8,9 @@ from taut.domain.evaluations import (
     RuleTargetRef,
     RuleVerdict,
 )
-from taut.domain.facts import AnalysisStage
+from taut.domain.facts import AnalysisStage, ImportFact, ImportIntent
 from taut.domain.findings import EvidenceItem, Finding
-from taut.domain.ids import RuleId
+from taut.domain.ids import ModuleId, RuleId
 from taut.domain.location import SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
@@ -36,8 +36,12 @@ class ImportPlacementRule:
         findings: list[Finding] = []
         seen_statements: set[tuple[str, int, int, int, int, str, str]] = set()
         for import_fact in module.imports:
+            if import_fact.intent is ImportIntent.OPTIONAL_DEPENDENCY:
+                continue
             violation: str | None = None
             if import_fact.enclosing_symbol is not None:
+                if _breaks_eager_import_cycle(import_fact, context):
+                    continue
                 violation = "local"
             elif import_fact.relative_level > 0 and not module.module.is_package:
                 violation = "relative"
@@ -76,6 +80,34 @@ class ImportPlacementRule:
         if findings:
             return RuleEvaluation(IMPORT_RULE_ID, target, RuleVerdict.FAIL, tuple(findings))
         return RuleEvaluation(IMPORT_RULE_ID, target, RuleVerdict.PASS, ())
+
+
+def _breaks_eager_import_cycle(import_fact: ImportFact, context: PolicyContext) -> bool:
+    edge = next(
+        (
+            candidate
+            for candidate in context.model.import_edges_of(import_fact.module_id)
+            if candidate.occurrence_id == import_fact.id and candidate.is_deferred_runtime
+        ),
+        None,
+    )
+    if edge is None:
+        return False
+    pending = [edge.target]
+    visited: set[ModuleId] = set()
+    while pending:
+        module_id = pending.pop()
+        if module_id == edge.importer:
+            return True
+        if module_id in visited:
+            continue
+        visited.add(module_id)
+        pending.extend(
+            candidate.target
+            for candidate in context.model.import_edges_of(module_id)
+            if candidate.is_eager_runtime
+        )
+    return False
 
 
 class FileSizeRule:

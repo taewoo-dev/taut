@@ -26,12 +26,12 @@ def _matches_module(import_fact: ImportFact, prefix: ModuleId) -> bool:
     return imported == prefix.value or imported.startswith(f"{prefix.value}.")
 
 
-def _matches_symbol(call: CallFact, prefix: SymbolId) -> bool:
+def _matches_symbol(call: CallFact, prefix: SymbolId, context: PolicyContext) -> bool:
     symbol = call.ref.symbol
     return bool(
         call.ref.state is ResolutionState.RESOLVED
         and symbol is not None
-        and (symbol == prefix or symbol.value.startswith(f"{prefix.value}."))
+        and context.matching_symbol(symbol, (prefix,)) is not None
     )
 
 
@@ -184,7 +184,7 @@ class AdapterBoundaryRule:
                 (
                     item
                     for item in boundaries.adapter_forbidden_calls
-                    if _matches_symbol(call, item)
+                    if _matches_symbol(call, item, context)
                 ),
                 None,
             )

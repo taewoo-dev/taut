@@ -52,7 +52,12 @@ class ImplementationConstructionRule:
                 role in boundaries.scoped_construction_roles
                 and call.context.position is SyntaxPosition.CONTEXT_MANAGER
             )
-            if symbol is None or symbol not in constructors or role in allowed_roles or scoped:
+            if (
+                symbol is None
+                or not context.symbol_in(symbol, frozenset(constructors))
+                or role in allowed_roles
+                or scoped
+            ):
                 continue
             findings.append(
                 build_boundary_finding(
@@ -156,7 +161,11 @@ class SettingsConstructionRule:
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol
-            if symbol is None or symbol not in settings_classes or role in allowed:
+            if (
+                symbol is None
+                or not context.symbol_in(symbol, frozenset(settings_classes))
+                or role in allowed
+            ):
                 continue
             findings.append(
                 build_boundary_finding(

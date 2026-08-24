@@ -230,12 +230,18 @@ def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
     transaction = _table(root.get("transaction", {}), "transaction")
     _reject_unknown(
         transaction,
-        frozenset({"owner_roles", "session_providers"}),
+        frozenset({"owner_roles", "participant_roles", "session_providers"}),
         "transaction",
     )
     owners = frozenset(
         Role(value)
         for value in _strings(transaction.get("owner_roles", []), "transaction.owner_roles")
+    )
+    participants = frozenset(
+        Role(value)
+        for value in _strings(
+            transaction.get("participant_roles", []), "transaction.participant_roles"
+        )
     )
     session_providers = frozenset(
         SymbolId(value)
@@ -260,6 +266,7 @@ def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
         rules=FrozenMap(settings),
         allowed_imports=allowed_imports,
         transaction_owner_roles=owners,
+        transaction_participant_roles=participants,
         transaction_session_providers=session_providers,
         rule_zones=rule_zones,
         approvals=approvals,

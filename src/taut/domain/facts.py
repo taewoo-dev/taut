@@ -69,6 +69,11 @@ class GuardKind(StrEnum):
     TYPE_CHECKING_ONLY = "type_checking_only"
 
 
+class ImportIntent(StrEnum):
+    NORMAL = "normal"
+    OPTIONAL_DEPENDENCY = "optional_dependency"
+
+
 @dataclass(frozen=True, order=True)
 class SyntaxContext:
     lexical_owner: SymbolId | None = None
@@ -194,6 +199,7 @@ class ImportFact:
     location: SourceRange
     provenance: Provenance
     context: SyntaxContext
+    intent: ImportIntent = ImportIntent.NORMAL
 
 
 @dataclass(frozen=True, order=True)

@@ -274,6 +274,7 @@ class ResidentCheckSession:
             help_by_rule=help_by_rule,
             ignores=ignore_result.directives,
             classifications=classifications,
+            canonicalize=context.model.canonical_symbol,
             preused_approval_keys=policy_result.result.approval_keys,
         )
         report = build_run_report(

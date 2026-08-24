@@ -135,3 +135,35 @@ def test_approval_does_not_match_another_target() -> None:
     assert result.diagnostics[0].disposition is FindingDisposition.ACTIVE
     assert result.ignore_audit.unused == ()
     assert result.approval_audit.unused == (approval.key,)
+
+
+def test_approval_symbol_matches_through_a_re_export() -> None:
+    service = make_source(
+        "app/service.py",
+        "from datetime import datetime\ndef current():\n    return datetime.now()",
+    )
+    facade = make_source("app/public.py", "from app.service import current")
+    context = make_context(
+        analyze(service, facade),
+        roles={"service": ("app/**",)},
+        levels={"TIME001": RuleLevel.ENFORCED, "IGNORE001": RuleLevel.ENFORCED},
+    )
+    policy_result = PolicyEngine(builtin_rule_registry()).run(context)
+    approval = PolicyApproval(
+        RuleId("TIME001"),
+        SymbolId("app.public.current"),
+        "public clock facade is the approved API",
+        target=str(policy_result.findings[0].arguments["symbol"]),
+    )
+
+    result = FindingProcessor().process(
+        findings=policy_result.findings,
+        policy=replace(context.policy, approvals=(approval,)),
+        help_by_rule=FrozenMap(),
+        ignores=(),
+        classifications=context.classification,
+        canonicalize=context.model.canonical_symbol,
+    )
+
+    assert result.diagnostics[0].disposition is FindingDisposition.IGNORED
+    assert result.approval_audit.used == (approval.key,)

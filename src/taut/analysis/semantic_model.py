@@ -58,12 +58,11 @@ class SnapshotSemanticModel:
         }
         self._bindings_by_module = snapshot.relations.bindings_by_module
         self._uses_by_module = snapshot.relations.use_edges_by_module
-        self._canonical_prefixes = tuple(
-            sorted(
-                snapshot.project.canonical_symbols.items(),
-                key=lambda item: (-len(item[0].value), item[0].value),
-            )
-        )
+        self._canonical_by_value = {
+            alias.value: canonical.value
+            for alias, canonical in snapshot.project.canonical_symbols.items()
+        }
+        self._canonical_cache: dict[SymbolId, SymbolId] = {}
 
     @property
     def snapshot_id(self) -> SnapshotId:
@@ -102,12 +101,19 @@ class SnapshotSemanticModel:
         return ref
 
     def canonical_symbol(self, symbol: SymbolId) -> SymbolId:
-        for alias, canonical in self._canonical_prefixes:
-            if symbol == alias:
-                return canonical
-            prefix = f"{alias.value}."
-            if symbol.value.startswith(prefix):
-                return SymbolId(f"{canonical.value}.{symbol.value[len(prefix) :]}")
+        cached = self._canonical_cache.get(symbol)
+        if cached is not None:
+            return cached
+        prefix = symbol.value
+        while prefix:
+            canonical = self._canonical_by_value.get(prefix)
+            if canonical is not None:
+                suffix = symbol.value[len(prefix) :]
+                result = SymbolId(f"{canonical}{suffix}")
+                self._canonical_cache[symbol] = result
+                return result
+            prefix = prefix.rpartition(".")[0]
+        self._canonical_cache[symbol] = symbol
         return symbol
 
     def capabilities(self) -> frozenset[str]:

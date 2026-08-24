@@ -19,7 +19,7 @@ from taut.domain.location import SourceRange
 
 
 class PythonAstAdapter:
-    identity = AdapterIdentity(name="python-ast", version="6")
+    identity = AdapterIdentity(name="python-ast", version="7")
 
     def analyze_module(
         self,

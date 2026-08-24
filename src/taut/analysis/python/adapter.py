@@ -14,6 +14,7 @@ from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
 )
 from taut.analysis.python.fact_order import fact_sort_key
+from taut.analysis.python.import_intent import catches_import_error
 from taut.analysis.python.module_relations import emit_module_relations
 from taut.analysis.python.scope_flow import BindingState
 from taut.analysis.python.symbol_resolver import (
@@ -34,6 +35,7 @@ from taut.domain.facts import (
     FieldFact,
     FunctionFact,
     ImportFact,
+    ImportIntent,
     ModuleCompleteness,
     ModuleFacts,
     ModuleIdentity,
@@ -70,6 +72,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self._reference_candidate_binding_ids: dict[FactId, tuple[FactId, ...]] = {}
         self._binding_kind = BindingKind.ASSIGNMENT
         self._binding_targets: dict[ast.AST, BindingKind] = {}
+        self._optional_import_nodes: set[ast.Import | ast.ImportFrom] = set()
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
         self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
@@ -94,6 +97,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
         self._index_binding_targets(tree)  # type: ignore[misc]
+        self._index_optional_imports(tree)
         self.visit(tree)
         deferred_index = 0
         while deferred_index < len(self._deferred_bodies):
@@ -142,6 +146,36 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         )
         return facts
 
+    def _index_optional_imports(self, tree: ast.Module) -> None:
+        extractor = self
+
+        class OptionalImportVisitor(ast.NodeVisitor):
+            def visit_Try(self, node: ast.Try) -> None:
+                if catches_import_error(node.handlers):
+                    for statement in node.body:
+                        self._visit_optional_body(statement)
+                self.generic_visit(node)
+
+            def visit_TryStar(self, node: ast.TryStar) -> None:
+                if catches_import_error(node.handlers):
+                    for statement in node.body:
+                        self._visit_optional_body(statement)
+                self.generic_visit(node)
+
+            def _visit_optional_body(self, node: ast.AST) -> None:
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    extractor._optional_import_nodes.add(node)
+                    return
+                if isinstance(
+                    node,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
+                ):
+                    return
+                for child in ast.iter_child_nodes(node):
+                    self._visit_optional_body(child)
+
+        OptionalImportVisitor().visit(tree)
+
     def relations(self, facts: ModuleFacts) -> ModuleRelations:
         return emit_module_relations(
             facts, self._reference_binding_ids, self._reference_candidate_binding_ids
@@ -170,6 +204,11 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
                     location=self._location(node),
                     provenance=self._provenance(node),
                     context=self._syntax_context(),
+                    intent=(
+                        ImportIntent.OPTIONAL_DEPENDENCY
+                        if node in self._optional_import_nodes
+                        else ImportIntent.NORMAL
+                    ),
                 )
             )
 
@@ -198,6 +237,11 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
                     location=self._location(node),
                     provenance=self._provenance(node),
                     context=self._syntax_context(),
+                    intent=(
+                        ImportIntent.OPTIONAL_DEPENDENCY
+                        if node in self._optional_import_nodes
+                        else ImportIntent.NORMAL
+                    ),
                 )
             )
 

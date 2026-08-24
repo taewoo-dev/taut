@@ -25,6 +25,7 @@ def _run(
     roles: dict[str, tuple[str, ...]],
     allowed_imports: dict[str, frozenset[str]] | None = None,
     owners: frozenset[str] = frozenset(),
+    participants: frozenset[str] = frozenset(),
     session_providers: frozenset[str] = frozenset(),
     zones: dict[str, tuple[str, ...]] | None = None,
     rule_zones: dict[str, frozenset[str]] | None = None,
@@ -48,6 +49,7 @@ def _run(
         zones=zones,
         allowed_imports=allowed_imports,
         transaction_owners=owners,
+        transaction_participants=participants,
         transaction_session_providers=session_providers,
         rule_zones=rule_zones,
         approvals=approvals,
@@ -596,6 +598,53 @@ def test_module_level_type_checking_import_is_not_a_local_import() -> None:
     )
 
     assert not [finding for finding in result.findings if finding.rule_id == RuleId("IMPORT001")]
+
+
+def test_import_rule_allows_optional_and_cycle_avoiding_local_imports() -> None:
+    optional = make_source(
+        "app/optional.py",
+        "def load():\n"
+        "    try:\n"
+        "        import optional_sdk\n"
+        "    except ImportError:\n"
+        "        return None\n"
+        "    return optional_sdk",
+    )
+    first = make_source("app/first.py", "from app.second import run\ndef helper():\n    return 1")
+    second = make_source(
+        "app/second.py",
+        "def run():\n    from app.first import helper\n    return helper()",
+    )
+
+    result = _run(
+        optional,
+        first,
+        second,
+        roles={"service": ("app/**",)},
+        allowed_imports={"service": frozenset({"service"})},
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("IMPORT001")]
+
+
+def test_import_rule_keeps_unexplained_local_imports_active() -> None:
+    source = make_source(
+        "app/service.py",
+        "def load():\n"
+        "    try:\n"
+        "        import required_sdk\n"
+        "    except ValueError:\n"
+        "        return None\n"
+        "    return required_sdk",
+    )
+    result = _run(
+        source,
+        roles={"service": ("app/**",)},
+        allowed_imports={"service": frozenset({"service"})},
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("IMPORT001")]
+    assert len(findings) == 1
 
 
 def test_size_rule_uses_the_stricter_role_limit() -> None:
@@ -1846,6 +1895,26 @@ def test_session_participant_contract_distinguishes_helpers_and_owners() -> None
     assert findings[0].message_key == "session.participant_owns_transaction"
     assert findings[0].enclosing_symbol == SymbolId("app.service.unsafe")
     assert result.approval_keys == tuple(sorted(approval.key for approval in approvals))
+
+
+def test_session_participant_role_applies_the_safe_default_contract() -> None:
+    service = make_source(
+        "app/service.py",
+        "from sqlalchemy.ext.asyncio import AsyncSession\n"
+        "async def safe(session: AsyncSession):\n    return 1\n"
+        "async def unsafe(session: AsyncSession):\n    await session.commit()",
+    )
+    result = _run(
+        service,
+        roles={"service": ("app/service.py",)},
+        allowed_imports={"service": frozenset({"service"})},
+        participants=frozenset({"service"}),
+        boundary_policy=_strict_boundary_policy(),
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("SESSION003")]
+    assert len(findings) == 1
+    assert findings[0].enclosing_symbol == SymbolId("app.service.unsafe")
 
 
 def test_entry_roles_can_have_distinct_allowed_effect_kinds() -> None:

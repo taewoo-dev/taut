@@ -230,6 +230,7 @@ class EffectivePolicy:
     rules: FrozenMap[RuleId, RuleSetting]
     allowed_imports: FrozenMap[Role, frozenset[Role]]
     transaction_owner_roles: frozenset[Role]
+    transaction_participant_roles: frozenset[Role] = frozenset()
     transaction_session_providers: frozenset[SymbolId] = frozenset()
     rule_zones: FrozenMap[RuleId, frozenset[Zone]] = field(
         default_factory=lambda: FrozenMap[RuleId, frozenset[Zone]]()
@@ -299,6 +300,9 @@ class EffectivePolicy:
                 for source, targets in self.allowed_imports.items()
             ],
             "transaction_owner_roles": sorted(role.value for role in self.transaction_owner_roles),
+            "transaction_participant_roles": sorted(
+                role.value for role in self.transaction_participant_roles
+            ),
             "transaction_session_providers": sorted(
                 symbol.value for symbol in self.transaction_session_providers
             ),

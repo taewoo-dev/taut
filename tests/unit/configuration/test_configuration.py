@@ -53,6 +53,7 @@ service = ["service"]
 
 [transaction]
 owner_roles = ["service"]
+participant_roles = ["service"]
 session_providers = ["app.database.get_async_session"]
 
 [size]
@@ -237,6 +238,7 @@ def test_load_v3_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
     assert config.source_roots == (ProjectPath("src"),)
     assert config.policy.setting(RuleId("DTO002")).level is RuleLevel.ENFORCED
     assert config.policy.setting(RuleId("CAT001")).level is RuleLevel.ADVISORY
+    assert config.policy.transaction_participant_roles == frozenset({Role("service")})
     wrapper = config.catalog.entries[SymbolId("app.clock.utc_now")]
     assert wrapper.effects == frozenset({Effect.TIME_NOW})
     assert wrapper.access_path is AccessPath.APPROVED_WRAPPER

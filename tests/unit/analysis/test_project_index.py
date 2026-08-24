@@ -165,3 +165,14 @@ def test_re_export_cycles_do_not_claim_a_canonical_symbol() -> None:
 
     assert model.canonical_symbol(SymbolId("app.a.Value")) == SymbolId("app.a.Value")
     assert model.canonical_symbol(SymbolId("app.b.Value")) == SymbolId("app.b.Value")
+
+
+def test_optional_import_does_not_claim_a_canonical_re_export() -> None:
+    facade = make_source(
+        "app/facade.py",
+        "try:\n    from app.status import Status\nexcept ImportError:\n    Status = None\n",
+    )
+    origin = make_source("app/status.py", "class Status:\n    pass")
+    model = SnapshotSemanticModel(analyze(facade, origin))
+
+    assert model.canonical_symbol(SymbolId("app.facade.Status")) == SymbolId("app.facade.Status")

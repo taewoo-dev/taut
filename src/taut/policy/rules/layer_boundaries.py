@@ -55,18 +55,13 @@ def _matches_import(import_fact: ImportFact, prefixes: tuple[ModuleId, ...]) -> 
     return matches_module_prefix(import_fact.imported_module_name, prefixes)
 
 
-def _matches_symbol(call: CallFact, symbols: tuple[SymbolId, ...]) -> SymbolId | None:
+def _matches_symbol(
+    call: CallFact, symbols: tuple[SymbolId, ...], context: PolicyContext
+) -> SymbolId | None:
     symbol = call.ref.symbol
     if call.ref.state is not ResolutionState.RESOLVED or symbol is None:
         return None
-    return next(
-        (
-            prefix
-            for prefix in symbols
-            if symbol == prefix or symbol.value.startswith(f"{prefix.value}.")
-        ),
-        None,
-    )
+    return context.matching_symbol(symbol, symbols)
 
 
 def _symbol_in_modules(call: CallFact, modules: tuple[ModuleId, ...]) -> ModuleId | None:
@@ -77,7 +72,7 @@ def _symbol_in_modules(call: CallFact, modules: tuple[ModuleId, ...]) -> ModuleI
 
 
 def _database_primitive(call: CallFact, context: PolicyContext) -> str | None:
-    statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls)
+    statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls, context)
     if statement is not None:
         return statement.value
     return None
@@ -96,13 +91,15 @@ def _external_call(call: CallFact, context: PolicyContext) -> str | None:
     return None
 
 
-def _argument_uses_symbol(call: CallFact, symbols: frozenset[SymbolId]) -> SymbolId | None:
+def _argument_uses_symbol(
+    call: CallFact, symbols: frozenset[SymbolId], context: PolicyContext
+) -> SymbolId | None:
     return next(
         (
             symbol
             for argument in call.arguments
             for symbol in argument.value.symbols
-            if symbol in symbols
+            if context.symbol_in(symbol, symbols)
         ),
         None,
     )
@@ -275,12 +272,14 @@ class _RoleBoundaryRule:
                 "database", call.module_id, context
             ):
                 return "database", primitive
-            provider = _argument_uses_symbol(call, context.policy.transaction_session_providers)
+            provider = _argument_uses_symbol(
+                call, context.policy.transaction_session_providers, context
+            )
             if provider is not None and not self._entry_kind_allowed(
                 "session", call.module_id, context
             ):
                 return "session", provider.value
-            exception = _matches_symbol(call, boundaries.transport_exception_calls)
+            exception = _matches_symbol(call, boundaries.transport_exception_calls, context)
             if exception is not None and not self._entry_kind_allowed(
                 "transport_exception", call.module_id, context
             ):
@@ -306,7 +305,7 @@ class _RoleBoundaryRule:
             ):
                 return "write", symbol.value
             if (
-                _matches_symbol(call, tuple(context.policy.transaction_session_providers))
+                _matches_symbol(call, tuple(context.policy.transaction_session_providers), context)
                 is not None
             ):
                 return "session", call.ref.written_name
@@ -376,6 +375,7 @@ class DependencyInjectionBoundaryRule:
             dependency = _matches_symbol(
                 call,
                 context.policy.boundaries.dependency_injection_calls,
+                context,
             )
             if dependency is None:
                 continue

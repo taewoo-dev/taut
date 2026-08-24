@@ -13,6 +13,7 @@ from taut.domain.facts import (
     CompletenessState,
     ExecutionPhase,
     GuardKind,
+    ImportIntent,
     ResolutionState,
     ScopeKind,
     SyntaxPosition,
@@ -505,6 +506,22 @@ def run():
     assert module.imports[0].context.scope_kind is ScopeKind.FUNCTION
     assert module.imports[0].context.execution_phase is ExecutionPhase.DEFERRED
     assert module.calls[0].ref.symbol == SymbolId("app.worker.execute")
+
+
+def test_python_adapter_marks_import_error_guarded_dependency_as_optional() -> None:
+    source = make_source(
+        "app/optional.py",
+        "def load():\n"
+        "    try:\n"
+        "        from vendor_sdk import Client\n"
+        "    except (ImportError, RuntimeError):\n"
+        "        return None\n"
+        "    return Client()",
+    )
+
+    module = analyze(source).modules[ModuleId("app.optional")]
+
+    assert module.imports[0].intent is ImportIntent.OPTIONAL_DEPENDENCY
 
 
 def test_python_adapter_recognizes_aliased_type_checking_guard() -> None:

@@ -8,6 +8,7 @@ from taut.domain.facts import (
     GuardKind,
     ImportCycle,
     ImportEdge,
+    ImportIntent,
     ModuleFacts,
     ProjectIndex,
     UnresolvedImport,
@@ -182,6 +183,7 @@ def _build_canonical_symbols(
                 or imported.enclosing_symbol is not None
                 or imported.context.execution_phase is not ExecutionPhase.MODULE_INIT
                 or imported.context.guard is not GuardKind.UNCONDITIONAL
+                or imported.intent is not ImportIntent.NORMAL
                 or imported.imported_module_name not in modules_by_name
                 or imported.imported_name in modules_by_name
             ):

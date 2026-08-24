@@ -44,9 +44,9 @@ class SessionOwnerRule:
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if call.ref.state is not ResolutionState.RESOLVED or call.ref.symbol is None:
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        if call.ref.symbol not in context.policy.transaction_session_providers:
+        if not context.symbol_in(call.ref.symbol, context.policy.transaction_session_providers):
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        if call.enclosing_symbol in context.policy.transaction_session_providers:
+        if context.symbol_in(call.enclosing_symbol, context.policy.transaction_session_providers):
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.PASS, ())
         classification = context.classification.get(target.module_id)
         if classification.role is None:
@@ -98,13 +98,15 @@ class NestedSessionRule:
                 return uncertain
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         provider = call.ref.symbol
-        if provider is None or provider not in context.policy.transaction_session_providers:
+        if provider is None or not context.symbol_in(
+            provider, context.policy.transaction_session_providers
+        ):
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         enclosing = next(
             (
                 item.symbol
                 for item in call.enclosing_contexts
-                if item.symbol in context.policy.transaction_session_providers
+                if context.symbol_in(item.symbol, context.policy.transaction_session_providers)
             ),
             None,
         )
@@ -169,7 +171,13 @@ class ServiceSessionParameterRule:
             approval = _session_parameter_approval(
                 function, session_type, target.module_id, context
             )
-            mode = approval.kind if approval is not None else None
+            mode = (
+                approval.kind
+                if approval is not None
+                else "participant"
+                if role in context.policy.transaction_participant_roles
+                else None
+            )
             if approval is not None:
                 approval_keys.add(approval.key)
             if mode == "managed":
@@ -231,14 +239,13 @@ def _session_parameter_approval(
     module_id: ModuleId,
     context: PolicyContext,
 ) -> PolicyApproval | None:
-    zone = context.classification.get(module_id).zone
     subjects = (function.symbol_id, *(item.symbol for item in function.decorators if item.symbol))
     for mode in ("participant", "managed"):
         for subject in subjects:
-            approval = context.policy.approval_for(
+            approval = context.approval_for(
                 PARAMETER_RULE_ID,
                 subject,
-                zone,
+                module_id,
                 target=session_type.value,
                 kind=mode,
             )
@@ -272,7 +279,7 @@ def _participant_transaction_control(
     for call in context.model.calls_in(module_id):
         if call.enclosing_symbol != function.symbol_id or call.ref.symbol is None:
             continue
-        if call.ref.symbol in context.policy.transaction_session_providers:
+        if context.symbol_in(call.ref.symbol, context.policy.transaction_session_providers):
             return call.ref.symbol.value
         owner, _, method = call.ref.symbol.value.rpartition(".")
         if owner == session_type.value and method in _TRANSACTION_CONTROL_METHODS:

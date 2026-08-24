@@ -60,9 +60,11 @@ def _is_domain_exception(
     symbol: SymbolId,
     classes: dict[SymbolId, ClassFact],
     base_symbols: frozenset[SymbolId],
+    context: PolicyContext,
     visiting: frozenset[SymbolId] = frozenset(),
 ) -> bool:
-    if symbol in base_symbols:
+    symbol = context.model.canonical_symbol(symbol)
+    if context.symbol_in(symbol, base_symbols):
         return True
     if symbol in visiting:
         return False
@@ -70,7 +72,7 @@ def _is_domain_exception(
     if class_fact is None:
         return False
     return any(
-        _is_domain_exception(base, classes, base_symbols, visiting | {symbol})
+        _is_domain_exception(base, classes, base_symbols, context, visiting | {symbol})
         for base in _base_symbols(class_fact)
     )
 
@@ -78,15 +80,17 @@ def _is_domain_exception(
 def _code_symbol(
     value: ExpressionSummary | None,
     error_enums: frozenset[SymbolId],
+    context: PolicyContext,
 ) -> SymbolId | None:
     if value is None:
         return None
     candidates = tuple(
         symbol
         for symbol in value.symbols
-        if any(symbol.value.startswith(f"{enum_symbol.value}.") for enum_symbol in error_enums)
+        if context.matching_symbol(symbol, error_enums) is not None
     )
-    return max(candidates, key=lambda symbol: len(symbol.value), default=None)
+    selected = max(candidates, key=lambda symbol: len(symbol.value), default=None)
+    return context.model.canonical_symbol(selected) if selected is not None else None
 
 
 def _constructor_error_code(
@@ -120,18 +124,20 @@ class ExceptionRegistryRule:
             if context.classification.get(module_id).zone != Zone("prod"):
                 continue
             module = context.model.module(module_id)
-            classes.update((class_fact.symbol_id, class_fact) for class_fact in module.classes)
+            classes.update(
+                (context.model.canonical_symbol(class_fact.symbol_id), class_fact)
+                for class_fact in module.classes
+            )
             fields.extend(module.fields)
             for call in module.calls:
                 if call.enclosing_symbol is not None:
                     calls_by_enclosing[call.enclosing_symbol].append(call)
             for reference in module.references:
                 symbol = reference.ref.symbol
-                if symbol is not None and any(
-                    symbol.value.startswith(f"{enum_symbol.value}.")
-                    for enum_symbol in context.policy.code.error_code_enum_symbols
+                if symbol is not None and context.matching_symbol(
+                    symbol, context.policy.code.error_code_enum_symbols
                 ):
-                    referenced_codes.add(symbol)
+                    referenced_codes.add(context.model.canonical_symbol(symbol))
         policy = context.policy.code
         uncertain_calls = tuple(
             call
@@ -143,8 +149,8 @@ class ExceptionRegistryRule:
         domains = tuple(
             class_fact
             for symbol, class_fact in classes.items()
-            if symbol not in policy.abstract_exception_symbols
-            and _is_domain_exception(symbol, classes, policy.exception_base_symbols)
+            if not context.symbol_in(symbol, policy.abstract_exception_symbols)
+            and _is_domain_exception(symbol, classes, policy.exception_base_symbols, context)
         )
         exception_constructors = tuple(
             SymbolId(f"{class_fact.symbol_id.value}.__init__") for class_fact in domains
@@ -194,7 +200,7 @@ class ExceptionRegistryRule:
             else:
                 assert constructor_code is not None
                 source, value = constructor_code
-            code = _code_symbol(value, policy.error_code_enum_symbols)
+            code = _code_symbol(value, policy.error_code_enum_symbols, context)
             if code is None:
                 findings.append(
                     _finding(
@@ -237,17 +243,28 @@ class ExceptionRegistryRule:
                     )
                 )
         used_codes = (
-            set(code_owners).union(policy.reserved_error_code_symbols).union(referenced_codes)
+            set(code_owners)
+            .union(
+                context.model.canonical_symbol(symbol)
+                for symbol in policy.reserved_error_code_symbols
+            )
+            .union(referenced_codes)
         )
         for enum_symbol in policy.error_code_enum_symbols:
+            canonical_enum = context.model.canonical_symbol(enum_symbol)
             for field in fields:
-                if field.owner_symbol != enum_symbol or field.name.startswith("_"):
+                if (
+                    field.owner_symbol is None
+                    or context.model.canonical_symbol(field.owner_symbol) != canonical_enum
+                    or field.name.startswith("_")
+                ):
                     continue
-                if field.symbol_id not in used_codes:
+                canonical_field = context.model.canonical_symbol(field.symbol_id)
+                if canonical_field not in used_codes:
                     findings.append(
                         _finding(
                             field.module_id,
-                            enum_symbol,
+                            canonical_enum,
                             field.id,
                             field.location,
                             "exception.code_unused",

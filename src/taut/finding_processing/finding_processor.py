@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from taut.configuration.effective_policy import EffectivePolicy, PolicyApproval
@@ -118,6 +119,7 @@ class FindingProcessor:
         help_by_rule: FrozenMap[RuleId, str],
         ignores: tuple[InlineIgnore, ...],
         classifications: ClassificationIndex | None = None,
+        canonicalize: Callable[[SymbolId], SymbolId] | None = None,
         preused_approval_keys: tuple[str, ...] = (),
     ) -> FindingProcessingResult:
         directives = {(item.path, item.line, item.rule_id): item for item in ignores}
@@ -132,7 +134,7 @@ class FindingProcessor:
             )
             directive = directives.get(key)
             disposition = FindingDisposition.ACTIVE
-            approval = _matching_approval(finding, policy, classifications)
+            approval = _matching_approval(finding, policy, classifications, canonicalize)
             approved = False
             if directive is not None:
                 disposition = FindingDisposition.IGNORED
@@ -202,11 +204,13 @@ def _matching_approval(
     finding: Finding,
     policy: EffectivePolicy,
     classifications: ClassificationIndex | None,
+    canonicalize: Callable[[SymbolId], SymbolId] | None,
 ) -> PolicyApproval | None:
     if classifications is None:
         return None
     zone = classifications.get(finding.module_id).zone
     symbol = finding.enclosing_symbol or SymbolId(finding.module_id.value)
+    canonical = canonicalize(symbol) if canonicalize is not None else symbol
     tokens = {str(value) for _, value in finding.arguments.items() if value is not None}
     for item in finding.evidence:
         if isinstance(item.value, tuple):
@@ -219,7 +223,8 @@ def _matching_approval(
             for approval in policy.approvals
             if approval.kind in _SUPPRESSION_APPROVAL_KINDS
             and approval.rule_id == finding.rule_id
-            and approval.symbol == symbol
+            and (canonicalize(approval.symbol) if canonicalize is not None else approval.symbol)
+            == canonical
             and zone in approval.zones
             and (approval.target is None or approval.target in tokens)
         ),
