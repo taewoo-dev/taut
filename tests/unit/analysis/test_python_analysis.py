@@ -7,6 +7,7 @@ from tests.utils.builders import analyze, make_source
 
 from taut.analysis.contracts import ContextManagerProvider, ResolverSettings
 from taut.analysis.module_analysis import ModuleAnalysis
+from taut.analysis.python.identity import PYTHON_AST_IDENTITY
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.domain.facts import (
     AnalysisStage,
@@ -39,6 +40,16 @@ def run() -> None:
         reference for reference in module.references if reference.ref.written_name == "value"
     )
     assert value_ref.ref.state is ResolutionState.UNRESOLVED
+
+
+def test_python_fact_provenance_matches_adapter_identity() -> None:
+    module = analyze(make_source("app/provenance.py", "print('ok')")).modules[
+        ModuleId("app.provenance")
+    ]
+
+    assert PythonAstAdapter.identity is PYTHON_AST_IDENTITY
+    assert module.calls[0].provenance.provider == PYTHON_AST_IDENTITY.name
+    assert module.calls[0].provenance.provider_version == PYTHON_AST_IDENTITY.version
 
 
 def test_module_and_class_bodies_resolve_bindings_in_source_order() -> None:
@@ -254,11 +265,11 @@ def outer() -> None:
     assert module.completeness.state is CompletenessState.COMPLETE
 
 
-def test_conditional_reference_is_not_reported_as_unconditionally_resolved() -> None:
+def test_conditional_execution_preserves_resolved_identity_and_guard() -> None:
     source = make_source(
         "app/conditional.py",
         """
-from provider import value
+from provider import consume, value
 
 if feature_flag:
     consume(value)
@@ -266,10 +277,16 @@ if feature_flag:
     )
 
     module = analyze(source).modules[ModuleId("app.conditional")]
+    call = module.calls[0]
     value_ref = next(
         reference for reference in module.references if reference.ref.written_name == "value"
     )
-    assert value_ref.ref.state is ResolutionState.CONDITIONAL
+    assert call.ref.state is ResolutionState.RESOLVED
+    assert call.ref.symbol == SymbolId("provider.consume")
+    assert call.context.guard is GuardKind.CONDITIONAL
+    assert value_ref.ref.state is ResolutionState.RESOLVED
+    assert value_ref.ref.symbol == SymbolId("provider.value")
+    assert value_ref.context.guard is GuardKind.CONDITIONAL
 
 
 @pytest.mark.parametrize(

@@ -32,6 +32,7 @@ from taut.daemon_state import (
     write_status,
 )
 from taut.domain.location import ConfigPath
+from taut.policy.packs import plugin_environment_digest
 
 DEFAULT_IDLE_TIMEOUT_SECONDS = 30 * 60.0
 
@@ -57,6 +58,7 @@ class DaemonServer:
             schema=STATUS_SCHEMA_VERSION,
             protocol=PROTOCOL_VERSION,
             taut_version=__version__,
+            plugin_environment=plugin_environment_digest(),
             canonical_root=str(self.root),
             pid=os.getpid(),
             process_start=process_start_identity(os.getpid()),
@@ -162,6 +164,7 @@ class DaemonServer:
             prior.schema,
             prior.protocol,
             prior.taut_version,
+            prior.plugin_environment,
             prior.canonical_root,
             prior.pid,
             prior.process_start,

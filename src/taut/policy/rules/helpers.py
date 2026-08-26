@@ -147,7 +147,7 @@ def unresolved_call_evaluation(
     module_id: ModuleId,
     candidates: tuple[SymbolId, ...],
 ) -> RuleEvaluation | None:
-    """Return indeterminate only when resolver candidates identify a relevant symbol."""
+    """Return indeterminate when a module call may be a relevant symbol."""
     names = frozenset(candidates)
     for call in context.model.calls_in(module_id):
         if call.ref.state is ResolutionState.RESOLVED:
@@ -162,6 +162,31 @@ def unresolved_call_evaluation(
                     "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
                 ),
             )
+    return None
+
+
+def unresolved_target_call_evaluation(
+    rule_id: RuleId,
+    target: RuleTargetRef,
+    context: PolicyContext,
+    call_id: FactId,
+    candidates: tuple[SymbolId, ...],
+) -> RuleEvaluation | None:
+    """Return indeterminate only when the current call target may be relevant."""
+    call = context.model.call(call_id)
+    if call.ref.state is ResolutionState.RESOLVED:
+        return None
+    names = frozenset(candidates)
+    if call.ref.symbol in names or names.intersection(call.ref.candidates):
+        return RuleEvaluation(
+            rule_id,
+            target,
+            RuleVerdict.INDETERMINATE,
+            (),
+            EvaluationReason(
+                "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
+            ),
+        )
     return None
 
 

@@ -22,7 +22,13 @@ from taut.daemon_client import (
     start_daemon,
     stop_daemon,
 )
-from taut.daemon_protocol import DaemonRequest, receive_response, send_request
+from taut.daemon_protocol import (
+    PROTOCOL_VERSION,
+    STATUS_SCHEMA_VERSION,
+    DaemonRequest,
+    receive_response,
+    send_request,
+)
 from taut.daemon_state import (
     DaemonStatus,
     read_status,
@@ -30,6 +36,7 @@ from taut.daemon_state import (
     status_path,
     write_status,
 )
+from taut.policy.packs import plugin_environment_digest
 
 
 @pytest.fixture
@@ -245,9 +252,10 @@ def _fake_status(
     token: str = "x" * 43,
 ) -> DaemonStatus:
     return DaemonStatus(
-        1,
-        1,
+        STATUS_SCHEMA_VERSION,
+        PROTOCOL_VERSION,
         "0.2.0",
+        plugin_environment_digest(),
         str(root.resolve()),
         pid,
         None,

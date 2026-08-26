@@ -11,7 +11,6 @@ from taut.domain.facts import (
     ExpressionSummary,
     FactKind,
     FieldFact,
-    GuardKind,
     ReferenceFact,
     ResolutionState,
     ScopeKind,
@@ -55,7 +54,6 @@ class _BindingHost(Protocol):
     def _location(self, node: ast.AST) -> SourceRange: ...
     def _provenance(self, node: ast.AST) -> Provenance: ...
     def _syntax_context(self) -> SyntaxContext: ...
-    def _contextual_ref(self, ref: SymbolRef, guard: GuardKind) -> SymbolRef: ...
     def _resolve(self, node: ast.AST) -> SymbolRef: ...
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None: ...
     def generic_visit(self, node: ast.AST) -> Any: ...
@@ -175,7 +173,7 @@ class PythonBindingFormsMixin:
 
     def visit_Name(self: _BindingHost, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load):
-            ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
+            ref = self._resolve(node)
             reference_id = self._next_fact_id(
                 FactKind.REFERENCE, ref.symbol.value if ref.symbol else ref.written_name
             )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect, EffectCatalog
@@ -68,12 +70,43 @@ _ROOT_KEYS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class ConfigurationBootstrap:
+    packs: tuple[str, ...]
+    providers: tuple[str, ...]
+
+
+def load_configuration_bootstrap(
+    project_root: Path,
+    config_path: ConfigPath | None = None,
+) -> ConfigurationBootstrap:
+    """Read only the extension identities needed to finish configuration validation."""
+    try:
+        document = read_configuration_document(project_root, config_path)
+        root = document.root
+        _reject_unknown(root, _ROOT_KEYS, "config")
+        version = root.get("schema_version")
+        if version != 3:
+            raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
+        return ConfigurationBootstrap(
+            _strings(root.get("packs", ["taut.backend"]), "packs"),
+            _strings(
+                root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
+                "providers",
+            ),
+        )
+    except ValueError as error:
+        raise PolicyConfigError(f"invalid configuration value: {error}") from error
+
+
 def load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None = None,
+    *,
+    rule_levels: Mapping[RuleId, RuleLevel] | None = None,
 ) -> ProjectConfiguration:
     try:
-        return _load_project_configuration(project_root, config_path)
+        return _load_project_configuration(project_root, config_path, rule_levels)
     except ValueError as error:
         raise PolicyConfigError(f"invalid configuration value: {error}") from error
 
@@ -81,6 +114,7 @@ def load_project_configuration(
 def _load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None,
+    rule_levels: Mapping[RuleId, RuleLevel] | None,
 ) -> ProjectConfiguration:
     document = read_configuration_document(project_root, config_path)
     root = document.root
@@ -121,7 +155,11 @@ def _load_project_configuration(
     roles = _load_roles(root, location)
     zones = _load_zones(root, location)
     catalog = _load_catalog(root)
-    policy = _load_policy(root, strict=document.strict)
+    policy = _load_policy(
+        root,
+        strict=document.strict,
+        rule_levels=BUILTIN_RULE_LEVELS if rule_levels is None else rule_levels,
+    )
     manifest = ProjectManifest(roles, zones, default_zone, location)
     _validate_manifest_policy(manifest, policy)
     return ProjectConfiguration(
@@ -134,6 +172,7 @@ def _load_project_configuration(
         schema_version=3,
         packs=packs,
         providers=providers,
+        strict=document.strict,
         cache_enabled=cache_enabled,
         cache_directory=cache_directory,
     )
@@ -197,14 +236,19 @@ def _load_catalog(root: dict[str, object]) -> EffectCatalog:
     return EffectCatalog(FrozenMap(entries))
 
 
-def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
+def _load_policy(
+    root: dict[str, object],
+    *,
+    strict: bool,
+    rule_levels: Mapping[RuleId, RuleLevel],
+) -> EffectivePolicy:
     rule_table = _table(root.get("rules", {}), "rules")
-    known = {rule_id.value for rule_id in BUILTIN_RULE_LEVELS}
+    known = {rule_id.value for rule_id in rule_levels}
     unknown = set(rule_table).difference(known)
     if unknown:
         raise PolicyConfigError(f"unknown rules: {', '.join(sorted(unknown))}")
     settings: list[tuple[RuleId, RuleSetting]] = []
-    for rule_id, level in BUILTIN_RULE_LEVELS.items():
+    for rule_id, level in rule_levels.items():
         configured = rule_table.get(rule_id.value)
         if configured is not None:
             value = _string(configured, f"rules.{rule_id.value}")

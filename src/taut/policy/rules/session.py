@@ -13,12 +13,16 @@ from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.helpers import build_finding, target_uncertainty, unresolved_call_evaluation
+from taut.policy.rules.helpers import (
+    build_finding,
+    target_uncertainty,
+    unresolved_target_call_evaluation,
+)
 
 OWNER_RULE_ID = RuleId("SESSION001")
 NESTED_RULE_ID = RuleId("SESSION002")
 PARAMETER_RULE_ID = RuleId("SESSION003")
-RULE_VERSION = 1
+RULE_VERSION = 2
 PARAMETER_RULE_VERSION = 2
 _TRANSACTION_CONTROL_METHODS = frozenset({"begin", "begin_nested", "commit", "rollback"})
 
@@ -32,11 +36,11 @@ class SessionOwnerRule:
             return incomplete
         call = context.model.call(target.fact_id)
         if call.ref.state is not ResolutionState.RESOLVED:
-            uncertain = unresolved_call_evaluation(
+            uncertain = unresolved_target_call_evaluation(
                 OWNER_RULE_ID,
                 target,
                 context,
-                call.module_id,
+                call.id,
                 tuple(context.policy.transaction_session_providers),
             )
             if uncertain is not None:
@@ -87,11 +91,11 @@ class NestedSessionRule:
             return incomplete
         call = context.model.call(target.fact_id)
         if call.ref.state is not ResolutionState.RESOLVED:
-            uncertain = unresolved_call_evaluation(
+            uncertain = unresolved_target_call_evaluation(
                 NESTED_RULE_ID,
                 target,
                 context,
-                call.module_id,
+                call.id,
                 tuple(context.policy.transaction_session_providers),
             )
             if uncertain is not None:

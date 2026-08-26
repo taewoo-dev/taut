@@ -11,9 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from taut import __version__
+from taut.analysis.contracts import SourceInput
 from taut.cache import CacheStore
 from taut.cache.authenticated import load_user_signing_key
 from taut.cache.store import ReportEnvelope
+from taut.check_runtime import CheckRuntime, prepare_check_runtime
 from taut.check_service import CheckRequest, run_check_request
 from taut.daemon_client import (
     DaemonError,
@@ -25,9 +27,6 @@ from taut.daemon_client import (
 )
 from taut.domain.ids import RuleId
 from taut.domain.location import ConfigPath
-from taut.loading.config_loader import (
-    load_project_configuration,
-)
 from taut.loading.config_migration import (
     migrate_configuration_text,
     write_migrated_configuration,
@@ -118,6 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     for name, help_text in (("stats", "캐시 통계"), ("clean", "캐시 비우기")):
         command_parser = cache_commands.add_parser(name, help=help_text)
         command_parser.add_argument("project_root", nargs="?", default=".")
+        command_parser.add_argument("--config")
         command_parser.add_argument("--cache-dir")
     daemon = subparsers.add_parser("daemon", help="상주 분석 daemon 관리")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
@@ -192,7 +192,8 @@ def run_check(options: CheckOptions) -> int:
                     file=sys.stderr,
                 )
             return result.exit_code
-    config = load_project_configuration(options.project_root, options.config_path)
+    runtime = prepare_check_runtime(options.project_root, options.config_path)
+    config = runtime.config
     discovery = discover_sources(options.project_root, config)
     cache_key = None
     directory = options.cache_dir or (options.project_root / config.cache_directory.value)
@@ -207,20 +208,7 @@ def run_check(options: CheckOptions) -> int:
         ):
             print("taut cache: error", file=sys.stderr)
         if cache_store is not None:
-            fingerprint = hashlib.sha256(
-                (
-                    __version__
-                    + "|report-schema:1|"
-                    + config.digest()
-                    + options.output_format
-                    + str(options.show_inactive)
-                    + str(options.verbose)
-                    + options.color
-                    + str(options.width)
-                    + "python-target:3.11|adapter:python:1|"
-                    + "|".join(f"{s.path.value}:{s.content_hash}" for s in discovery.sources)
-                ).encode()
-            ).hexdigest()
+            fingerprint = _report_cache_key(runtime, request, discovery.sources)
             cache_key = fingerprint
             try:
                 cached = cache_store.get_report_envelope(fingerprint)
@@ -236,10 +224,10 @@ def run_check(options: CheckOptions) -> int:
             if options.verbose:
                 print("taut cache: miss", file=sys.stderr)
     if cache_key is None:
-        result = run_check_request(request)
+        result = run_check_request(request, runtime=runtime)
     else:
         with _cache_context(directory, enabled=True) as module_store:
-            result = run_check_request(request, module_store)
+            result = run_check_request(request, module_store, runtime)
     output_bytes = result.stdout
     sys.stdout.buffer.write(result.stdout)
     if result.stderr:
@@ -309,7 +297,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 return 0
             if namespace.config_command == "explain":
-                loaded = load_project_configuration(root, config_path)
+                loaded = prepare_check_runtime(root, config_path).config
                 payload = {
                     "schema_version": loaded.schema_version,
                     "configuration_digest": loaded.digest(),
@@ -340,15 +328,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if namespace.config_command != "validate":
                 parser.error("unknown config command")
-            config = load_project_configuration(root, config_path)
+            config = prepare_check_runtime(root, config_path).config
             print(f"설정 정상: {config.manifest.source.path} ({config.digest()})")
             return 0
         if command == "cache":
             root = Path(namespace.project_root).resolve()
+            config_path = ConfigPath(namespace.config) if namespace.config is not None else None
+            configured = prepare_check_runtime(root, config_path).config
             directory = (
-                Path(namespace.cache_dir).resolve() if namespace.cache_dir else root / ".taut_cache"
+                Path(namespace.cache_dir).resolve()
+                if namespace.cache_dir
+                else root / configured.cache_directory.value
             )
-            with CacheStore(directory) as store:
+            if not (directory / "cache.sqlite3").exists():
+                if namespace.cache_command == "clean":
+                    print("캐시 삭제 완료")
+                else:
+                    print("모듈: 0")
+                    print("리포트: 0")
+                    print("바이트: 0")
+                return 0
+            with CacheStore(directory, signing_key=load_user_signing_key()) as store:
                 if namespace.cache_command == "clean":
                     store.clean()
                     print("캐시 삭제 완료")
@@ -410,6 +410,36 @@ def _check_request(options: CheckOptions) -> CheckRequest:
         use_color=_use_color(options.color),
         width=_output_width(options.width),
     )
+
+
+def _report_cache_key(
+    runtime: CheckRuntime,
+    request: CheckRequest,
+    sources: tuple[SourceInput, ...],
+) -> str:
+    source_values = tuple((source.path.value, source.content_hash) for source in sources)
+    payload = {
+        "schema": 2,
+        "engine_version": __version__,
+        "decision_digest": runtime.decision_digest,
+        "python_runtime": [sys.version_info.major, sys.version_info.minor],
+        "project_root": str(request.project_root.resolve()),
+        "config_path": runtime.config.manifest.source.path.value,
+        "adapter": {
+            "name": runtime.adapter.identity.name,
+            "version": runtime.adapter.identity.version,
+        },
+        "render": {
+            "format": request.output_format,
+            "show_inactive": request.show_inactive,
+            "verbose": request.verbose,
+            "use_color": request.use_color,
+            "width": request.width,
+        },
+        "sources": source_values,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _use_color(mode: str) -> bool:

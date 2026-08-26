@@ -10,7 +10,9 @@ def validate_classification_for_policy(
     classifications: ClassificationIndex,
     policy: EffectivePolicy,
 ) -> None:
-    setting = policy.setting(RuleId("ARCH001"))
+    setting = policy.rules.get(RuleId("ARCH001"))
+    if setting is None:
+        return
     if setting.level is RuleLevel.OFF:
         return
     for classification in classifications.modules.values():

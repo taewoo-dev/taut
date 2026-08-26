@@ -126,6 +126,35 @@ def test_cache_stats_and_clean_commands(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 @pytest.mark.integration
+def test_cache_commands_follow_configured_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    config = tmp_path / ".policy" / "policy.toml"
+    config.write_text(config.read_text() + '\n[cache]\ndirectory = "cache-data"\n')
+
+    assert main(["check", str(tmp_path)]) == 0
+    capsys.readouterr()
+    assert (tmp_path / "cache-data").is_dir()
+    assert not (tmp_path / ".taut_cache").exists()
+
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+    assert "리포트: 1" in capsys.readouterr().out
+
+
+@pytest.mark.integration
+def test_cache_stats_does_not_create_an_absent_cache(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+
+    assert main(["cache", "stats", str(tmp_path)]) == 0
+
+    assert "리포트: 0" in capsys.readouterr().out
+    assert not (tmp_path / ".taut_cache").exists()
+
+
+@pytest.mark.integration
 def test_report_miss_reuses_unchanged_module_analysis(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -257,6 +286,17 @@ def test_config_validate_and_rule_explanation(
         "taut.pydantic",
         "taut.sqlalchemy",
     ]
+
+
+@pytest.mark.integration
+def test_config_validate_loads_declared_plugins(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    _add_provider_list(tmp_path, ("missing.provider",))
+
+    assert main(["config", "validate", str(tmp_path)]) == 2
+    assert "unknown or ambiguous fact provider" in capsys.readouterr().err
 
 
 @pytest.mark.integration

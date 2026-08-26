@@ -15,6 +15,7 @@ _VERSION = re.compile(
     r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$"
 )
 T = TypeVar("T")
+type CapabilityValues = FrozenMap[str, tuple[object, ...]]
 
 
 @dataclass(frozen=True, order=True)
@@ -74,7 +75,7 @@ class FactProviderV1(Protocol):
     @property
     def provides(self) -> frozenset[CapabilitySpec]: ...
 
-    def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]: ...
+    def analyze(self, snapshot: AnalysisSnapshot) -> CapabilityValues: ...
 
 
 @runtime_checkable
@@ -82,9 +83,9 @@ class IncrementalFactProviderV1(FactProviderV1, Protocol):
     def analyze_incremental(
         self,
         snapshot: AnalysisSnapshot,
-        previous: FrozenMap[str, tuple[object, ...]],
+        previous: CapabilityValues,
         impacted: frozenset[ModuleId],
-    ) -> FrozenMap[str, tuple[object, ...]]: ...
+    ) -> CapabilityValues: ...
 
 
 def apply_fact_providers_incremental(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,14 @@ import pytest
 from taut.analysis.providers import CapabilitySpec
 from taut.check_service import CheckRequest, CheckResult, ResidentCheckSession, run_check_request
 from taut.cli import main
+from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.domain.facts import AnalysisStage
 from taut.domain.frozen import FrozenMap
+from taut.domain.ids import RuleId
+from taut.policy.context import PolicyContext
+from taut.policy.packs import RulePackV1
+from taut.policy.registry import RuleRegistry
+from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
 
 _PROVIDERS = (
     "taut.python-core",
@@ -16,6 +24,25 @@ _PROVIDERS = (
     "taut.pydantic",
     "taut.sqlalchemy",
 )
+
+
+@dataclass(frozen=True)
+class _PassingRule:
+    id: RuleId
+
+    def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
+        del context
+        return RuleEvaluation(self.id, target, RuleVerdict.PASS, ())
+
+
+@dataclass(frozen=True)
+class _EntryPoint:
+    name: str
+    value: str
+    factory: Callable[[], object]
+
+    def load(self) -> Callable[[], object]:
+        return self.factory
 
 
 def _write_config(root: Path, *, providers: tuple[str, ...] = _PROVIDERS, limit: int = 500) -> None:
@@ -55,6 +82,58 @@ def _assert_fresh_parity(request: CheckRequest, result: CheckResult) -> None:
     assert result.stdout == fresh.stdout
     assert result.exit_code == fresh.exit_code
     assert result.report == fresh.report
+
+
+@pytest.mark.integration
+def test_external_rule_pack_can_define_and_run_a_custom_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    custom_id = RuleId("CUSTOM001")
+    definition = RuleDefinition(
+        id=custom_id,
+        behavior_version=1,
+        title="Custom passing rule",
+        help="Used to verify the public extension runtime.",
+        target=RuleTarget.PROJECT,
+        requirements=RuleRequirements(frozenset(), AnalysisStage.DISCOVERED, False, False),
+        change_impact=ChangeImpact.PROJECT,
+        implementation=_PassingRule(custom_id),
+        compliant_fixtures=("value = 1",),
+        violation_fixtures=("value = 0",),
+    )
+    pack = RulePackV1("example.pack", "1.0.0", RuleRegistry.build((definition,)))
+    point = _EntryPoint("example.pack", "example:pack", lambda: pack)
+    monkeypatch.setattr("taut.policy.packs.entry_points", lambda: (point,))
+
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "service.py").write_text("value = 1\n")
+    (tmp_path / ".policy").mkdir()
+    (tmp_path / ".policy" / "policy.toml").write_text(
+        """
+schema_version = 3
+packs = ["example.pack"]
+providers = []
+[project]
+include = ["app/*.py"]
+source_roots = ["."]
+default_zone = "prod"
+[[roles]]
+name = "service"
+patterns = ["app/*.py"]
+[architecture.allow]
+service = ["service"]
+[rules]
+CUSTOM001 = "enforced"
+""".strip()
+    )
+
+    result = run_check_request(CheckRequest(tmp_path))
+
+    assert result.exit_code == 0
+    assert result.report is not None
+    assert result.report.coverage.enabled_rules == 1
+    assert result.report.coverage.passed == 1
 
 
 @pytest.mark.integration
@@ -226,7 +305,7 @@ def test_provider_exception_is_a_deterministic_coverage_failure(
     def load_broken(_: str) -> BrokenProvider:
         return BrokenProvider()
 
-    monkeypatch.setattr("taut.check_service.load_fact_provider", load_broken)
+    monkeypatch.setattr("taut.check_runtime.load_fact_provider", load_broken)
     session = ResidentCheckSession(tmp_path)
 
     first = session.check(request)

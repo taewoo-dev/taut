@@ -1,6 +1,6 @@
 [project]
 name = "pytaut"
-version = "0.2.0"
+version = "0.2.1"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -18,6 +18,8 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
@@ -124,6 +126,7 @@ loading = ["src/taut/loading/*.py", "src/taut/loading/**/*.py"]
 reporting = ["src/taut/reporting/*.py", "src/taut/reporting/**/*.py"]
 composition = [
   "src/taut/__init__.py",
+  "src/taut/check_runtime.py",
   "src/taut/check_service.py",
   "src/taut/cli.py",
   "src/taut/daemon_*.py",

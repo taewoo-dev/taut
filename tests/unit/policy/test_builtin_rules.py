@@ -14,6 +14,7 @@ from taut.configuration.effective_policy import (
 )
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import RuleVerdict
+from taut.domain.facts import ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.engine import PolicyEngine, PolicyRunResult
@@ -266,6 +267,64 @@ def get_async_session():
     )
 
     assert session_result.verdict is RuleVerdict.PASS
+
+
+def test_session_call_uncertainty_does_not_fan_out_to_unrelated_calls() -> None:
+    module_id = ModuleId("app.service")
+    snapshot = analyze(
+        make_source(
+            "app/service.py",
+            "unrelated_one()\nunrelated_two()\nunrelated_three()\nmaybe_session()",
+        )
+    )
+    module = snapshot.modules[module_id]
+    *unrelated_calls, maybe_session = module.calls
+    provider = SymbolId("app.database.get_async_session")
+    unrelated_calls = [
+        replace(
+            call,
+            ref=replace(
+                call.ref,
+                state=ResolutionState.AMBIGUOUS,
+                symbol=None,
+                candidates=(SymbolId("app.other.call"), SymbolId("app.other.alternative")),
+            ),
+        )
+        for call in unrelated_calls
+    ]
+    maybe_session = replace(
+        maybe_session,
+        ref=replace(
+            maybe_session.ref,
+            state=ResolutionState.AMBIGUOUS,
+            symbol=None,
+            candidates=(provider, SymbolId("app.other.alternative")),
+        ),
+    )
+    snapshot = replace(
+        snapshot,
+        modules=FrozenMap(((module_id, replace(module, calls=(*unrelated_calls, maybe_session))),)),
+    )
+    context = make_context(
+        snapshot,
+        roles={"service": ("app/service.py",)},
+        allowed_imports={"service": frozenset({"service"})},
+        transaction_owners=frozenset({"service"}),
+        transaction_session_providers=frozenset({provider.value}),
+    )
+
+    result = PolicyEngine(builtin_rule_registry()).run(context)
+
+    for rule_id in (RuleId("SESSION001"), RuleId("SESSION002")):
+        evaluations = {
+            evaluation.target.fact_id: evaluation
+            for evaluation in result.evaluations
+            if evaluation.rule_id == rule_id
+        }
+        assert all(
+            evaluations[call.id].verdict is RuleVerdict.NOT_APPLICABLE for call in unrelated_calls
+        )
+        assert evaluations[maybe_session.id].verdict is RuleVerdict.INDETERMINATE
 
 
 def test_boundary_rule_rejects_forbidden_imports_only_for_selected_role() -> None:

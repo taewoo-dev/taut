@@ -116,11 +116,15 @@ if [[ "$SKIP_BUILD" == false ]]; then
   BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/taut-dist.XXXXXX")"
   uv build --out-dir "$BUILD_DIR" --clear
 
-  section "5/5" "Installing wheel in isolation"
+  section "5/5" "Installing wheel and running an end-to-end smoke test"
   WHEELS=("$BUILD_DIR"/*.whl)
   [[ -e "${WHEELS[0]}" ]] || fail "uv build did not produce a wheel"
   uv run --isolated --no-project --with "${WHEELS[0]}" -- \
     python -c "import taut; from taut.cli import main; print(taut.__version__)"
+  uv run --isolated --no-project --with "${WHEELS[0]}" -- \
+    taut config validate "$PROJECT_ROOT/tests/fixtures/installed_smoke"
+  uv run --isolated --no-project --with "${WHEELS[0]}" -- \
+    taut check "$PROJECT_ROOT/tests/fixtures/installed_smoke" --no-cache
 else
   section "4-5/5" "Skipping build verification (--skip-build)"
 fi

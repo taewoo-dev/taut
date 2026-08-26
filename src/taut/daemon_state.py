@@ -16,12 +16,14 @@ import msgspec
 
 from taut import __version__
 from taut.daemon_protocol import PROTOCOL_VERSION, STATUS_SCHEMA_VERSION
+from taut.policy.packs import plugin_environment_digest
 
 
 class DaemonStatus(msgspec.Struct, forbid_unknown_fields=True, frozen=True):
     schema: int
     protocol: int
     taut_version: str
+    plugin_environment: str
     canonical_root: str
     pid: int
     process_start: str | None
@@ -88,6 +90,7 @@ def compatible(status: DaemonStatus, root: Path) -> bool:
         status.schema == STATUS_SCHEMA_VERSION
         and status.protocol == PROTOCOL_VERSION
         and status.taut_version == __version__
+        and status.plugin_environment == plugin_environment_digest()
         and status.canonical_root == str(root.resolve())
     )
 

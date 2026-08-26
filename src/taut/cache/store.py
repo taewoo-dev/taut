@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import sqlite3
@@ -24,6 +23,7 @@ from taut.cache.authenticated import (
     encode_authenticated_bundle,
     encode_authenticated_module,
 )
+from taut.cache.report_auth import decode_report, encode_report
 
 SCHEMA_VERSION = 1
 MAX_TOTAL_BYTES = 1 << 30
@@ -340,7 +340,7 @@ class CacheStore:
     def put_report(self, fingerprint: str, payload: bytes) -> bool:
         if not _HASH.fullmatch(fingerprint):
             raise ValueError("report fingerprint must be lowercase sha256")
-        payload = b"RPT1" + hashlib.sha256(payload).digest() + payload
+        payload = encode_report(payload, fingerprint, self._signing_key)
         now = time.time()
         conn = self._conn()
         conn.execute("BEGIN IMMEDIATE")
@@ -378,17 +378,14 @@ class CacheStore:
             if row is None:
                 return None
             value = bytes(row[0])
-            if (
-                len(value) < 36
-                or value[:4] != b"RPT1"
-                or hashlib.sha256(value[36:]).digest() != value[4:36]
-            ):
+            payload = decode_report(value, fingerprint, self._signing_key)
+            if payload is None:
                 self._conn().execute("DELETE FROM report_entries WHERE key=?", (fingerprint,))
                 return None
             self._conn().execute(
                 "UPDATE report_entries SET accessed=? WHERE key=?", (time.time(), fingerprint)
             )
-            return value[36:]
+            return payload
         except (sqlite3.DatabaseError, OSError):
             return None
 

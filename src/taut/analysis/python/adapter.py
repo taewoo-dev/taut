@@ -401,7 +401,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             self.visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        ref = self._contextual_ref(self._resolve(node.func), self._syntax_context().guard)
+        ref = self._resolve(node.func)
         fact_id = self._next_fact_id(
             FactKind.CALL, ref.symbol.value if ref.symbol else ref.written_name
         )
@@ -446,7 +446,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if isinstance(node.ctx, ast.Load):
-            ref = self._contextual_ref(self._resolve(node), self._syntax_context().guard)
+            ref = self._resolve(node)
             self.references.append(
                 ReferenceFact(
                     id=self._next_fact_id(

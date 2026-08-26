@@ -18,6 +18,7 @@ _TOOL_KEYS = frozenset(
         "packs",
         "providers",
         "strict",
+        "cache",
         "include",
         "exclude",
         "source_roots",
@@ -28,6 +29,7 @@ _TOOL_KEYS = frozenset(
         "zones",
         "allow",
         "effects",
+        "rules",
         "rule_zones",
         "approvals",
         "transaction",
@@ -154,6 +156,9 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
         "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
     }
 
+    if "cache" in section:
+        root["cache"] = section["cache"]
+
     project_keys = ("include", "exclude", "source_roots", "default_zone")
     project = {key: section[key] for key in project_keys if key in section}
     if project:
@@ -169,6 +174,8 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
 
     if "effects" in section:
         root["effects"] = section["effects"]
+    if "rules" in section:
+        root["rules"] = section["rules"]
     if "rule_zones" in section:
         root["rule_zones"] = section["rule_zones"]
     if "approvals" in section:

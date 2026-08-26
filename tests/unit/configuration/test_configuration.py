@@ -119,6 +119,28 @@ def test_pyproject_configuration_uses_concise_tables_and_builtin_defaults(
     )
 
 
+def test_pyproject_configuration_accepts_cache_and_rule_tables(tmp_path: Path) -> None:
+    _write_pyproject(
+        tmp_path,
+        _PYPROJECT_VALID
+        + """
+
+[tool.taut.cache]
+enabled = false
+directory = "cache-data"
+
+[tool.taut.rules]
+TIME001 = "enforced"
+""",
+    )
+
+    config = load_project_configuration(tmp_path)
+
+    assert config.cache_enabled is False
+    assert config.cache_directory == ProjectPath("cache-data")
+    assert config.policy.setting(RuleId("TIME001")).level is RuleLevel.ENFORCED
+
+
 def test_pyproject_loads_role_zone_and_reasoned_symbol_approvals(tmp_path: Path) -> None:
     content = (
         _PYPROJECT_VALID

@@ -20,6 +20,7 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.policy import packs
+from taut.policy.registry import RuleRegistry
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,10 @@ class OrderedProvider:
 
 def test_public_v1_facades_export_stable_contracts() -> None:
     assert public_plugins.CapabilitySpec is CapabilitySpec
+    assert public_plugins.RuleDefinition is not None
+    assert public_plugins.RuleEvaluation is not None
+    assert public_plugins.RulePackV1 is packs.RulePackV1
+    assert public_plugins.RuleRegistry is RuleRegistry
     assert public_semantic.Binding is not None
     assert public_semantic.ProjectRelations is not None
 
