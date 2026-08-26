@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -23,3 +23,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: bash scripts/test.sh
+
+  test:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All supported Python versions passed"
