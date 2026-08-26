@@ -4,16 +4,17 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.2.0 adds authenticated cross-process analysis caching and a supervised incremental
-daemon while preserving canonical CLI output. It supports Python 3.12 or newer on platforms
-supported by Python:
+Version 0.2.1 adds reasoned policy approvals and rule-zone scoping, fixes unrelated unresolved-call
+fan-out in session analysis, and hardens cache, daemon, and plugin execution while preserving
+canonical CLI output. It supports Python 3.12 or newer on platforms supported by Python:
 
 ```bash
-uv add --dev pytaut==0.2.0
+uv add --dev pytaut==0.2.1
 uv run taut check .
 ```
 
-For a reproducible source checkout, use `uv add --dev "pytaut @ git+https://github.com/taewoo-dev/taut.git"`.
+For a reproducible source install, use a release tag or full commit SHA instead of the default Git
+branch.
 
 ## Configuration
 
@@ -44,6 +45,13 @@ owner_roles = ["service"]
 session_providers = ["app.database.get_async_session"]
 ```
 
+Validate the effective configuration before the first full check:
+
+```bash
+uv run taut config validate .
+uv run taut check .
+```
+
 Built-in policies cover external calls, databases, security, DTOs, and schemas. Add only the
 repository-specific differences:
 
@@ -55,6 +63,36 @@ wrappers = ["app.adapters.external_call"]
 [tool.taut.enum]
 shared_modules = ["app.core.enums"]
 ```
+
+Rules can be scoped by zone, entrypoint roles can receive distinct effect allowances, and an
+intentional exception can be approved for one exact symbol with a required reason:
+
+```toml
+[tool.taut.rule_zones]
+IMPORT001 = ["prod", "migration", "script"]
+IMPORT002 = ["prod", "migration", "script"]
+
+[tool.taut.boundary_extensions.entry_allowed_kinds]
+task = ["external"]
+
+[tool.taut.layers]
+scoped_construction = ["adapter"]
+dependency_registration = ["composition"]
+
+[[tool.taut.approvals]]
+rule = "SESSION003"
+symbol = "app.services.notifications._persist"
+target = "sqlalchemy.ext.asyncio.AsyncSession"
+kind = "participant"
+zones = ["prod"]
+reason = "called only inside the notification transaction"
+```
+
+`allow`, `entrypoint`, `factory`, `lazy_import`, and `security_wrapper` approve the matching
+finding after normal rule evaluation. `participant` and `managed` are SESSION003 contracts:
+a participant may use a caller-owned session but may not open, commit, or roll it back; a managed
+function is an independently managed service entrypoint. Omitting `target` approves all targets
+for that rule and symbol. Module-level findings use the module ID as `symbol`.
 
 ## Commands
 
@@ -98,7 +136,7 @@ For a one-time audit that must not modify the target repository, provide an abso
 external configuration file:
 
 ```bash
-taut check /path/to/project --config /path/to/audit-policy.toml
+taut check /path/to/project --config /path/to/audit-policy.toml --no-cache
 ```
 
 Role patterns and `source_roots` are resolved relative to the target project, not the
@@ -115,7 +153,8 @@ locations, remediation guidance, decision counts, and the decision digest.
 
 JSON report schema v3 includes resolved, unresolved, ambiguous, and dynamic call/reference counts;
 resolved and unresolved imports; unavailable capabilities; skipped evaluations; and coverage gaps.
-A rule runs only when its declared semantic capabilities are present.
+It reports used and unused symbol approvals separately from inline ignores. A rule runs only when
+its declared semantic capabilities are present.
 
 - Exit code `0`: no enforced violations
 - Exit code `1`: one or more enforced violations
@@ -162,17 +201,20 @@ roles, dependency cycles, import placement, file size, dynamic execution, async 
 security access are checked in every zone. API, DTO, database, and service-boundary rules apply to
 production code.
 
-Resolution-state applicability follows the resolver facts, not source spelling. Conditional and
-ambiguous references carry resolver candidates and can yield `indeterminate` when a configured
-symbol is a candidate; unresolved and dynamic references do not identify a configured target, so
-each group-C rule follows its matrix row (`evaluate`-compatible for rules that can continue,
-`not_applicable` where no target exists). This preserves unrelated-uncertainty behavior and avoids
-manufacturing relevance from written names.
+Resolution-state applicability follows the resolver facts, not source spelling. Conditional
+execution is represented by `SyntaxContext.guard` and does not weaken an otherwise resolved symbol;
+`ResolutionState.CONDITIONAL` means the binding or identity itself is available only on some paths.
+Conditional and ambiguous identities carry resolver candidates and can yield `indeterminate` when a
+configured symbol is a candidate; unresolved and dynamic references do not identify a configured
+target, so each group-C rule follows its matrix row (`evaluate`-compatible for rules that can
+continue, `not_applicable` where no target exists). This preserves unrelated-uncertainty behavior
+and avoids manufacturing relevance from written names.
 
 The built-in backend pack contains all 48 rules. It consumes versioned semantic capabilities from
 the built-in Python provider (`taut.syntax@1`, `taut.bindings@1`, `taut.imports@1`, and
 `taut.uses@1`). Third-party integrations can use the public `taut.plugins.v1` and
-`taut.semantic.v1` contracts without importing the concrete AST analyzer.
+`taut.semantic.v1` contracts without importing the concrete AST analyzer. See
+[`docs/plugins.md`](docs/plugins.md) for a complete rule-pack entry-point example.
 
 Fact providers are loaded through the `taut.fact_providers.v1` entry-point group. A provider
 declares a stable `id`, numeric dotted `version`, `provides` capability specifications such as
@@ -196,6 +238,16 @@ enforcement.
 ```bash
 bash scripts/test.sh
 bash scripts/test.sh --only tests/unit/policy/test_builtin_rules.py -x
+```
+
+When validating unpublished local changes, avoid `uvx --from /path` for two different builds that
+share the same package version: uv may reuse an earlier local wheel. Use a fresh environment and
+force a source rebuild instead:
+
+```bash
+uv venv --python 3.13 /tmp/taut-validation
+uv pip install --python /tmp/taut-validation/bin/python --refresh --reinstall /path/to/taut
+/tmp/taut-validation/bin/taut check /path/to/project --no-cache
 ```
 
 The full check runs the repository's own policy rules, Ruff, mypy strict, Pyright strict, pytest

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.1
+
+### Policy precision and configuration
+
+- Added reasoned, symbol-scoped approvals with zone scoping, used/unused approval audits, and
+  deterministic inclusion in policy decision digests.
+- Added per-rule zone configuration and role-specific file-size limits.
+- Fixed session-rule unresolved-call fan-out so uncertainty remains local to relevant candidates
+  instead of spreading across unrelated calls in a module.
+
+### Runtime and extension hardening
+
+- Hardened authenticated cache reports and daemon request handling, including safer runtime-state
+  ownership and failure isolation.
+- Stabilized Python semantic identity and conditional binding behavior for incremental providers.
+- Expanded the public plugin API and documented third-party rule-pack integration.
+
+### Verification and compatibility
+
+- Added CI and release verification on Python 3.12, 3.13, and 3.14.
+- Added isolated wheel installation and end-to-end smoke checks to the release test script.
+- Validated strict analysis against the anti-monitor backend with zero active findings,
+  indeterminate findings, engine issues, or unused approvals.
+
 ## 0.2.0
 
 ### Semantic analysis and contracts

@@ -18,6 +18,7 @@ _TOOL_KEYS = frozenset(
         "packs",
         "providers",
         "strict",
+        "cache",
         "include",
         "exclude",
         "source_roots",
@@ -28,6 +29,9 @@ _TOOL_KEYS = frozenset(
         "zones",
         "allow",
         "effects",
+        "rules",
+        "rule_zones",
+        "approvals",
         "transaction",
         "boundaries",
         "layers",
@@ -48,7 +52,9 @@ _LAYER_KEYS = {
     "model": "model_roles",
     "bootstrap": "bootstrap_roles",
     "implementation_construction": "implementation_construction_roles",
+    "scoped_construction": "scoped_construction_roles",
     "configuration": "configuration_roles",
+    "dependency_registration": "dependency_registration_roles",
     "raw_query": "raw_query_roles",
 }
 _EXTERNAL_KEYS = {
@@ -67,6 +73,7 @@ _DATABASE_KEYS = {
     "raw_query_wrappers": "raw_query_wrappers",
     "schema_roles": "schema_sql_roles",
     "schema_argument_names": "schema_sql_argument_names",
+    "schema_parent_calls": "schema_sql_parent_calls",
     "execution_methods": "raw_sql_execution_methods",
     "owner_names": "database_owner_names",
     "primitive_methods": "database_primitive_methods",
@@ -77,6 +84,7 @@ _ENUM_KEYS = {
     "uppercase_value_exceptions": "uppercase_enum_exceptions",
     "non_string_exceptions": "non_str_enum_exceptions",
     "native_enum_false_exceptions": "native_enum_false_exceptions",
+    "native_enum_no_constraint_exceptions": "native_enum_no_constraint_exceptions",
 }
 
 
@@ -148,6 +156,9 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
         "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
     }
 
+    if "cache" in section:
+        root["cache"] = section["cache"]
+
     project_keys = ("include", "exclude", "source_roots", "default_zone")
     project = {key: section[key] for key in project_keys if key in section}
     if project:
@@ -163,6 +174,12 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
 
     if "effects" in section:
         root["effects"] = section["effects"]
+    if "rules" in section:
+        root["rules"] = section["rules"]
+    if "rule_zones" in section:
+        root["rule_zones"] = section["rule_zones"]
+    if "approvals" in section:
+        root["approvals"] = section["approvals"]
     if "transaction" in section:
         root["transaction"] = section["transaction"]
     if "boundaries" in section:

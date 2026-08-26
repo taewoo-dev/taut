@@ -274,9 +274,8 @@ class SchemaConfigRule:
         module = context.model.module(target.module_id)
         findings: list[Finding] = []
         for class_fact in module.classes:
-            if (
-                not _is_base_model(class_fact)
-                or class_fact.symbol_id in context.policy.code.generic_schema_bases
+            if not _is_base_model(class_fact) or context.symbol_in(
+                class_fact.symbol_id, context.policy.code.generic_schema_bases
             ):
                 continue
             field = _model_config(module.fields, class_fact)
@@ -287,7 +286,11 @@ class SchemaConfigRule:
             )
             actual: set[SymbolId] = set(field.value.symbols) if field and field.value else set()
             inline = any(symbol.value.endswith("ConfigDict") for symbol in actual)
-            if field is None or not actual.intersection(expected) or inline:
+            if (
+                field is None
+                or not any(context.symbol_in(symbol, expected) for symbol in actual)
+                or inline
+            ):
                 subject = field.id if field is not None else class_fact.id
                 location = field.location if field is not None else class_fact.location
                 findings.append(
@@ -321,7 +324,7 @@ class SchemaInheritanceRule:
             return uncertainty
         findings: list[Finding] = []
         for class_fact in context.model.module(target.module_id).classes:
-            if class_fact.symbol_id in context.policy.code.generic_schema_bases:
+            if context.symbol_in(class_fact.symbol_id, context.policy.code.generic_schema_bases):
                 continue
             forbidden = tuple(
                 symbol
@@ -353,8 +356,9 @@ def model_shape_rule_definitions() -> tuple[RuleDefinition, ...]:
     rows = (
         (
             DTO_RULE_ID,
-            "DTO 깊은 불변성",
-            "내부 DTO는 frozen dataclass와 변경 불가능한 필드 타입을 사용하세요.",
+            "DTO 변경 방지와 mutable concrete type 노출 금지",
+            "내부 DTO는 frozen dataclass를 사용하고 list·dict·set 같은 변경 가능한 "
+            "구체 타입을 필드 계약으로 노출하지 마세요.",
             ImmutableDtoRule(),
             "dto",
         ),

@@ -30,7 +30,8 @@ taut daemon stop /path/to/project
 One daemon owns exactly one canonical project root. Startup is serialized, stale
 or incompatible status is rejected, and a daemon exits after 30 minutes without a
 request. Updating pytaut changes the recorded version and causes incompatible state
-to be replaced on the next start.
+to be replaced on the next start. Installing, removing, upgrading, or changing the
+entry point of a rule pack or fact provider also invalidates daemon compatibility.
 
 ## Disk cache
 
@@ -38,13 +39,22 @@ The default directory is `<project>/.taut_cache`; configure another project-rela
 directory under `[tool.taut.cache]`, pass `--cache-dir`, or disable reads and writes
 with `--no-cache`.
 
+```toml
+[tool.taut.cache]
+enabled = true
+directory = ".cache/taut"
+```
+
 ```bash
 taut cache stats /path/to/project
 taut cache clean /path/to/project
 ```
 
-Cache data is disposable. Cleaning it cannot remove source or configuration files;
-the next check rebuilds it.
+`stats` and `clean` load the same project configuration and therefore follow its
+configured directory. `--cache-dir` overrides that location. Asking for statistics
+on a cache that does not exist reports zero without creating a directory. Cache data
+is disposable. Cleaning it cannot remove source or configuration files; the next
+check rebuilds it.
 
 ## Security model
 
@@ -52,9 +62,10 @@ the next check rebuilds it.
   files are regular owner-only files (`0600`) on POSIX systems.
 - Requests use a random per-instance token and are bound to the canonical project,
   protocol, and pytaut version.
-- Fast module bundles are HMAC-SHA-256 authenticated with a 32-byte owner-only key
-  stored outside the project cache. They are also bound to project, adapter,
-  resolver, source/module identity, and Python major/minor version.
+- Fast module bundles and rendered report entries are HMAC-SHA-256 authenticated with
+  a 32-byte owner-only key stored outside the project cache. They are also bound to
+  project, adapter, resolver, source/module identity, plugin decision contract,
+  resolved rendering options, and Python major/minor version as applicable.
 - Bundle decoding accepts only a closed set of pytaut domain types. Authentication
   or decoding uncertainty is always a cache miss.
 

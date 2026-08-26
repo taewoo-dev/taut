@@ -41,6 +41,8 @@ type FindingSubject = FactId | ModuleId | SymbolId
 class Finding:
     rule_id: RuleId
     rule_version: int
+    module_id: ModuleId
+    enclosing_symbol: SymbolId | None
     subject: FindingSubject
     message_key: str
     arguments: FrozenMap[str, ScalarValue]

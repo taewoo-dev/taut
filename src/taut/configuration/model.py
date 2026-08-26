@@ -22,6 +22,7 @@ class ProjectConfiguration:
     schema_version: int = 3
     packs: tuple[str, ...] = ("taut.backend",)
     providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
+    strict: bool = True
     cache_enabled: bool = True
     cache_directory: ProjectPath = field(default_factory=lambda: ProjectPath(".taut_cache"))
 
@@ -42,6 +43,7 @@ class ProjectConfiguration:
             "schema_version": self.schema_version,
             "packs": self.packs,
             "providers": self.providers,
+            "strict": self.strict,
             "include": self.include,
             "exclude": self.exclude,
             "source_roots": [path.value for path in self.source_roots],

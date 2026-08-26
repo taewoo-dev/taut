@@ -113,8 +113,9 @@ class ExternalCallTransactionRule:
                 for item in call.enclosing_contexts
                 if item.state is ResolutionState.RESOLVED and item.symbol is not None
             }
-            holds_session = bool(
-                context_symbols.intersection(context.policy.transaction_session_providers)
+            holds_session = any(
+                context.symbol_in(symbol, context.policy.transaction_session_providers)
+                for symbol in context_symbols
             )
             holds_transaction = any(
                 symbol

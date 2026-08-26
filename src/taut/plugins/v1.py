@@ -47,10 +47,31 @@ from taut.analysis.framework.sqlalchemy import (
 from taut.analysis.providers import (
     CapabilityPayload,
     CapabilitySpec,
+    CapabilityValues,
     FactProviderV1,
+    IncrementalFactProviderV1,
     ProviderDependency,
 )
+from taut.analysis.semantic_model import SemanticModel
+from taut.configuration.manifest import Zone
+from taut.domain.evaluations import (
+    ChangeImpact,
+    EvaluationReason,
+    RuleLevel,
+    RuleTarget,
+    RuleTargetRef,
+    RuleVerdict,
+)
+from taut.domain.facts import AnalysisStage
+from taut.domain.findings import Finding, make_fingerprint
+from taut.domain.frozen import FrozenMap
+from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
+from taut.domain.location import ProjectPath, SourceRange
+from taut.domain.snapshot import AnalysisSnapshot
+from taut.policy.context import PolicyContext
 from taut.policy.packs import BUILTIN_BACKEND_PROVIDER_IDS, RulePackV1, builtin_backend_providers
+from taut.policy.registry import RuleRegistry
+from taut.policy.rule import Rule, RuleDefinition, RuleEvaluation, RuleRequirements
 
 __all__ = [
     "BUILTIN_BACKEND_PROVIDER_IDS",
@@ -74,14 +95,26 @@ __all__ = [
     "SQLALCHEMY_RELATIONSHIPS",
     "SQLALCHEMY_SESSIONS",
     "SQLALCHEMY_TRANSACTIONS",
+    "AnalysisSnapshot",
+    "AnalysisStage",
     "CapabilityPayload",
     "CapabilitySpec",
+    "CapabilityValues",
+    "ChangeImpact",
+    "EvaluationReason",
+    "FactId",
     "FactProviderV1",
     "FastAPIDependencyFact",
     "FastAPIEndpointFact",
     "FastAPIProvider",
     "FastAPIResponseModelFact",
     "FastAPIRouterFact",
+    "Finding",
+    "FrozenMap",
+    "IncrementalFactProviderV1",
+    "ModuleId",
+    "PolicyContext",
+    "ProjectPath",
     "ProviderDependency",
     "PydanticConfigFact",
     "PydanticFieldFact",
@@ -90,7 +123,17 @@ __all__ = [
     "PydanticProvider",
     "PydanticSerializerFact",
     "PydanticValidatorFact",
+    "Rule",
+    "RuleDefinition",
+    "RuleEvaluation",
+    "RuleId",
+    "RuleLevel",
     "RulePackV1",
+    "RuleRegistry",
+    "RuleRequirements",
+    "RuleTarget",
+    "RuleTargetRef",
+    "RuleVerdict",
     "SQLAlchemyMappedColumnFact",
     "SQLAlchemyModelFact",
     "SQLAlchemyProvider",
@@ -99,5 +142,10 @@ __all__ = [
     "SQLAlchemyRelationshipFact",
     "SQLAlchemySessionFact",
     "SQLAlchemyTransactionFact",
+    "SemanticModel",
+    "SourceRange",
+    "SymbolId",
+    "Zone",
     "builtin_backend_providers",
+    "make_fingerprint",
 ]

@@ -6,9 +6,10 @@ from collections.abc import Sequence
 
 from taut.analysis.contracts import SourceInput
 from taut.analysis.python.fact_ids import next_fact_id
+from taut.analysis.python.identity import PYTHON_AST_IDENTITY
 from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
 from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
-from taut.domain.facts import FactKind, GuardKind, ResolutionState, SymbolRef
+from taut.domain.facts import FactKind, ResolutionState, SymbolRef
 from taut.domain.ids import FactId, SymbolId
 from taut.domain.location import SourceRange
 from taut.domain.provenance import Provenance
@@ -248,7 +249,10 @@ class PythonSymbolResolver(PythonScopeFlow):
     def _provenance(self, node: ast.AST) -> Provenance:
         if node not in self._provenances:
             self._provenances[node] = Provenance(
-                "python-ast", "1", self.source.content_hash, self._location(node)
+                PYTHON_AST_IDENTITY.name,
+                PYTHON_AST_IDENTITY.version,
+                self.source.content_hash,
+                self._location(node),
             )
         return self._provenances[node]
 
@@ -465,16 +469,3 @@ class PythonSymbolResolver(PythonScopeFlow):
         if provider.state is not ResolutionState.RESOLVED or provider.symbol is None:
             return None
         return self.context_manager_providers.get(provider.symbol)
-
-    def _conditional_ref(self, ref: SymbolRef, conditional: bool) -> SymbolRef:
-        if conditional and ref.state is ResolutionState.RESOLVED and ref.symbol is not None:
-            return SymbolRef(
-                ref.written_name, ResolutionState.CONDITIONAL, None, (ref.symbol,), ref.provenance
-            )
-        return ref
-
-    def _contextual_ref(self, ref: SymbolRef, guard: GuardKind) -> SymbolRef:
-        return self._conditional_ref(
-            ref,
-            guard is GuardKind.CONDITIONAL,
-        )

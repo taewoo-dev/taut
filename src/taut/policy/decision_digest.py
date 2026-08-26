@@ -20,7 +20,16 @@ def build_decision_digest(
     payload = {
         "configuration": configuration.digest(),
         "adapter": {"name": adapter.name, "version": adapter.version},
-        "packs": [{"id": pack.id, "version": pack.version} for pack in packs],
+        "packs": [
+            {
+                "id": pack.id,
+                "version": pack.version,
+                "required_capabilities": sorted(
+                    capability.id for capability in pack.required_capabilities
+                ),
+            }
+            for pack in packs
+        ],
         "providers": [
             {
                 "id": provider.id,

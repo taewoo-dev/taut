@@ -78,9 +78,8 @@ class EnumShapeRule:
         for class_fact in module.classes:
             if not _is_enum(class_fact):
                 continue
-            if (
-                not _is_str_enum(class_fact)
-                and class_fact.symbol_id not in context.policy.code.non_str_enum_exceptions
+            if not _is_str_enum(class_fact) and not context.symbol_in(
+                class_fact.symbol_id, context.policy.code.non_str_enum_exceptions
             ):
                 findings.append(
                     _finding(
@@ -188,7 +187,9 @@ class EnumShapeRule:
             if (
                 field.value is not None
                 and field.value.literal_kind == "str"
-                and class_fact.symbol_id not in context.policy.code.uppercase_enum_exceptions
+                and not context.symbol_in(
+                    class_fact.symbol_id, context.policy.code.uppercase_enum_exceptions
+                )
             ):
                 value = (field.value.literal_value or "").strip("'\"")
                 if _LOWER_VALUE.fullmatch(value) is None:

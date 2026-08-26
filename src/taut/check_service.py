@@ -28,6 +28,7 @@ from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.cache import CacheKey, CacheStore
 from taut.cache.authenticated import ModuleBundle, cache_signing_context
+from taut.check_runtime import CheckRuntime, prepare_check_runtime
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.model import ProjectConfiguration
 from taut.configuration.validation import validate_classification_for_policy
@@ -41,13 +42,12 @@ from taut.domain.snapshot import AnalysisSnapshot
 from taut.finding_processing.finding_processor import FindingProcessor
 from taut.finding_processing.report_builder import build_run_report
 from taut.incremental import IncrementalProjectAnalyzer
-from taut.loading.config_loader import load_project_configuration
 from taut.loading.inline_ignores import load_inline_ignores
 from taut.loading.source_discovery import discover_sources
 from taut.policy.context import PolicyContext
 from taut.policy.decision_digest import build_decision_digest
 from taut.policy.engine import IncrementalPolicyResult, PolicyEngine
-from taut.policy.packs import RulePackV1, load_fact_provider, load_rule_pack
+from taut.policy.packs import RulePackV1
 from taut.policy.registry import RuleRegistry
 from taut.reporting.json import render_json
 from taut.reporting.text import render_text
@@ -117,17 +117,19 @@ class ResidentCheckSession:
         self._prior_policy_context: PolicyContext | None = None
         self._prior_policy_result: IncrementalPolicyResult | None = None
 
-    def check(self, request: CheckRequest) -> CheckResult:
+    def check(self, request: CheckRequest, runtime: CheckRuntime | None = None) -> CheckResult:
         if self._closed:
             raise RuntimeError("resident check session is closed")
         root = request.project_root.resolve()
         if root != self.project_root:
             raise ValueError("request project root differs from session root")
-        config = load_project_configuration(root, request.config_path)
-        identity = (root, config.digest(), self._adapter.identity, __version__)
+        prepared = runtime or prepare_check_runtime(root, request.config_path)
+        if prepared.project_root != root or prepared.requested_config_path != request.config_path:
+            raise ValueError("prepared runtime differs from request")
+        identity = (root, *prepared.identity)
         if identity != self._identity:
-            self._configure(config, identity)
-        return self._run(request, config)
+            self._configure(prepared, identity)
+        return self._run(request, prepared.config)
 
     def reset(self) -> None:
         self._identity = None
@@ -154,15 +156,15 @@ class ResidentCheckSession:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def _configure(self, config: ProjectConfiguration, identity: tuple[object, ...]) -> None:
+    def _configure(self, runtime: CheckRuntime, identity: tuple[object, ...]) -> None:
         self.reset()
-        self._config = config
+        self._config = runtime.config
         self._identity = identity
-        self._providers = tuple(load_fact_provider(item) for item in config.providers)
-        self._packs = tuple(load_rule_pack(item) for item in config.packs)
-        self._registry = RuleRegistry.build(
-            definition for pack in self._packs for definition in pack.registry.definitions.values()
-        )
+        self._adapter = runtime.adapter
+        self._analyzer = IncrementalProjectAnalyzer(self._adapter)
+        self._providers = runtime.providers
+        self._packs = runtime.packs
+        self._registry = runtime.registry
         self._engine = PolicyEngine(self._registry)
 
     def _run(self, request: CheckRequest, config: ProjectConfiguration) -> CheckResult:
@@ -273,6 +275,9 @@ class ResidentCheckSession:
             policy=config.policy,
             help_by_rule=help_by_rule,
             ignores=ignore_result.directives,
+            classifications=classifications,
+            canonicalize=context.model.canonical_symbol,
+            preused_approval_keys=policy_result.result.approval_keys,
         )
         report = build_run_report(
             snapshot=snapshot,
@@ -290,6 +295,7 @@ class ResidentCheckSession:
             ),
             coverage=policy_result.result.coverage,
             ignore_audit=processing.ignore_audit,
+            approval_audit=processing.approval_audit,
         )
         rendered = (
             render_json(report)
@@ -423,10 +429,14 @@ class _DiskModuleCache:
         )
 
 
-def run_check_request(request: CheckRequest, module_store: CacheStore | None = None) -> CheckResult:
+def run_check_request(
+    request: CheckRequest,
+    module_store: CacheStore | None = None,
+    runtime: CheckRuntime | None = None,
+) -> CheckResult:
     """Run a single check through the same pipeline used by resident sessions."""
     with ResidentCheckSession(request.project_root, module_store) as session:
-        return session.check(request)
+        return session.check(request, runtime)
 
 
 def _timed(values: list[StageTiming], name: str, started: float) -> None:

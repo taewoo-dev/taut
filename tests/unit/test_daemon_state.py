@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import msgspec
 import pytest
 
 from taut import __version__
+from taut.daemon_protocol import PROTOCOL_VERSION, STATUS_SCHEMA_VERSION
 from taut.daemon_state import (
     DaemonStatus,
     compatible,
@@ -15,13 +17,15 @@ from taut.daemon_state import (
     status_path,
     write_status,
 )
+from taut.policy.packs import plugin_environment_digest
 
 
 def _status(root: Path, instance: str = "one") -> DaemonStatus:
     return DaemonStatus(
-        1,
-        1,
+        STATUS_SCHEMA_VERSION,
+        PROTOCOL_VERSION,
         __version__,
+        plugin_environment_digest(),
         str(root.resolve()),
         os.getpid(),
         None,
@@ -62,6 +66,7 @@ def test_status_rejects_insecure_mode_and_incompatible_version(
         current.schema,
         current.protocol,
         "different",
+        current.plugin_environment,
         current.canonical_root,
         current.pid,
         current.process_start,
@@ -72,6 +77,12 @@ def test_status_rejects_insecure_mode_and_incompatible_version(
         current.last_used_at,
     )
     assert not compatible(incompatible, root)
+
+    incompatible_plugin = msgspec.structs.replace(
+        current,
+        plugin_environment="0" * 64,
+    )
+    assert not compatible(incompatible_plugin, root)
 
 
 def test_status_rejects_malformed_and_invalid_identity(
@@ -90,6 +101,7 @@ def test_status_rejects_malformed_and_invalid_identity(
         invalid.schema,
         invalid.protocol,
         invalid.taut_version,
+        invalid.plugin_environment,
         invalid.canonical_root,
         0,
         invalid.process_start,

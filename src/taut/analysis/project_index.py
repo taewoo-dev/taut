@@ -4,14 +4,17 @@ from collections.abc import Iterable
 
 from taut.domain.facts import (
     CycleEdge,
+    ExecutionPhase,
+    GuardKind,
     ImportCycle,
     ImportEdge,
+    ImportIntent,
     ModuleFacts,
     ProjectIndex,
     UnresolvedImport,
 )
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import ModuleId
+from taut.domain.ids import ModuleId, SymbolId
 
 
 def build_project_index(modules: Iterable[ModuleFacts]) -> ProjectIndex:
@@ -90,6 +93,7 @@ def build_project_index(modules: Iterable[ModuleFacts]) -> ProjectIndex:
         )
     )
     cycles = _find_cycles(frozen_eager, ordered_edges)
+    canonical_symbols = _build_canonical_symbols(module_list, modules_by_name)
     return ProjectIndex(
         imports=frozen_imports,
         imported_by=frozen_reverse,
@@ -112,7 +116,113 @@ def build_project_index(modules: Iterable[ModuleFacts]) -> ProjectIndex:
         deferred_imports=FrozenMap(
             (source, tuple(sorted(targets))) for source, targets in deferred_imports.items()
         ),
+        canonical_symbols=canonical_symbols,
     )
+
+
+def _build_canonical_symbols(
+    modules: tuple[ModuleFacts, ...],
+    modules_by_name: dict[str, ModuleId],
+) -> FrozenMap[SymbolId, SymbolId]:
+    """Map public re-export paths to the concrete project symbol they expose."""
+    known_symbols: set[SymbolId] = set()
+    final_bindings: dict[tuple[ModuleId, str], tuple[tuple[int, int, str], SymbolId | None]] = {}
+
+    def record(
+        module_id: ModuleId,
+        local_name: str,
+        line: int,
+        column: int,
+        fact_id: str,
+        target: SymbolId | None,
+    ) -> None:
+        key = (module_id, local_name)
+        order = (line, column, fact_id)
+        previous = final_bindings.get(key)
+        if previous is None or previous[0] < order:
+            final_bindings[key] = (order, target)
+
+    for facts in modules:
+        module_id = facts.module.id
+        for definition in facts.definitions:
+            if definition.enclosing_symbol is None:
+                known_symbols.add(definition.symbol_id)
+                record(
+                    module_id,
+                    definition.symbol_id.value.rsplit(".", 1)[-1],
+                    definition.location.start_line,
+                    definition.location.start_column,
+                    definition.id.value,
+                    None,
+                )
+        for field in facts.fields:
+            if field.owner_symbol is None:
+                known_symbols.add(field.symbol_id)
+                record(
+                    module_id,
+                    field.name,
+                    field.location.start_line,
+                    field.location.start_column,
+                    field.id.value,
+                    None,
+                )
+        for binding in facts.bindings:
+            if binding.lexical_owner is None:
+                known_symbols.add(binding.symbol_id)
+                record(
+                    module_id,
+                    binding.local_name,
+                    binding.location.start_line,
+                    binding.location.start_column,
+                    binding.id.value,
+                    None,
+                )
+        for imported in facts.imports:
+            if (
+                not imported.is_from
+                or imported.enclosing_symbol is not None
+                or imported.context.execution_phase is not ExecutionPhase.MODULE_INIT
+                or imported.context.guard is not GuardKind.UNCONDITIONAL
+                or imported.intent is not ImportIntent.NORMAL
+                or imported.imported_module_name not in modules_by_name
+                or imported.imported_name in modules_by_name
+            ):
+                continue
+            local_name = imported.alias or imported.imported_name.rsplit(".", 1)[-1]
+            record(
+                module_id,
+                local_name,
+                imported.location.start_line,
+                imported.location.start_column,
+                imported.id.value,
+                SymbolId(imported.imported_name),
+            )
+
+    alias_targets = {
+        SymbolId(f"{module_id.value}.{local_name}"): target
+        for (module_id, local_name), (_, target) in final_bindings.items()
+        if target is not None
+    }
+    resolved: dict[SymbolId, SymbolId | None] = {}
+
+    def canonical(symbol: SymbolId, visiting: frozenset[SymbolId]) -> SymbolId | None:
+        if symbol in resolved:
+            return resolved[symbol]
+        if symbol in visiting:
+            return None
+        target = alias_targets.get(symbol)
+        if target is None:
+            return symbol if symbol in known_symbols else None
+        result = canonical(target, visiting | {symbol})
+        resolved[symbol] = result
+        return result
+
+    aliases: list[tuple[SymbolId, SymbolId]] = []
+    for alias in sorted(alias_targets):
+        target = canonical(alias, frozenset())
+        if target is not None and alias != target:
+            aliases.append((alias, target))
+    return FrozenMap(aliases)
 
 
 def _resolve_internal_import(

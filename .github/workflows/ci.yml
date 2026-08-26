@@ -9,12 +9,23 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    name: Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.0.1
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: bash scripts/test.sh
+
+  test:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All supported Python versions passed"

@@ -5,7 +5,6 @@ from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
 
 from taut.analysis.contracts import (
-    AdapterIdentity,
     ModuleAnalysisResult,
     ResolverSettings,
     SourceInput,
@@ -13,13 +12,14 @@ from taut.analysis.contracts import (
 from taut.analysis.module_analysis import ModuleAnalysis
 from taut.analysis.python.adapter import PythonFactExtractor
 from taut.analysis.python.failed_analysis import failed_facts
+from taut.analysis.python.identity import PYTHON_AST_IDENTITY
 from taut.domain.facts import AnalysisStage
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.location import SourceRange
 
 
 class PythonAstAdapter:
-    identity = AdapterIdentity(name="python-ast", version="6")
+    identity = PYTHON_AST_IDENTITY
 
     def analyze_module(
         self,

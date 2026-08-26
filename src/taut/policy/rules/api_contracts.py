@@ -10,15 +10,14 @@ from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, Rul
 from taut.domain.facts import (
     AnalysisStage,
     CallFact,
-    ClassFact,
     DecoratorFact,
     ExpressionSummary,
-    FieldFact,
 )
 from taut.domain.findings import Finding
 from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
+from taut.policy.rules.api_field_metadata import field_metadata_names, is_base_model
 from taut.policy.rules.helpers import (
     build_policy_finding,
     target_uncertainty,
@@ -29,6 +28,7 @@ FIELD_RULE_ID = RuleId("API002")
 ROUTER_METADATA_RULE_ID = RuleId("API003")
 MAPPING_RULE_ID = RuleId("SCHEMA003")
 RULE_VERSION = 1
+FIELD_RULE_VERSION = 2
 ROUTER_METADATA_RULE_VERSION = 2
 _HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
 _NO_BODY_RETURNS = ("FileResponse", "NoReturn", "Never", "Response", "StreamingResponse")
@@ -143,24 +143,6 @@ class EndpointDocumentationRule:
         return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.PASS, ())
 
 
-def _base_model(class_fact: ClassFact) -> bool:
-    return any(
-        symbol.value in {"pydantic.BaseModel", "pydantic.main.BaseModel"}
-        for base in class_fact.bases
-        for symbol in base.symbols
-    )
-
-
-def _field_call(field: FieldFact) -> bool:
-    return bool(
-        field.value
-        and any(
-            symbol.value in {"pydantic.Field", "pydantic.fields.Field"}
-            for symbol in field.value.symbols
-        )
-    )
-
-
 class PublicFieldDocumentationRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
@@ -175,7 +157,7 @@ class PublicFieldDocumentationRule:
         classes = {
             class_fact.symbol_id: class_fact
             for class_fact in module.classes
-            if _base_model(class_fact)
+            if is_base_model(class_fact)
         }
         findings: list[Finding] = []
         for field in module.fields:
@@ -185,11 +167,11 @@ class PublicFieldDocumentationRule:
                 or field.name == "model_config"
             ):
                 continue
+            names = field_metadata_names(field, module.calls)
             missing: list[str] = []
-            if not _field_call(field) or field.value is None:
+            if names is None:
                 missing.extend(("description", "examples"))
             else:
-                names = {argument.name for argument in field.value.arguments}
                 if "description" not in names:
                     missing.append("description")
                 if (
@@ -207,6 +189,7 @@ class PublicFieldDocumentationRule:
                         field.location,
                         "api.field_metadata_missing",
                         ",".join(missing),
+                        rule_version=FIELD_RULE_VERSION,
                     )
                 )
         if findings:
@@ -453,7 +436,7 @@ def api_rule_definitions() -> tuple[RuleDefinition, ...]:
         ),
         RuleDefinition(
             FIELD_RULE_ID,
-            RULE_VERSION,
+            FIELD_RULE_VERSION,
             "공개 API 필드 문서",
             "공개 Schema 필드에 설명과 실제 예시를 명시하세요.",
             RuleTarget.MODULE,

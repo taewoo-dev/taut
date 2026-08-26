@@ -5,11 +5,15 @@ import json
 from dataclasses import dataclass, field
 
 from taut.configuration.catalog import Effect
-from taut.configuration.manifest import Role
+from taut.configuration.manifest import Role, Zone
 from taut.domain.evaluations import RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ProjectPath
+
+_APPROVAL_KINDS = frozenset(
+    {"allow", "entrypoint", "factory", "lazy_import", "managed", "participant", "security_wrapper"}
+)
 
 
 @dataclass(frozen=True)
@@ -44,7 +48,9 @@ class BoundaryPolicy:
     model_roles: frozenset[Role] = frozenset()
     bootstrap_roles: frozenset[Role] = frozenset()
     implementation_construction_roles: frozenset[Role] = frozenset()
+    scoped_construction_roles: frozenset[Role] = frozenset()
     configuration_roles: frozenset[Role] = frozenset()
+    dependency_registration_roles: frozenset[Role] = frozenset()
     raw_query_roles: frozenset[Role] = frozenset()
     external_modules: tuple[ModuleId, ...] = ()
     database_modules: tuple[ModuleId, ...] = ()
@@ -64,6 +70,7 @@ class BoundaryPolicy:
     raw_query_wrappers: frozenset[SymbolId] = frozenset()
     schema_sql_roles: frozenset[Role] = frozenset()
     schema_sql_argument_names: tuple[str, ...] = ()
+    schema_sql_parent_calls: tuple[SymbolId, ...] = ()
     raw_sql_execution_methods: tuple[str, ...] = ()
     database_owner_names: tuple[str, ...] = ()
     database_primitive_methods: tuple[str, ...] = ()
@@ -71,6 +78,9 @@ class BoundaryPolicy:
     http_timeout_calls: tuple[SymbolId, ...] = ()
     logged_external_calls: tuple[SymbolId, ...] = ()
     external_call_wrappers: frozenset[SymbolId] = frozenset()
+    entry_allowed_kinds: FrozenMap[Role, frozenset[str]] = field(
+        default_factory=lambda: FrozenMap[Role, frozenset[str]]()
+    )
 
     def __post_init__(self) -> None:
         module_fields: tuple[tuple[ModuleId, ...], ...] = (
@@ -91,6 +101,7 @@ class BoundaryPolicy:
             self.raw_sql_calls,
             self.http_timeout_calls,
             self.logged_external_calls,
+            self.schema_sql_parent_calls,
         )
         string_fields = (
             self.database_owner_names,
@@ -108,6 +119,43 @@ class BoundaryPolicy:
             raise ValueError("boundary policy names must be unique and sorted")
         if any(not value.strip() for values in string_fields for value in values):
             raise ValueError("boundary policy names cannot be empty")
+        allowed_entry_kinds = {"database", "external", "session", "transport_exception"}
+        if any(
+            not kinds.issubset(allowed_entry_kinds) for kinds in self.entry_allowed_kinds.values()
+        ):
+            raise ValueError("entry allowance contains an unknown boundary kind")
+
+
+@dataclass(frozen=True, order=True)
+class PolicyApproval:
+    rule_id: RuleId
+    symbol: SymbolId
+    reason: str
+    target: str | None = None
+    kind: str = "allow"
+    zones: frozenset[Zone] = frozenset(
+        {Zone("prod"), Zone("test"), Zone("migration"), Zone("script")}
+    )
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError("policy approval reason cannot be empty")
+        if self.target is not None and not self.target.strip():
+            raise ValueError("policy approval target cannot be empty")
+        if not self.kind or not self.kind.replace("_", "").isalnum() or not self.kind.islower():
+            raise ValueError("policy approval kind must be a lowercase name")
+        if self.kind not in _APPROVAL_KINDS:
+            raise ValueError(f"unknown policy approval kind: {self.kind}")
+        if self.kind in {"managed", "participant"} and self.rule_id != RuleId("SESSION003"):
+            raise ValueError(f"approval kind {self.kind} is only valid for SESSION003")
+        if not self.zones:
+            raise ValueError("policy approval requires at least one zone")
+
+    @property
+    def key(self) -> str:
+        target = self.target or "*"
+        zones = ",".join(sorted(zone.value for zone in self.zones))
+        return f"{self.rule_id.value}:{self.symbol.value}:{target}:{self.kind}:{zones}"
 
 
 @dataclass(frozen=True)
@@ -124,6 +172,7 @@ class CodeConventionPolicy:
     uppercase_enum_exceptions: frozenset[SymbolId] = frozenset()
     non_str_enum_exceptions: frozenset[SymbolId] = frozenset()
     native_enum_false_exceptions: frozenset[SymbolId] = frozenset()
+    native_enum_no_constraint_exceptions: frozenset[SymbolId] = frozenset()
     generic_schema_bases: frozenset[SymbolId] = frozenset()
     forbidden_runtime_calls: tuple[str, ...] = ()
     exception_base_symbols: frozenset[SymbolId] = frozenset()
@@ -181,7 +230,12 @@ class EffectivePolicy:
     rules: FrozenMap[RuleId, RuleSetting]
     allowed_imports: FrozenMap[Role, frozenset[Role]]
     transaction_owner_roles: frozenset[Role]
+    transaction_participant_roles: frozenset[Role] = frozenset()
     transaction_session_providers: frozenset[SymbolId] = frozenset()
+    rule_zones: FrozenMap[RuleId, frozenset[Zone]] = field(
+        default_factory=lambda: FrozenMap[RuleId, frozenset[Zone]]()
+    )
+    approvals: tuple[PolicyApproval, ...] = ()
     import_boundaries: tuple[ImportBoundary, ...] = ()
     default_max_lines: int = 700
     max_lines_by_role: FrozenMap[Role, int] = field(default_factory=lambda: FrozenMap[Role, int]())
@@ -197,9 +251,39 @@ class EffectivePolicy:
             for maximum in self.max_lines_by_role.values()
         ):
             raise ValueError("role maximum lines must be between 1 and the configured default")
+        if not set(self.rule_zones).issubset(self.rules):
+            raise ValueError("rule zone mapping contains an unknown rule")
+        if any(not zones for zones in self.rule_zones.values()):
+            raise ValueError("rule zone mapping cannot be empty")
+        if self.approvals != tuple(sorted(self.approvals, key=lambda item: item.key)):
+            raise ValueError("policy approvals must be sorted")
+        if len({approval.key for approval in self.approvals}) != len(self.approvals):
+            raise ValueError("policy approvals must be unique")
 
     def setting(self, rule_id: RuleId) -> RuleSetting:
         return self.rules[rule_id]
+
+    def approval_for(
+        self,
+        rule_id: RuleId,
+        symbol: SymbolId,
+        zone: Zone,
+        *,
+        target: str | None = None,
+        kind: str | None = None,
+    ) -> PolicyApproval | None:
+        return next(
+            (
+                approval
+                for approval in self.approvals
+                if approval.rule_id == rule_id
+                and approval.symbol == symbol
+                and zone in approval.zones
+                and (kind is None or approval.kind == kind)
+                and (approval.target is None or approval.target == target)
+            ),
+            None,
+        )
 
     def digest(self) -> str:
         payload = {
@@ -216,9 +300,27 @@ class EffectivePolicy:
                 for source, targets in self.allowed_imports.items()
             ],
             "transaction_owner_roles": sorted(role.value for role in self.transaction_owner_roles),
+            "transaction_participant_roles": sorted(
+                role.value for role in self.transaction_participant_roles
+            ),
             "transaction_session_providers": sorted(
                 symbol.value for symbol in self.transaction_session_providers
             ),
+            "rule_zones": [
+                (rule_id.value, sorted(zone.value for zone in zones))
+                for rule_id, zones in self.rule_zones.items()
+            ],
+            "approvals": [
+                {
+                    "rule": approval.rule_id.value,
+                    "symbol": approval.symbol.value,
+                    "target": approval.target,
+                    "kind": approval.kind,
+                    "zones": sorted(zone.value for zone in approval.zones),
+                    "reason": approval.reason,
+                }
+                for approval in self.approvals
+            ],
             "import_boundaries": [
                 {
                     "name": boundary.name,
@@ -243,8 +345,14 @@ class EffectivePolicy:
                 "implementation_construction_roles": sorted(
                     role.value for role in self.boundaries.implementation_construction_roles
                 ),
+                "scoped_construction_roles": sorted(
+                    role.value for role in self.boundaries.scoped_construction_roles
+                ),
                 "configuration_roles": sorted(
                     role.value for role in self.boundaries.configuration_roles
+                ),
+                "dependency_registration_roles": sorted(
+                    role.value for role in self.boundaries.dependency_registration_roles
                 ),
                 "raw_query_roles": sorted(role.value for role in self.boundaries.raw_query_roles),
                 "external_modules": [item.value for item in self.boundaries.external_modules],
@@ -289,6 +397,9 @@ class EffectivePolicy:
                 ),
                 "schema_sql_roles": sorted(role.value for role in self.boundaries.schema_sql_roles),
                 "schema_sql_argument_names": list(self.boundaries.schema_sql_argument_names),
+                "schema_sql_parent_calls": [
+                    item.value for item in self.boundaries.schema_sql_parent_calls
+                ],
                 "raw_sql_execution_methods": list(self.boundaries.raw_sql_execution_methods),
                 "database_owner_names": list(self.boundaries.database_owner_names),
                 "database_primitive_methods": list(self.boundaries.database_primitive_methods),
@@ -300,6 +411,10 @@ class EffectivePolicy:
                 "external_call_wrappers": sorted(
                     item.value for item in self.boundaries.external_call_wrappers
                 ),
+                "entry_allowed_kinds": [
+                    (role.value, sorted(kinds))
+                    for role, kinds in self.boundaries.entry_allowed_kinds.items()
+                ],
             },
             "code_conventions": {
                 "dto_roles": sorted(role.value for role in self.code.dto_roles),
@@ -323,6 +438,9 @@ class EffectivePolicy:
                 ),
                 "native_enum_false_exceptions": sorted(
                     symbol.value for symbol in self.code.native_enum_false_exceptions
+                ),
+                "native_enum_no_constraint_exceptions": sorted(
+                    symbol.value for symbol in self.code.native_enum_no_constraint_exceptions
                 ),
                 "generic_schema_bases": sorted(
                     symbol.value for symbol in self.code.generic_schema_bases

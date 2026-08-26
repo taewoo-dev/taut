@@ -1,14 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect, EffectCatalog
-from taut.configuration.effective_policy import (
-    BoundaryPolicy,
-    EffectivePolicy,
-    ImportBoundary,
-    SecurityPolicy,
-)
+from taut.configuration.effective_policy import EffectivePolicy, ImportBoundary
 from taut.configuration.manifest import (
     ProjectManifest,
     Role,
@@ -23,7 +20,6 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath
 from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
-from taut.loading.boundary_extension_schema import BOUNDARY_EXTENSION_KEYS
 from taut.loading.builtin_catalog import builtin_catalog_entries
 from taut.loading.code_conventions import load_code_conventions
 from taut.loading.config_values import ensure_unique as _ensure_unique
@@ -41,9 +37,15 @@ from taut.loading.default_configuration import (
     default_project_configuration as default_project_configuration,
 )
 from taut.loading.errors import PolicyConfigError
+from taut.loading.policy_extensions import (
+    KNOWN_ZONES,
+    load_approvals,
+    load_boundary_extensions,
+    load_rule_zones,
+    load_security_policy,
+)
 
 DEFAULT_CONFIG_PATH = PYPROJECT_CONFIG_PATH
-_ZONES = frozenset({"prod", "test", "migration", "script"})
 _ROOT_KEYS = frozenset(
     {
         "schema_version",
@@ -55,6 +57,8 @@ _ROOT_KEYS = frozenset(
         "zones",
         "effects",
         "rules",
+        "rule_zones",
+        "approvals",
         "architecture",
         "transaction",
         "boundaries",
@@ -64,20 +68,45 @@ _ROOT_KEYS = frozenset(
         "security",
     }
 )
-_RISKY_PREFIXES = (
-    "httpx.AsyncClient.",
-    "httpx.Client.",
-    "requests.",
-    "subprocess.",
-)
+
+
+@dataclass(frozen=True)
+class ConfigurationBootstrap:
+    packs: tuple[str, ...]
+    providers: tuple[str, ...]
+
+
+def load_configuration_bootstrap(
+    project_root: Path,
+    config_path: ConfigPath | None = None,
+) -> ConfigurationBootstrap:
+    """Read only the extension identities needed to finish configuration validation."""
+    try:
+        document = read_configuration_document(project_root, config_path)
+        root = document.root
+        _reject_unknown(root, _ROOT_KEYS, "config")
+        version = root.get("schema_version")
+        if version != 3:
+            raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
+        return ConfigurationBootstrap(
+            _strings(root.get("packs", ["taut.backend"]), "packs"),
+            _strings(
+                root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
+                "providers",
+            ),
+        )
+    except ValueError as error:
+        raise PolicyConfigError(f"invalid configuration value: {error}") from error
 
 
 def load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None = None,
+    *,
+    rule_levels: Mapping[RuleId, RuleLevel] | None = None,
 ) -> ProjectConfiguration:
     try:
-        return _load_project_configuration(project_root, config_path)
+        return _load_project_configuration(project_root, config_path, rule_levels)
     except ValueError as error:
         raise PolicyConfigError(f"invalid configuration value: {error}") from error
 
@@ -85,6 +114,7 @@ def load_project_configuration(
 def _load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None,
+    rule_levels: Mapping[RuleId, RuleLevel] | None,
 ) -> ProjectConfiguration:
     document = read_configuration_document(project_root, config_path)
     root = document.root
@@ -119,13 +149,17 @@ def _load_project_configuration(
         for value in _strings(project.get("source_roots", ["."]), "project.source_roots")
     )
     default_zone = Zone(_string(project.get("default_zone", "prod"), "project.default_zone"))
-    if default_zone.value not in _ZONES:
+    if default_zone.value not in KNOWN_ZONES:
         raise PolicyConfigError(f"unknown project.default_zone: {default_zone.value}")
 
     roles = _load_roles(root, location)
     zones = _load_zones(root, location)
     catalog = _load_catalog(root)
-    policy = _load_policy(root, strict=document.strict)
+    policy = _load_policy(
+        root,
+        strict=document.strict,
+        rule_levels=BUILTIN_RULE_LEVELS if rule_levels is None else rule_levels,
+    )
     manifest = ProjectManifest(roles, zones, default_zone, location)
     _validate_manifest_policy(manifest, policy)
     return ProjectConfiguration(
@@ -138,6 +172,7 @@ def _load_project_configuration(
         schema_version=3,
         packs=packs,
         providers=providers,
+        strict=document.strict,
         cache_enabled=cache_enabled,
         cache_directory=cache_directory,
     )
@@ -172,7 +207,7 @@ def _load_zones(root: dict[str, object], location: ConfigLocation) -> tuple[Zone
     for item in _table_list(root.get("zones", []), "zones"):
         _reject_unknown(item, frozenset({"name", "patterns"}), "zones")
         zone = Zone(_string(item.get("name"), "zones.name"))
-        if zone.value not in _ZONES:
+        if zone.value not in KNOWN_ZONES:
             raise PolicyConfigError(f"unknown zone: {zone.value}")
         values.append(ZoneMatcher(zone, _strings(item.get("patterns"), "zones.patterns"), location))
     _ensure_unique((matcher.zone.value for matcher in values), "zone")
@@ -201,14 +236,19 @@ def _load_catalog(root: dict[str, object]) -> EffectCatalog:
     return EffectCatalog(FrozenMap(entries))
 
 
-def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
+def _load_policy(
+    root: dict[str, object],
+    *,
+    strict: bool,
+    rule_levels: Mapping[RuleId, RuleLevel],
+) -> EffectivePolicy:
     rule_table = _table(root.get("rules", {}), "rules")
-    known = {rule_id.value for rule_id in BUILTIN_RULE_LEVELS}
+    known = {rule_id.value for rule_id in rule_levels}
     unknown = set(rule_table).difference(known)
     if unknown:
         raise PolicyConfigError(f"unknown rules: {', '.join(sorted(unknown))}")
     settings: list[tuple[RuleId, RuleSetting]] = []
-    for rule_id, level in BUILTIN_RULE_LEVELS.items():
+    for rule_id, level in rule_levels.items():
         configured = rule_table.get(rule_id.value)
         if configured is not None:
             value = _string(configured, f"rules.{rule_id.value}")
@@ -216,6 +256,9 @@ def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
                 raise PolicyConfigError(f"{rule_id.value} is fixed at {level.value}")
         effective_level = level if strict or level is RuleLevel.ADVISORY else RuleLevel.ADVISORY
         settings.append((rule_id, RuleSetting(effective_level, FrozenMap())))
+
+    rule_zones = load_rule_zones(root, known)
+    approvals = load_approvals(root, known)
 
     architecture = _table(root.get("architecture", {}), "architecture")
     _reject_unknown(architecture, frozenset({"allow"}), "architecture")
@@ -231,12 +274,18 @@ def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
     transaction = _table(root.get("transaction", {}), "transaction")
     _reject_unknown(
         transaction,
-        frozenset({"owner_roles", "session_providers"}),
+        frozenset({"owner_roles", "participant_roles", "session_providers"}),
         "transaction",
     )
     owners = frozenset(
         Role(value)
         for value in _strings(transaction.get("owner_roles", []), "transaction.owner_roles")
+    )
+    participants = frozenset(
+        Role(value)
+        for value in _strings(
+            transaction.get("participant_roles", []), "transaction.participant_roles"
+        )
     )
     session_providers = frozenset(
         SymbolId(value)
@@ -261,13 +310,16 @@ def _load_policy(root: dict[str, object], *, strict: bool) -> EffectivePolicy:
         rules=FrozenMap(settings),
         allowed_imports=allowed_imports,
         transaction_owner_roles=owners,
+        transaction_participant_roles=participants,
         transaction_session_providers=session_providers,
+        rule_zones=rule_zones,
+        approvals=approvals,
         import_boundaries=boundaries,
         default_max_lines=default_max_lines,
         max_lines_by_role=max_lines_by_role,
-        boundaries=_load_boundary_extensions(root),
+        boundaries=load_boundary_extensions(root),
         code=load_code_conventions(root.get("code_conventions", {})),
-        security=_load_security_policy(root),
+        security=load_security_policy(root),
     )
 
 
@@ -307,158 +359,6 @@ def _load_import_boundaries(root: dict[str, object]) -> tuple[ImportBoundary, ..
         )
     _ensure_unique((boundary.name for boundary in boundaries), "import boundary")
     return tuple(sorted(boundaries, key=lambda boundary: boundary.name))
-
-
-def _load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
-    table = _table(root.get("boundary_extensions", {}), "boundary_extensions")
-    _reject_unknown(table, BOUNDARY_EXTENSION_KEYS, "boundary_extensions")
-
-    def roles(name: str, defaults: tuple[str, ...] = ()) -> frozenset[Role]:
-        additions = _strings(table.get(name, []), f"boundary_extensions.{name}")
-        return frozenset(Role(value) for value in set(defaults).union(additions))
-
-    def modules(name: str, defaults: tuple[str, ...] = ()) -> tuple[ModuleId, ...]:
-        additions = _strings(table.get(name, []), f"boundary_extensions.{name}")
-        return tuple(sorted(ModuleId(value) for value in set(defaults).union(additions)))
-
-    def symbols(name: str, defaults: tuple[str, ...] = ()) -> tuple[SymbolId, ...]:
-        additions = _strings(table.get(name, []), f"boundary_extensions.{name}")
-        return tuple(sorted(SymbolId(value) for value in set(defaults).union(additions)))
-
-    def names(name: str, defaults: tuple[str, ...] = ()) -> tuple[str, ...]:
-        additions = _strings(table.get(name, []), f"boundary_extensions.{name}")
-        return tuple(sorted(set(defaults).union(additions)))
-
-    return BoundaryPolicy(
-        entry_roles=roles("entry_roles", ("consumer", "router", "task")),
-        service_roles=roles("service_roles", ("service",)),
-        contract_roles=roles("contract_roles", ("contract",)),
-        adapter_roles=roles("adapter_roles", ("adapter",)),
-        query_roles=roles("query_roles", ("queries", "query")),
-        model_roles=roles("model_roles", ("model",)),
-        bootstrap_roles=roles("bootstrap_roles", ("bootstrap", "composition")),
-        implementation_construction_roles=roles("implementation_construction_roles"),
-        configuration_roles=roles("configuration_roles", ("configuration",)),
-        raw_query_roles=roles("raw_query_roles", ("raw_query",)),
-        external_modules=modules(
-            "external_modules", ("anthropic", "boto3", "httpx", "openai", "requests")
-        ),
-        database_modules=modules("database_modules", ("sqlalchemy",)),
-        transport_modules=modules("transport_modules", ("fastapi", "starlette")),
-        contract_forbidden_modules=modules(
-            "contract_forbidden_modules",
-            ("anthropic", "fastapi", "httpx", "openai", "sqlalchemy"),
-        ),
-        adapter_forbidden_modules=modules("adapter_forbidden_modules", ("sqlalchemy",)),
-        adapter_forbidden_calls=symbols(
-            "adapter_forbidden_calls",
-            (
-                "sqlalchemy.ext.asyncio.AsyncSession.add",
-                "sqlalchemy.ext.asyncio.AsyncSession.commit",
-                "sqlalchemy.ext.asyncio.AsyncSession.execute",
-                "sqlalchemy.ext.asyncio.AsyncSession.flush",
-                "sqlalchemy.ext.asyncio.AsyncSession.rollback",
-            ),
-        ),
-        database_statement_calls=symbols(
-            "database_statement_calls",
-            (
-                "sqlalchemy.delete",
-                "sqlalchemy.insert",
-                "sqlalchemy.scoped_query",
-                "sqlalchemy.select",
-                "sqlalchemy.update",
-            ),
-        ),
-        transport_exception_calls=symbols(
-            "transport_exception_calls",
-            ("fastapi.HTTPException", "starlette.exceptions.HTTPException"),
-        ),
-        dependency_injection_calls=symbols(
-            "dependency_injection_calls",
-            ("fastapi.Depends", "fastapi.params.Depends"),
-        ),
-        external_client_constructors=symbols(
-            "external_client_constructors",
-            (
-                "httpx.AsyncClient",
-                "httpx.Client",
-                "openai.AsyncOpenAI",
-                "openai.OpenAI",
-            ),
-        ),
-        adapter_implementation_symbols=frozenset(symbols("adapter_implementation_symbols")),
-        adapter_implementation_suffixes=names(
-            "adapter_implementation_suffixes",
-            ("Adapter", "Client", "Gateway", "Harness"),
-        ),
-        settings_constructors=symbols("settings_constructors"),
-        session_type_symbols=symbols(
-            "session_type_symbols",
-            (
-                "sqlalchemy.ext.asyncio.AsyncSession",
-                "sqlalchemy.orm.Session",
-            ),
-        ),
-        raw_sql_calls=symbols(
-            "raw_sql_calls",
-            ("sqlalchemy.sql.expression.text", "sqlalchemy.text"),
-        ),
-        raw_query_wrappers=frozenset(symbols("raw_query_wrappers")),
-        schema_sql_roles=roles("schema_sql_roles", ("model",)),
-        schema_sql_argument_names=names(
-            "schema_sql_argument_names",
-            ("postgresql_where", "server_default", "sqlite_where"),
-        ),
-        raw_sql_execution_methods=names(
-            "raw_sql_execution_methods",
-            ("exec_driver_sql", "execute"),
-        ),
-        database_owner_names=names("database_owner_names", ("conn", "connection", "db", "session")),
-        database_primitive_methods=names(
-            "database_primitive_methods",
-            ("add", "add_all", "delete", "execute", "flush", "get", "merge"),
-        ),
-        query_write_method_prefixes=names(
-            "query_write_method_prefixes",
-            (
-                "add_",
-                "create_",
-                "delete_",
-                "insert_",
-                "mark_",
-                "merge_",
-                "replace_",
-                "update_",
-                "upsert_",
-            ),
-        ),
-        http_timeout_calls=symbols("http_timeout_calls", ("httpx.AsyncClient", "httpx.Client")),
-        logged_external_calls=symbols("logged_external_calls"),
-        external_call_wrappers=frozenset(symbols("external_call_wrappers")),
-    )
-
-
-def _load_security_policy(root: dict[str, object]) -> SecurityPolicy:
-    table = _table(root.get("security", {}), "security")
-    _reject_unknown(table, frozenset({"risky_symbol_prefixes"}), "security")
-    additions = _strings(table.get("risky_symbol_prefixes", []), "security.risky_symbol_prefixes")
-    return SecurityPolicy(
-        allowed_roles=FrozenMap(
-            (
-                (
-                    Effect.SECURITY_ENVIRONMENT,
-                    frozenset({Role("configuration"), Role("bootstrap")}),
-                ),
-                (
-                    Effect.SECURITY_SECRET,
-                    frozenset({Role("configuration"), Role("bootstrap"), Role("adapter")}),
-                ),
-                (Effect.SECURITY_TOKEN, frozenset({Role("security"), Role("adapter")})),
-            )
-        ),
-        risky_symbol_prefixes=tuple(sorted(set(_RISKY_PREFIXES).union(additions))),
-    )
 
 
 def _validate_manifest_policy(manifest: ProjectManifest, policy: EffectivePolicy) -> None:

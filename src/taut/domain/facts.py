@@ -55,6 +55,7 @@ class SyntaxPosition(StrEnum):
     DEFAULT = "default"
     ARGUMENT = "argument"
     METADATA = "metadata"
+    CONTEXT_MANAGER = "context_manager"
 
 
 class ExecutionPhase(StrEnum):
@@ -66,6 +67,11 @@ class GuardKind(StrEnum):
     UNCONDITIONAL = "unconditional"
     CONDITIONAL = "conditional"
     TYPE_CHECKING_ONLY = "type_checking_only"
+
+
+class ImportIntent(StrEnum):
+    NORMAL = "normal"
+    OPTIONAL_DEPENDENCY = "optional_dependency"
 
 
 @dataclass(frozen=True, order=True)
@@ -193,6 +199,7 @@ class ImportFact:
     location: SourceRange
     provenance: Provenance
     context: SyntaxContext
+    intent: ImportIntent = ImportIntent.NORMAL
 
 
 @dataclass(frozen=True, order=True)
@@ -450,6 +457,9 @@ class ProjectIndex:
     deferred_imports: FrozenMap[ModuleId, tuple[ModuleId, ...]] = field(
         default_factory=lambda: FrozenMap[ModuleId, tuple[ModuleId, ...]]()
     )
+    canonical_symbols: FrozenMap[SymbolId, SymbolId] = field(
+        default_factory=lambda: FrozenMap[SymbolId, SymbolId]()
+    )
 
     def __post_init__(self) -> None:
         if set(self.imports) != set(self.imported_by):
@@ -466,3 +476,9 @@ class ProjectIndex:
             for source in sources:
                 if target not in self.imports.get(source, ()):
                     raise ValueError("imported_by and imports must be symmetric")
+        if any(alias == canonical for alias, canonical in self.canonical_symbols.items()):
+            raise ValueError("canonical symbol aliases must not map to themselves")
+        if any(
+            canonical in self.canonical_symbols for canonical in self.canonical_symbols.values()
+        ):
+            raise ValueError("canonical symbol aliases must point directly to a canonical symbol")

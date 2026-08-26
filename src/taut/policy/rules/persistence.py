@@ -23,7 +23,7 @@ RELATIONSHIP_RULE_ID = RuleId("ORM001")
 DB_ENUM_RULE_ID = RuleId("ORM002")
 DATETIME_RULE_ID = RuleId("DB001")
 RAW_SQL_RULE_ID = RuleId("SQL001")
-RULE_VERSION = 3
+RULE_VERSION = 4
 
 
 def _finding(
@@ -131,10 +131,14 @@ class DatabaseEnumRule:
             if native is None or native.literal_kind != "bool":
                 missing.append("native_enum")
             elif native.literal_value == "False":
-                if enum_symbol not in context.policy.code.native_enum_false_exceptions:
+                if not context.symbol_in(
+                    enum_symbol, context.policy.code.native_enum_false_exceptions
+                ):
                     missing.append("native_enum=True")
                 constraint = _keyword(call, "create_constraint")
-                if constraint is None or constraint.literal_value != "True":
+                if not context.symbol_in(
+                    enum_symbol, context.policy.code.native_enum_no_constraint_exceptions
+                ) and (constraint is None or constraint.literal_value != "True"):
                     missing.append("create_constraint=True")
             if missing:
                 findings.append(
@@ -243,7 +247,7 @@ class RawSqlRule:
             symbol = call.ref.symbol
             if (
                 symbol is not None
-                and symbol in boundaries.raw_query_wrappers
+                and context.symbol_in(symbol, boundaries.raw_query_wrappers)
                 and call.enclosing_symbol != symbol
             ):
                 violation = self._raw_query_call_violation(call, role, context)
@@ -259,7 +263,9 @@ class RawSqlRule:
                             violation,
                         )
                     )
-            if symbol is not None and symbol in boundaries.raw_sql_calls:
+            if symbol is not None and context.symbol_in(
+                symbol, frozenset(boundaries.raw_sql_calls)
+            ):
                 if self._inside_approved_wrapper(call, role, context) or self._schema_expression(
                     call,
                     module.calls,
@@ -322,9 +328,8 @@ class RawSqlRule:
         context: PolicyContext,
     ) -> bool:
         boundaries = context.policy.boundaries
-        return (
-            role in boundaries.raw_query_roles
-            and call.enclosing_symbol in boundaries.raw_query_wrappers
+        return role in boundaries.raw_query_roles and context.symbol_in(
+            call.enclosing_symbol, boundaries.raw_query_wrappers
         )
 
     @staticmethod
@@ -336,16 +341,22 @@ class RawSqlRule:
     ) -> bool:
         boundaries = context.policy.boundaries
         first = next((argument.value for argument in call.arguments if argument.name is None), None)
-        if role not in boundaries.schema_sql_roles or first is None or first.literal_kind != "str":
+        if role not in boundaries.schema_sql_roles or first is None:
             return False
         raw_symbols = set(boundaries.raw_sql_calls)
         for parent in calls:
             if parent.id == call.id or not _range_contains(parent.location, call.location):
                 continue
+            if context.symbol_in(parent.ref.symbol, frozenset(boundaries.schema_sql_parent_calls)):
+                return True
             for argument in parent.arguments:
                 if (
-                    argument.name in boundaries.schema_sql_argument_names
-                    and raw_symbols.intersection(argument.value.symbols)
+                    first.literal_kind == "str"
+                    and argument.name in boundaries.schema_sql_argument_names
+                    and any(
+                        context.symbol_in(symbol, frozenset(raw_symbols))
+                        for symbol in argument.value.symbols
+                    )
                 ):
                     return True
         return False

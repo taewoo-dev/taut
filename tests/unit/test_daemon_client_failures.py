@@ -10,15 +10,17 @@ import pytest
 import taut.daemon_client as client
 from taut import __version__
 from taut.check_service import CheckRequest
-from taut.daemon_protocol import DaemonResponse
+from taut.daemon_protocol import PROTOCOL_VERSION, STATUS_SCHEMA_VERSION, DaemonResponse
 from taut.daemon_state import DaemonStatus
+from taut.policy.packs import plugin_environment_digest
 
 
 def _status(root: Path, *, instance: str = "one") -> DaemonStatus:
     return DaemonStatus(
-        1,
-        1,
+        STATUS_SCHEMA_VERSION,
+        PROTOCOL_VERSION,
         __version__,
+        plugin_environment_digest(),
         str(root.resolve()),
         123,
         None,
@@ -98,6 +100,7 @@ def test_ping_rejects_reused_pid_identity(tmp_path: Path, monkeypatch: pytest.Mo
         original.schema,
         original.protocol,
         original.taut_version,
+        original.plugin_environment,
         original.canonical_root,
         original.pid,
         "expected-start",

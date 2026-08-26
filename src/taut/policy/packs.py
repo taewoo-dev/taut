@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass, replace
 from importlib.metadata import entry_points, version
@@ -35,6 +37,27 @@ def _entry_points(group: str) -> tuple[Any, ...]:
     else:
         selected = points
     return tuple(sorted(selected, key=lambda point: (point.name, point.value)))
+
+
+def plugin_environment_digest() -> str:
+    """Fingerprint installed extension entry points without importing their implementations."""
+    values: list[dict[str, str]] = []
+    for group in ("taut.rule_packs.v1", "taut.fact_providers.v1"):
+        for point in _entry_points(group):
+            distribution = getattr(point, "dist", None)
+            metadata = getattr(distribution, "metadata", {})
+            name = metadata.get("Name", "") if hasattr(metadata, "get") else ""
+            values.append(
+                {
+                    "group": group,
+                    "name": str(point.name),
+                    "value": str(point.value),
+                    "distribution": str(name),
+                    "version": str(getattr(distribution, "version", "")),
+                }
+            )
+    encoded = json.dumps(values, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True)

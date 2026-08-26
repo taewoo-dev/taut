@@ -261,6 +261,32 @@ def test_report_checksum_and_stats(tmp_path: Path) -> None:
             store.put_report("bad", b"x")
 
 
+def test_report_authentication_rejects_tampering_and_another_key(tmp_path: Path) -> None:
+    fingerprint = hashlib.sha256(b"authenticated-report").hexdigest()
+    with CacheStore(tmp_path, signing_key=b"a" * 32) as store:
+        assert store.put_report(fingerprint, b"report-data")
+        assert store.get_report(fingerprint) == b"report-data"
+
+    with CacheStore(tmp_path, signing_key=b"b" * 32) as store:
+        assert store.get_report(fingerprint) is None
+
+    with CacheStore(tmp_path, signing_key=b"a" * 32) as store:
+        assert store.put_report(fingerprint, b"report-data")
+        row = (
+            store._conn()
+            .execute("SELECT payload FROM report_entries WHERE key=?", (fingerprint,))
+            .fetchone()
+        )
+        assert row is not None
+        tampered = bytearray(row[0])
+        tampered[-1] ^= 1
+        store._conn().execute(
+            "UPDATE report_entries SET payload=? WHERE key=?",
+            (bytes(tampered), fingerprint),
+        )
+        assert store.get_report(fingerprint) is None
+
+
 def test_schema_and_database_corruption_quarantine(tmp_path: Path) -> None:
     with CacheStore(tmp_path) as store:
         store._conn().execute("UPDATE cache_meta SET value='999' WHERE key='schema'")

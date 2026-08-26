@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from taut.configuration.effective_policy import EffectivePolicy
+from taut.configuration.effective_policy import EffectivePolicy, PolicyApproval
+from taut.configuration.manifest import ClassificationIndex
 from taut.domain.diagnostics import Diagnostic, FindingDisposition
 from taut.domain.evaluations import RuleLevel
 from taut.domain.findings import EvidenceItem, Finding, FindingSource
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import FindingFingerprint, RuleId
+from taut.domain.ids import FindingFingerprint, RuleId, SymbolId
 from taut.domain.ignores import InlineIgnore
 from taut.domain.issues import EngineIssue
-from taut.domain.reports import IgnoreAudit
+from taut.domain.reports import ApprovalAudit, IgnoreAudit
 
 _IGNORE_RULE_ID = RuleId("IGNORE001")
+_SUPPRESSION_APPROVAL_KINDS = frozenset(
+    {"allow", "entrypoint", "factory", "lazy_import", "security_wrapper"}
+)
 
 _MESSAGES = {
     "role.unassigned": "검사 대상 파일에 역할이 지정되지 않았습니다.",
@@ -22,6 +27,9 @@ _MESSAGES = {
     "session.outside_owner": "{role} 역할에서 DB session 생성 함수 {provider}을 호출했습니다.",
     "session.nested": "DB session 안에서 다른 session 생성 함수 {provider}을 호출했습니다.",
     "session.service_parameter": "Service 함수 {symbol}이 DB session을 인자로 받습니다.",
+    "session.participant_owns_transaction": (
+        "Transaction 참여 함수 {symbol}이 소유자 동작 {operation}을 수행합니다."
+    ),
     "boundary.forbidden_import": "{role} 역할이 금지된 {imported}을 import했습니다({boundary}).",
     "architecture.import_direction": (
         "{source_role} 역할이 {target_role} 역할의 {target_module}을 import했습니다."
@@ -99,6 +107,7 @@ class FindingProcessingResult:
     diagnostics: tuple[Diagnostic, ...]
     engine_issues: tuple[EngineIssue, ...]
     ignore_audit: IgnoreAudit
+    approval_audit: ApprovalAudit
 
 
 class FindingProcessor:
@@ -109,9 +118,13 @@ class FindingProcessor:
         policy: EffectivePolicy,
         help_by_rule: FrozenMap[RuleId, str],
         ignores: tuple[InlineIgnore, ...],
+        classifications: ClassificationIndex | None = None,
+        canonicalize: Callable[[SymbolId], SymbolId] | None = None,
+        preused_approval_keys: tuple[str, ...] = (),
     ) -> FindingProcessingResult:
         directives = {(item.path, item.line, item.rule_id): item for item in ignores}
-        used: set[str] = set()
+        used_ignores: set[str] = set()
+        used_approvals = set(preused_approval_keys)
         diagnostics: list[Diagnostic] = []
         for finding in findings:
             key = (
@@ -121,9 +134,22 @@ class FindingProcessor:
             )
             directive = directives.get(key)
             disposition = FindingDisposition.ACTIVE
+            approval = _matching_approval(finding, policy, classifications, canonicalize)
+            approved = False
             if directive is not None:
                 disposition = FindingDisposition.IGNORED
-                used.add(directive.key)
+                used_ignores.add(directive.key)
+            elif approval is not None:
+                disposition = FindingDisposition.IGNORED
+                used_approvals.add(approval.key)
+                approved = True
+            evidence = finding.evidence
+            if approval is not None and approved:
+                evidence = (
+                    *evidence,
+                    EvidenceItem("approval_reason", approval.reason),
+                    EvidenceItem("approval_key", approval.key),
+                )
             setting = policy.setting(finding.rule_id)
             diagnostics.append(
                 Diagnostic(
@@ -132,7 +158,7 @@ class FindingProcessor:
                     message=_render_message(finding),
                     primary_location=finding.primary_location,
                     related_locations=finding.related_locations,
-                    evidence=finding.evidence,
+                    evidence=evidence,
                     help=help_by_rule.get(finding.rule_id),
                     fingerprint=finding.fingerprint,
                     disposition=disposition,
@@ -140,7 +166,7 @@ class FindingProcessor:
                 )
             )
 
-        unused = tuple(item for item in ignores if item.key not in used)
+        unused = tuple(item for item in ignores if item.key not in used_ignores)
         for directive in unused:
             diagnostics.append(_unused_ignore_diagnostic(directive, help_by_rule))
 
@@ -160,10 +186,50 @@ class FindingProcessor:
             diagnostics=ordered,
             engine_issues=(),
             ignore_audit=IgnoreAudit(
-                used=tuple(sorted(used)),
-                unused=tuple(item.key for item in unused),
+                used=tuple(sorted(used_ignores)),
+                unused=tuple(sorted(item.key for item in unused)),
+            ),
+            approval_audit=ApprovalAudit(
+                used=tuple(sorted(used_approvals)),
+                unused=tuple(
+                    approval.key
+                    for approval in policy.approvals
+                    if approval.key not in used_approvals
+                ),
             ),
         )
+
+
+def _matching_approval(
+    finding: Finding,
+    policy: EffectivePolicy,
+    classifications: ClassificationIndex | None,
+    canonicalize: Callable[[SymbolId], SymbolId] | None,
+) -> PolicyApproval | None:
+    if classifications is None:
+        return None
+    zone = classifications.get(finding.module_id).zone
+    symbol = finding.enclosing_symbol or SymbolId(finding.module_id.value)
+    canonical = canonicalize(symbol) if canonicalize is not None else symbol
+    tokens = {str(value) for _, value in finding.arguments.items() if value is not None}
+    for item in finding.evidence:
+        if isinstance(item.value, tuple):
+            tokens.update(item.value)
+        elif item.value is not None:
+            tokens.add(str(item.value))
+    return next(
+        (
+            approval
+            for approval in policy.approvals
+            if approval.kind in _SUPPRESSION_APPROVAL_KINDS
+            and approval.rule_id == finding.rule_id
+            and (canonicalize(approval.symbol) if canonicalize is not None else approval.symbol)
+            == canonical
+            and zone in approval.zones
+            and (approval.target is None or approval.target in tokens)
+        ),
+        None,
+    )
 
 
 def _unused_ignore_diagnostic(

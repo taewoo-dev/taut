@@ -6,7 +6,14 @@ import pytest
 from tests.utils.builders import analyze, make_context, make_source
 
 from taut.analysis.providers import apply_fact_providers
-from taut.configuration.catalog import EffectCatalog, EffectResolution, EffectResolver
+from taut.configuration.catalog import (
+    AccessPath,
+    CatalogEntry,
+    Effect,
+    EffectCatalog,
+    EffectResolution,
+    EffectResolver,
+)
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import (
     ChangeImpact,
@@ -19,7 +26,7 @@ from taut.domain.evaluations import (
 )
 from taut.domain.facts import AnalysisStage, CallFact
 from taut.domain.frozen import FrozenMap
-from taut.domain.ids import RuleId
+from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.engine import PolicyEngine
 from taut.policy.packs import SYNTAX_CAPABILITY, PythonCoreProvider
@@ -74,9 +81,10 @@ class CountingScheduler(RuleScheduler):
         self,
         definition: RuleDefinition,
         context: PolicyContext,
+        applies_to_zones: frozenset[Zone] | None = None,
     ) -> tuple[RuleTargetRef, ...]:
         self.calls += 1
-        return super().targets_for(definition, context)
+        return super().targets_for(definition, context, applies_to_zones)
 
 
 class CountingEffectResolver(EffectResolver):
@@ -262,3 +270,31 @@ def test_context_resolves_each_call_effect_once() -> None:
 
     assert first is second
     assert resolver.calls == 1
+
+
+def test_effect_catalog_matches_a_call_through_a_re_export() -> None:
+    origin = make_source("app/clock_impl.py", "def now():\n    return 1")
+    facade = make_source("app/clock.py", "from app.clock_impl import now")
+    consumer = make_source("app/service.py", "from app.clock import now\nvalue = now()")
+    context = make_context(
+        analyze(origin, facade, consumer),
+        roles={"service": ("app/**",)},
+        extra_catalog_entries=(
+            CatalogEntry(
+                SymbolId("app.clock_impl.now"),
+                frozenset({Effect.TIME_NOW}),
+                AccessPath.APPROVED_WRAPPER,
+            ),
+        ),
+    )
+    call = next(
+        call
+        for module_id in context.model.modules()
+        for call in context.model.module(module_id).calls
+        if module_id.value == "app.service"
+    )
+
+    resolution = context.effect_of(call)
+
+    assert resolution.effects == frozenset({Effect.TIME_NOW})
+    assert resolution.wrapper == SymbolId("app.clock_impl.now")

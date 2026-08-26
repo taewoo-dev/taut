@@ -114,6 +114,10 @@ def render_json(report: RunReport) -> str:
             "used": report.ignore_audit.used,
             "unused": report.ignore_audit.unused,
         },
+        "approvals": {
+            "used": report.approval_audit.used,
+            "unused": report.approval_audit.unused,
+        },
         "exit": {
             "code": report.exit_decision.code,
             "reasons": report.exit_decision.reasons,
@@ -141,6 +145,7 @@ def render_configuration_error_json(engine_version: str, message: str) -> str:
         ],
         "coverage": None,
         "ignores": None,
+        "approvals": None,
         "exit": {"code": 2, "reasons": ["설정 문제"]},
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)

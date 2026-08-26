@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
-from taut.domain.facts import AnalysisStage, ExpressionSummary
+from taut.domain.facts import AnalysisStage, ExpressionSummary, SyntaxPosition
 from taut.domain.findings import Finding
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.policy.context import PolicyContext
@@ -16,6 +16,7 @@ from taut.policy.rules.layer_boundaries import (
 )
 
 WIRING_RULE_ID = RuleId("WIRING001")
+WIRING_RULE_VERSION = 2
 ADAPTER_TYPE_RULE_ID = RuleId("ADAPTER002")
 CONFIG_RULE_ID = RuleId("CONFIG001")
 
@@ -47,7 +48,16 @@ class ImplementationConstructionRule:
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol
-            if symbol is None or symbol not in constructors or role in allowed_roles:
+            scoped = (
+                role in boundaries.scoped_construction_roles
+                and call.context.position is SyntaxPosition.CONTEXT_MANAGER
+            )
+            if (
+                symbol is None
+                or not context.symbol_in(symbol, frozenset(constructors))
+                or role in allowed_roles
+                or scoped
+            ):
                 continue
             findings.append(
                 build_boundary_finding(
@@ -59,6 +69,7 @@ class ImplementationConstructionRule:
                     message_key="wiring.constructor_outside_bootstrap",
                     kind="constructor",
                     value=symbol.value,
+                    rule_version=WIRING_RULE_VERSION,
                 )
             )
         return boundary_result(WIRING_RULE_ID, target, findings)
@@ -150,7 +161,11 @@ class SettingsConstructionRule:
         findings: list[Finding] = []
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol
-            if symbol is None or symbol not in settings_classes or role in allowed:
+            if (
+                symbol is None
+                or not context.symbol_in(symbol, frozenset(settings_classes))
+                or role in allowed
+            ):
                 continue
             findings.append(
                 build_boundary_finding(
@@ -172,7 +187,7 @@ def construction_rule_definitions() -> tuple[RuleDefinition, ...]:
     return (
         RuleDefinition(
             WIRING_RULE_ID,
-            RULE_VERSION,
+            WIRING_RULE_VERSION,
             "구현과 client 생성 위치",
             "외부 client와 Adapter 구현은 시작 조립 코드 또는 승인된 Factory에서만 만드세요.",
             RuleTarget.MODULE,
