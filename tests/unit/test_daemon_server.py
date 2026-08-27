@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+from tests.utils.config import assurance_toml
 
 from taut.daemon_protocol import (
     CheckWire,
@@ -28,8 +29,8 @@ def _project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / "app" / "service.py").write_text("value = 1\n")
     (root / ".policy").mkdir()
     (root / ".policy" / "policy.toml").write_text(
-        """
-schema_version = 3
+        f"""
+schema_version = 4
 packs = ["taut.backend"]
 providers = ["taut.python-core"]
 [project]
@@ -41,6 +42,7 @@ name = "service"
 patterns = ["app/*.py"]
 [architecture.allow]
 service = ["service"]
+{assurance_toml()}
 """.strip()
     )
     return root

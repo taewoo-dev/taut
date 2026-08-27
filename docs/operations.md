@@ -1,6 +1,6 @@
 # Cache and daemon operations
 
-pytaut 0.2.0 has two acceleration layers. The disk cache speeds up separate CLI
+Since pytaut 0.2.0, the engine has two acceleration layers. The disk cache speeds up separate CLI
 processes. The daemon keeps one analyzed project resident and incrementally updates
 it for tight local development loops. Both layers are optional and preserve the
 same stdout, stderr, and exit code as the canonical pipeline.
@@ -15,7 +15,7 @@ same stdout, stderr, and exit code as the canonical pipeline.
 | daemon-required integration | `taut check . --daemon required` | Fail instead of falling back if the daemon is unavailable |
 
 `auto` falls back to the local pipeline if daemon startup or communication fails.
-`required` reports that failure. The default remains `never`, so adopting 0.2.0
+`required` reports that failure. The default remains `never`, so adopting the daemon
 does not silently introduce a resident process.
 
 ## Lifecycle

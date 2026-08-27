@@ -41,6 +41,8 @@ _TOOL_KEYS = frozenset(
         "boundary_extensions",
         "code_conventions",
         "security",
+        "assurance",
+        "exclusions",
     }
 )
 _LAYER_KEYS = {
@@ -131,7 +133,7 @@ def _read_toml(project_root: Path, config_path: ConfigPath) -> dict[str, object]
 def _document_from_raw(raw: dict[str, object], path: ConfigPath) -> ConfigurationDocument:
     section = _tool_section(raw)
     if section is None:
-        return ConfigurationDocument(raw, path, True)
+        return ConfigurationDocument(raw, path, _boolean(raw.get("strict", True), "strict"))
     return ConfigurationDocument(
         _normalize_tool_section(section), path, _boolean(section.get("strict", True), "strict")
     )
@@ -151,7 +153,7 @@ def _tool_section(raw: dict[str, object]) -> dict[str, object] | None:
 def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     _reject_unknown(section, _TOOL_KEYS, "tool.taut")
     root: dict[str, object] = {
-        "schema_version": section.get("schema_version", 3),
+        "schema_version": section.get("schema_version", 4),
         "packs": section.get("packs", ["taut.backend"]),
         "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
     }
@@ -186,6 +188,10 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
         root["boundaries"] = section["boundaries"]
     if "security" in section:
         root["security"] = section["security"]
+    if "assurance" in section:
+        root["assurance"] = section["assurance"]
+    if "exclusions" in section:
+        root["exclusions"] = section["exclusions"]
 
     size: dict[str, object] = {}
     if "max_lines" in section:

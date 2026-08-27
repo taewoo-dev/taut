@@ -54,6 +54,8 @@ from taut.analysis.providers import (
 )
 from taut.analysis.semantic_model import SemanticModel
 from taut.configuration.manifest import Zone
+from taut.configuration.model import ProjectConfiguration
+from taut.domain.assurance import AssuranceIssue
 from taut.domain.evaluations import (
     ChangeImpact,
     EvaluationReason,
@@ -69,7 +71,12 @@ from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.policy.context import PolicyContext
-from taut.policy.packs import BUILTIN_BACKEND_PROVIDER_IDS, RulePackV1, builtin_backend_providers
+from taut.policy.packs import (
+    BUILTIN_BACKEND_PROVIDER_IDS,
+    AssuranceAuditorV1,
+    RulePackV1,
+    builtin_backend_providers,
+)
 from taut.policy.registry import RuleRegistry
 from taut.policy.rule import Rule, RuleDefinition, RuleEvaluation, RuleRequirements
 
@@ -97,6 +104,8 @@ __all__ = [
     "SQLALCHEMY_TRANSACTIONS",
     "AnalysisSnapshot",
     "AnalysisStage",
+    "AssuranceAuditorV1",
+    "AssuranceIssue",
     "CapabilityPayload",
     "CapabilitySpec",
     "CapabilityValues",
@@ -114,6 +123,7 @@ __all__ = [
     "IncrementalFactProviderV1",
     "ModuleId",
     "PolicyContext",
+    "ProjectConfiguration",
     "ProjectPath",
     "ProviderDependency",
     "PydanticConfigFact",

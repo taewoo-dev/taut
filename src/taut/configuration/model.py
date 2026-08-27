@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
+from taut.configuration.assurance import AssuranceConfiguration
 from taut.configuration.catalog import EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy
 from taut.configuration.manifest import ProjectManifest
@@ -19,20 +20,23 @@ class ProjectConfiguration:
     manifest: ProjectManifest
     catalog: EffectCatalog
     policy: EffectivePolicy
-    schema_version: int = 3
+    schema_version: int = 4
     packs: tuple[str, ...] = ("taut.backend",)
     providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
     strict: bool = True
     cache_enabled: bool = True
     cache_directory: ProjectPath = field(default_factory=lambda: ProjectPath(".taut_cache"))
+    assurance: AssuranceConfiguration = field(
+        default_factory=AssuranceConfiguration.non_strict_default
+    )
 
     def __post_init__(self) -> None:
         if not self.include:
             raise ValueError("project include patterns cannot be empty")
         if not self.source_roots:
             raise ValueError("project source roots cannot be empty")
-        if self.schema_version != 3:
-            raise ValueError("project configuration schema must be 3")
+        if self.schema_version != 4:
+            raise ValueError("project configuration schema must be 4")
         if not self.packs or len(self.packs) != len(set(self.packs)):
             raise ValueError("project rule packs must be non-empty and unique")
         if len(self.providers) != len(set(self.providers)):
@@ -44,6 +48,28 @@ class ProjectConfiguration:
             "packs": self.packs,
             "providers": self.providers,
             "strict": self.strict,
+            "assurance": {
+                "features": [
+                    (name, expectation.value)
+                    for name, expectation in self.assurance.features.items()
+                ],
+                "exclusions": [
+                    {"patterns": item.patterns, "reason": item.reason}
+                    for item in self.assurance.exclusions
+                ],
+                "assertions": [
+                    {
+                        "domain": item.domain,
+                        "kind": item.kind,
+                        "target": item.target,
+                        "state": item.state,
+                        "reason": item.reason,
+                    }
+                    for item in self.assurance.assertions
+                ],
+                "max_approvals": self.assurance.max_approvals,
+                "max_inline_ignores": self.assurance.max_inline_ignores,
+            },
             "include": self.include,
             "exclude": self.exclude,
             "source_roots": [path.value for path in self.source_roots],

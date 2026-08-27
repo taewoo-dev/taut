@@ -102,6 +102,10 @@ def test_builtin_pack_declares_capabilities_for_all_48_rules() -> None:
         packs.IMPORT_CAPABILITY,
         packs.USE_CAPABILITY,
     }
+    assert pack.assurance_auditor is not None
+    assert pack.assurance_auditor.audited_rules == frozenset(
+        rule_id.value for rule_id in pack.registry.definitions
+    )
 
 
 def test_provider_failure_is_explicit_coverage_not_a_crash() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from taut.configuration.assurance import AssuranceConfiguration
 from taut.configuration.catalog import Effect, EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy, SecurityPolicy
 from taut.configuration.manifest import ProjectManifest, Role, Zone
@@ -56,4 +57,7 @@ def default_project_configuration(
             transaction_owner_roles=frozenset(),
             security=security,
         ),
+        schema_version=4,
+        strict=False,
+        assurance=AssuranceConfiguration.non_strict_default(),
     )

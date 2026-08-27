@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0
+
+### Complete project assurance
+
+- Added schema v4 feature expectations, reasoned source exclusions, exact not-applicable
+  assertions, and approval/inline-ignore budgets.
+- Strict checks now fail trust with exit code 2 when Python sources, architecture roles,
+  selectors, or required backend policy surfaces are missing or inactive.
+- Added structured assurance data to deterministic JSON report schema v4.
+
+### AI-safe onboarding and extensions
+
+- Added read-only `taut init` proposals with project digests, explicit machine-readable questions,
+  stale-answer rejection, and atomic opt-in writes that never replace an existing configuration.
+- Added `taut audit`, `taut config schema --format json`, and JSON rule discovery for automated
+  setup and remediation loops.
+- Strict third-party packs now require a versioned assurance auditor covering every registered
+  rule; auditor identity participates in decision and cache compatibility.
+
+### Verification and migration
+
+- Added source-preserving v1-v3 to v4 migration and actionable assurance remediation output.
+- Validated all three `medisolveai-auth` backends with no diagnostics, assurance issues, engine
+  issues, skipped rules, or coverage gaps under reviewed temporary schema-v4 policies.
+- Passed 1,141 tests at 90.15% branch coverage plus Ruff, mypy, Pyright, package builds, and an
+  isolated installed-wheel smoke test.
+
 ## 0.2.1
 
 ### Policy precision and configuration

@@ -110,6 +110,41 @@ def render_json(report: RunReport) -> str:
                 ],
             },
         },
+        "assurance": {
+            "complete": report.assurance.complete,
+            "scope": {
+                "discovered_python_files": report.assurance.discovered_python_files,
+                "analyzed_python_files": report.assurance.analyzed_python_files,
+                "excluded_python_files": report.assurance.excluded_python_files,
+            },
+            "features": [
+                {
+                    "name": feature.name,
+                    "expected": feature.expected,
+                    "detected": feature.detected,
+                    "evidence": [
+                        {
+                            "domain": evidence.domain,
+                            "kind": evidence.kind,
+                            "target": evidence.target,
+                            "path": evidence.path,
+                        }
+                        for evidence in feature.evidence
+                    ],
+                }
+                for feature in report.assurance.features
+            ],
+            "issues": [
+                {
+                    "code": issue.code,
+                    "message": issue.message,
+                    "subject": issue.subject,
+                    "remediation": issue.remediation,
+                }
+                for issue in report.assurance.issues
+            ],
+            "used_assertions": report.assurance.used_assertions,
+        },
         "ignores": {
             "used": report.ignore_audit.used,
             "unused": report.ignore_audit.unused,
@@ -128,7 +163,7 @@ def render_json(report: RunReport) -> str:
 
 def render_configuration_error_json(engine_version: str, message: str) -> str:
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "engine_version": engine_version,
         "snapshot_id": None,
         "decision_digest": None,
@@ -144,6 +179,7 @@ def render_configuration_error_json(engine_version: str, message: str) -> str:
             }
         ],
         "coverage": None,
+        "assurance": None,
         "ignores": None,
         "approvals": None,
         "exit": {"code": 2, "reasons": ["설정 문제"]},

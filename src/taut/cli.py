@@ -17,6 +17,7 @@ from taut.cache.authenticated import load_user_signing_key
 from taut.cache.store import ReportEnvelope
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
 from taut.check_service import CheckRequest, run_check_request
+from taut.cli_assurance import run_audit, run_config_schema, run_init, run_rules
 from taut.daemon_client import (
     DaemonError,
     check_daemon,
@@ -25,7 +26,6 @@ from taut.daemon_client import (
     start_daemon,
     stop_daemon,
 )
-from taut.domain.ids import RuleId
 from taut.domain.location import ConfigPath
 from taut.loading.config_migration import (
     migrate_configuration_text,
@@ -33,7 +33,6 @@ from taut.loading.config_migration import (
 )
 from taut.loading.errors import PolicyConfigError
 from taut.loading.source_discovery import discover_sources
-from taut.policy.rules import builtin_rule_registry
 from taut.reporting.json import render_configuration_error_json
 from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH
 
@@ -72,7 +71,11 @@ def _cache_context(directory: Path, *, enabled: bool) -> Generator[CacheStore | 
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="taut")
+    parser = argparse.ArgumentParser(
+        prog="taut",
+        description="Python backend architecture policy and assurance checks.",
+        epilog="시작: taut init . --format json  |  CI: taut check . --format json",
+    )
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     check = subparsers.add_parser("check", help="Python 백엔드 정책을 검사합니다.")
@@ -95,6 +98,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     rules = subparsers.add_parser("rules", help="내장 규칙 목록과 설명을 보여 줍니다.")
     rules.add_argument("rule_id", nargs="?")
+    rules.add_argument("--format", choices=("text", "json"), default="text")
+    init = subparsers.add_parser(
+        "init", help="프로젝트를 탐색하고 검토 가능한 strict 설정 제안을 만듭니다."
+    )
+    init.add_argument("project_root", nargs="?", default=".")
+    init.add_argument("--config", default="pyproject.toml", help="저장할 설정 경로입니다.")
+    init.add_argument("--answers", help="init JSON 답변 파일이며 -는 stdin입니다.")
+    init.add_argument("--write", action="store_true", help="모든 결정이 끝난 설정만 저장합니다.")
+    init.add_argument("--format", choices=("text", "json"), default="text")
+    audit = subparsers.add_parser(
+        "audit", help="소스·역할·기능별 strict assurance 완전성만 검사합니다."
+    )
+    audit.add_argument("project_root", nargs="?", default=".")
+    audit.add_argument("--config")
+    audit.add_argument("--format", choices=("text", "json"), default="text")
     config = subparsers.add_parser("config", help="설정 파일을 검사합니다.")
     config_commands = config.add_subparsers(dest="config_command", required=True)
     validate = config_commands.add_parser("validate", help="설정 파일만 검사합니다.")
@@ -103,7 +121,7 @@ def _parser() -> argparse.ArgumentParser:
         "--config",
         help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
     )
-    migrate = config_commands.add_parser("migrate", help="v1/v2 설정을 v3로 변환합니다.")
+    migrate = config_commands.add_parser("migrate", help="이전 설정을 v4로 변환합니다.")
     migrate.add_argument("project_root", nargs="?", default=".")
     migrate.add_argument("--config", help="변환할 별도 TOML 설정 파일입니다.")
     migrate.add_argument("--output", help="변환 결과를 저장할 새 파일입니다.")
@@ -112,6 +130,10 @@ def _parser() -> argparse.ArgumentParser:
     explain.add_argument("project_root", nargs="?", default=".")
     explain.add_argument("--config", help="설명할 별도 TOML 설정 파일입니다.")
     explain.add_argument("--format", choices=("text", "json"), default="text")
+    schema = config_commands.add_parser(
+        "schema", help="AI와 도구가 읽을 수 있는 설정 계약을 보여 줍니다."
+    )
+    schema.add_argument("--format", choices=("text", "json"), default="text")
     cache = subparsers.add_parser("cache", help="persistent report cache 관리")
     cache_commands = cache.add_subparsers(dest="cache_command", required=True)
     for name, help_text in (("stats", "캐시 통계"), ("clean", "캐시 비우기")):
@@ -265,25 +287,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         namespace = parser.parse_args(argv)
         command = namespace.command
+        if command == "init":
+            return run_init(namespace)
+        if command == "audit":
+            return run_audit(namespace)
         if command == "rules":
-            registry = builtin_rule_registry()
-            selected = namespace.rule_id
-            if selected is None:
-                for rule_id, definition in registry.definitions.items():
-                    print(f"{rule_id.value}\t{definition.default_level.value}\t{definition.title}")
-                return 0
-            if not isinstance(selected, str):
-                raise ValueError("rule_id must be a string")
-            selected_definition = registry.definitions.get(RuleId(selected))
-            if selected_definition is None:
-                raise PolicyConfigError(f"unknown rule: {selected}")
-            zones = ", ".join(sorted(zone.value for zone in selected_definition.applies_to_zones))
-            print(f"{selected_definition.id.value} {selected_definition.title}")
-            print(f"강도: {selected_definition.default_level.value}")
-            print(f"적용 영역: {zones}")
-            print(f"수정 방법: {selected_definition.help}")
-            return 0
+            return run_rules(namespace)
         if command == "config":
+            if namespace.config_command == "schema":
+                return run_config_schema(namespace.format)
             root = Path(namespace.project_root).resolve()
             config_path = ConfigPath(namespace.config) if namespace.config is not None else None
             if namespace.config_command == "migrate":

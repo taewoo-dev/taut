@@ -71,6 +71,20 @@ def render_text(
         )
         if verbose and issue.cause:
             lines.extend(_wrap(f"  원인: {issue.cause}", width))
+    for assurance_issue in report.assurance.issues:
+        lines.extend(
+            _render_issue(
+                prefix="",
+                label="error",
+                label_color=_RED,
+                message=f"{assurance_issue.message} ({assurance_issue.subject})",
+                code=f"assurance:{assurance_issue.code}",
+                color=color,
+                width=width,
+            )
+        )
+        if verbose:
+            lines.extend(_wrap(f"  도움: {assurance_issue.remediation}", width))
     for skipped in report.coverage.skipped:
         target = skipped.target
         subject = target.module_id or target.symbol_id or target.fact_id or "project"
@@ -128,6 +142,13 @@ def render_text(
     lines.append(
         "approval: "
         f"사용 {len(report.approval_audit.used)}, 미사용 {len(report.approval_audit.unused)}"
+    )
+    lines.append(
+        "assurance: "
+        f"분석 {report.assurance.analyzed_python_files}/"
+        f"발견 {report.assurance.discovered_python_files}, "
+        f"제외 {report.assurance.excluded_python_files}, "
+        f"문제 {len(report.assurance.issues)}"
     )
     lines.append(f"판정 기준: {report.run.decision_digest}")
     reason = f" ({', '.join(report.exit_decision.reasons)})" if report.exit_decision.reasons else ""

@@ -55,6 +55,18 @@ def prepare_check_runtime(
         (rule_id, definition.default_level) for rule_id, definition in registry.definitions.items()
     )
     config = load_project_configuration(root, config_path, rule_levels=rule_levels)
+    if config.strict:
+        for pack in packs:
+            auditor = pack.assurance_auditor
+            if auditor is None:
+                raise ValueError(
+                    f"strict rule pack {pack.id} does not provide an assurance auditor"
+                )
+            expected = frozenset(rule_id.value for rule_id in pack.registry.definitions)
+            if auditor.audited_rules != expected:
+                raise ValueError(
+                    f"strict rule pack {pack.id} assurance auditor does not cover every rule"
+                )
     adapter = PythonAstAdapter()
     decision_digest = build_decision_digest(config, registry, adapter.identity, packs, providers)
     return CheckRuntime(

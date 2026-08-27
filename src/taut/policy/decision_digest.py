@@ -27,6 +27,15 @@ def build_decision_digest(
                 "required_capabilities": sorted(
                     capability.id for capability in pack.required_capabilities
                 ),
+                "assurance_auditor": (
+                    {
+                        "id": pack.assurance_auditor.id,
+                        "version": pack.assurance_auditor.version,
+                        "audited_rules": sorted(pack.assurance_auditor.audited_rules),
+                    }
+                    if pack.assurance_auditor is not None
+                    else None
+                ),
             }
             for pack in packs
         ],

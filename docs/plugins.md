@@ -15,8 +15,12 @@ from dataclasses import dataclass
 
 from taut.plugins.v1 import (
     AnalysisStage,
+    AnalysisSnapshot,
+    AssuranceAuditorV1,
+    AssuranceIssue,
     ChangeImpact,
     PolicyContext,
+    ProjectConfiguration,
     RuleDefinition,
     RuleEvaluation,
     RuleId,
@@ -38,6 +42,20 @@ class ExampleRule:
     ) -> RuleEvaluation:
         del context
         return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
+
+
+@dataclass(frozen=True)
+class ExampleAssuranceAuditor:
+    id: str = "example.rules.assurance"
+    version: str = "1"
+    audited_rules: frozenset[str] = frozenset({RULE_ID.value})
+
+    def audit(
+        self, snapshot: AnalysisSnapshot, config: ProjectConfiguration
+    ) -> tuple[AssuranceIssue, ...]:
+        # Return AssuranceIssue values when the pack's activation prerequisites are missing.
+        del snapshot, config
+        return ()
 
 
 def create_pack() -> RulePackV1:
@@ -62,6 +80,7 @@ def create_pack() -> RulePackV1:
         id="example.rules",
         version="1.0.0",
         registry=RuleRegistry.build((definition,)),
+        assurance_auditor=ExampleAssuranceAuditor(),
     )
 ```
 
@@ -71,7 +90,7 @@ Register the factory in the plugin package's `pyproject.toml`:
 [project]
 name = "example-taut-rules"
 version = "1.0.0"
-dependencies = ["pytaut>=0.2,<0.3"]
+dependencies = ["pytaut>=0.3,<0.4"]
 
 [project.entry-points."taut.rule_packs.v1"]
 "example.rules" = "example_taut.plugin:create_pack"
@@ -81,12 +100,17 @@ Then enable it in the checked repository:
 
 ```toml
 [tool.taut]
-schema_version = 3
+schema_version = 4
 packs = ["taut.backend", "example.rules"]
 
 [tool.taut.rules]
 EXAMPLE001 = "enforced"
 ```
+
+Strict v4 projects also require every rule pack to expose an `AssuranceAuditorV1` whose
+`audited_rules` exactly covers the pack registry. This prevents a third-party enforced rule from
+silently becoming non-applicable because its setup contract was omitted. Adoption projects may
+use `strict = false` while adding that auditor.
 
 `taut config validate .` loads every declared pack and provider, rejects duplicate rule IDs or
 unknown plugins, and validates rule configuration against the resulting registry. Pack and
