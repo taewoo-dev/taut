@@ -1,6 +1,6 @@
 [project]
 name = "pytaut"
-version = "0.2.1"
+version = "0.3.0"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -101,7 +101,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 
 [tool.taut]
-schema_version = 3
+schema_version = 4
 packs = ["taut.backend"]
 providers = ["taut.python-core"]
 strict = true
@@ -128,7 +128,10 @@ composition = [
   "src/taut/__init__.py",
   "src/taut/check_runtime.py",
   "src/taut/check_service.py",
+  "src/taut/assurance.py",
   "src/taut/cli.py",
+  "src/taut/cli_assurance.py",
+  "src/taut/onboarding.py",
   "src/taut/daemon_*.py",
   "src/taut/plugins/*.py",
   "src/taut/semantic/*.py",
@@ -182,6 +185,7 @@ wrappers = ["taut.external_call"]
 
 [tool.taut.enum]
 shared_modules = [
+  "taut.configuration.assurance",
   "taut.configuration.catalog",
   "taut.domain.diagnostics",
   "taut.domain.evaluations",
@@ -192,3 +196,100 @@ shared_modules = [
   "taut.domain.relations",
 ]
 uppercase_value_exceptions = ["taut.configuration.catalog.Effect"]
+
+[tool.taut.assurance]
+max_approvals = 0
+max_inline_ignores = 0
+
+[tool.taut.assurance.features]
+api = "absent"
+schema = "absent"
+dto = "absent"
+snapshot = "absent"
+exception_registry = "absent"
+enum = "required"
+database = "absent"
+transaction = "absent"
+external_calls = "absent"
+security = "required"
+tests = "absent"
+migrations = "absent"
+scripts = "absent"
+
+[[tool.taut.exclusions]]
+patterns = ["tests/*.py"]
+reason = "Rule fixtures intentionally contain violations; pytest validates them separately."
+
+[[tool.taut.exclusions]]
+patterns = ["scripts/*.py"]
+reason = "Release tooling is validated by Ruff, mypy, Pyright, and dedicated smoke tests."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/analysis/contracts.py"
+state = "not_applicable"
+reason = "Analyzer result records are engine contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/analysis/module_cache.py"
+state = "not_applicable"
+reason = "Cache result records are internal engine contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/check_service.py"
+state = "not_applicable"
+reason = "Check results are public engine reports, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/finding_processing/finding_processor.py"
+state = "not_applicable"
+reason = "Finding results are internal processing contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/loading/inline_ignores.py"
+state = "not_applicable"
+reason = "Loader results are internal parsing contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/loading/source_discovery.py"
+state = "not_applicable"
+reason = "Discovery results are internal engine contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "src/taut/policy/engine.py"
+state = "not_applicable"
+reason = "Policy results are internal evaluation contracts, not application layer DTOs."
+
+[[tool.taut.assurance.assertions]]
+domain = "exception_registry"
+kind = "symbol"
+target = "taut.cache.store.CacheMiss"
+state = "not_applicable"
+reason = "Internal cache control flow is not an application exception registry."
+
+[[tool.taut.assurance.assertions]]
+domain = "exception_registry"
+kind = "symbol"
+target = "taut.daemon_client.DaemonError"
+state = "not_applicable"
+reason = "The CLI transport error is not an application exception registry."
+
+[[tool.taut.assurance.assertions]]
+domain = "exception_registry"
+kind = "symbol"
+target = "taut.loading.errors.PolicyConfigError"
+state = "not_applicable"
+reason = "The configuration parser error is not an application exception registry."

@@ -3,7 +3,7 @@ name = "taut-installed-smoke"
 version = "0.0.0"
 
 [tool.taut]
-schema_version = 3
+schema_version = 4
 packs = ["taut.backend"]
 providers = ["taut.python-core"]
 source_roots = ["."]
@@ -13,3 +13,18 @@ service = ["app/*.py"]
 
 [tool.taut.allow]
 service = ["service"]
+
+[tool.taut.assurance.features]
+api = "absent"
+schema = "absent"
+dto = "absent"
+snapshot = "absent"
+exception_registry = "absent"
+enum = "absent"
+database = "absent"
+transaction = "absent"
+external_calls = "absent"
+security = "absent"
+tests = "absent"
+migrations = "absent"
+scripts = "absent"

@@ -5,13 +5,22 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from tests.utils.config import assurance_toml
 
 from taut.analysis.contracts import ModuleAnalysisResult, ResolverSettings, SourceInput
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.cli import main
+from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
 
 
-def _write_project(root: Path, content: str, *, role: str = "service") -> None:
+def _write_project(
+    root: Path,
+    content: str,
+    *,
+    role: str = "service",
+    strict: bool = True,
+) -> None:
+    required = ("security",) if "os.getenv" in content or "os.environ" in content else ()
     app = root / "app"
     app.mkdir()
     (app / "service.py").write_text(content)
@@ -19,7 +28,8 @@ def _write_project(root: Path, content: str, *, role: str = "service") -> None:
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text(
         f"""
-schema_version = 3
+schema_version = 4
+strict = {str(strict).lower()}
 packs = ["taut.backend"]
 [project]
 include = ["app/*.py"]
@@ -30,6 +40,9 @@ name = "{role}"
 patterns = ["app/*.py"]
 [architecture.allow]
 {role} = ["{role}"]
+[assurance]
+max_inline_ignores = {1 if "taut: ignore[" in content else 0}
+{assurance_toml(required=required)}
 """.strip()
     )
 
@@ -64,6 +77,8 @@ service = ["app/*.py"]
 
 [tool.taut.allow]
 service = ["service"]
+
+{assurance_toml(pyproject=True)}
 """.strip()
     )
 
@@ -189,7 +204,7 @@ def test_report_miss_reuses_unchanged_module_analysis(
 
 
 @pytest.mark.integration
-def test_cli_json_v3_is_deterministic_for_compliant_project(
+def test_cli_json_v4_is_deterministic_for_compliant_project(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -203,7 +218,7 @@ def test_cli_json_v3_is_deterministic_for_compliant_project(
 
     assert first_code == second_code == 0
     assert first == second
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     coverage = cast(dict[str, object], payload["coverage"])
     analysis = cast(dict[str, object], coverage["analysis"])
     calls = cast(dict[str, int], analysis["calls"])
@@ -243,7 +258,7 @@ def test_cli_invalid_or_missing_configuration_returns_two(
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text("schema_version = 1")
     assert main(["check", str(tmp_path)]) == 2
-    assert "schema_version must be 3" in capsys.readouterr().err
+    assert "schema_version must be 4" in capsys.readouterr().err
 
 
 @pytest.mark.integration
@@ -255,7 +270,7 @@ def test_cli_configuration_error_respects_json_format(
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
 
     assert code == 2
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert cast(dict[str, object], payload["exit"])["code"] == 2
     assert cast(list[dict[str, object]], payload["engine_issues"])[0]["code"] == (
         "INVALID_CONFIGURATION"
@@ -278,7 +293,7 @@ def test_config_validate_and_rule_explanation(
 
     assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
     config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
-    assert config_explanation["schema_version"] == 3
+    assert config_explanation["schema_version"] == 4
     assert config_explanation["packs"] == ["taut.backend"]
     assert config_explanation["providers"] == [
         "taut.python-core",
@@ -308,6 +323,7 @@ def test_default_backend_loads_all_builtin_providers_with_provenance(
         tmp_path,
         "from fastapi import APIRouter\nfrom pydantic import BaseModel\n"
         "class Item(BaseModel): value: int\nrouter = APIRouter()\n",
+        strict=False,
     )
 
     assert main(["check", str(tmp_path), "--format", "json"]) in (0, 1)
@@ -334,7 +350,7 @@ def test_explicit_provider_list_remains_predictable(
 
 
 @pytest.mark.integration
-def test_config_migrate_outputs_v3_without_modifying_source(
+def test_config_migrate_outputs_v4_without_modifying_source(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -347,7 +363,8 @@ def test_config_migrate_outputs_v3_without_modifying_source(
     assert main(["config", "migrate", str(tmp_path)]) == 0
     migrated = capsys.readouterr().out
 
-    assert "schema_version = 3" in migrated
+    assert "schema_version = 4" in migrated
+    assert "[assurance.features]" in migrated
     assert 'packs = ["taut.backend"]' in migrated
     assert (
         'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]'
@@ -368,7 +385,7 @@ def test_config_migrate_writes_only_to_explicit_new_output(
 
     assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 0
     assert capsys.readouterr().out == ""
-    assert "schema_version = 3" in output.read_text()
+    assert "schema_version = 4" in output.read_text()
     assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 2
     assert "output already exists" in capsys.readouterr().err
 
@@ -438,7 +455,238 @@ def test_unknown_risky_call_is_advisory(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_project(tmp_path, "import requests\nrequests.custom_call()", role="adapter")
+    _write_project(
+        tmp_path,
+        "import requests\nrequests.custom_call()",
+        role="adapter",
+        strict=False,
+    )
 
     assert main(["check", str(tmp_path)]) == 0
     assert "CAT001" in capsys.readouterr().out
+
+
+@pytest.mark.integration
+def test_init_json_is_read_only_then_writes_only_with_complete_answers(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "service.py").write_text("value = 1\n")
+
+    assert main(["init", str(tmp_path), "--format", "json"]) == 2
+    proposal = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert proposal["status"] == "needs_input"
+    assert not (tmp_path / "pyproject.toml").exists()
+
+    answers = {
+        "project_digest": proposal["project_digest"],
+        "accept_observed_architecture": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    answer_path = tmp_path / "answers.json"
+    answer_path.write_text(json.dumps(answers))
+
+    assert main(["init", str(tmp_path), "--answers", str(answer_path), "--write"]) == 0
+    capsys.readouterr()
+    assert "schema_version = 4" in (tmp_path / "pyproject.toml").read_text()
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 0
+    audit = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert cast(dict[str, object], audit["assurance"])["complete"] is True
+
+
+@pytest.mark.integration
+def test_init_rejects_stale_answers_without_writing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "service.py").write_text("value = 1\n")
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "project_digest": "0" * 64,
+                "accept_observed_architecture": True,
+                "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+            }
+        )
+    )
+
+    assert main(["init", str(tmp_path), "--answers", str(answers), "--write"]) == 2
+    assert "stale" in capsys.readouterr().err
+    assert not (tmp_path / "pyproject.toml").exists()
+
+
+@pytest.mark.integration
+def test_init_routes_existing_configuration_to_audit_or_migrate(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(tmp_path, "value = 1")
+
+    assert main(["init", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    issues = cast(list[dict[str, object]], payload["engine_issues"])
+    assert "taut audit" in cast(str, issues[0]["message"])
+
+
+@pytest.mark.integration
+def test_audit_reports_python_source_outside_configured_scope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(tmp_path, "value = 1")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_service.py").write_text("def test_value(): pass\n")
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["assurance"] is not None, [
+        item["message"] for item in cast(list[dict[str, object]], payload["engine_issues"])
+    ]
+    assurance = cast(dict[str, object], payload["assurance"])
+    issues = cast(list[dict[str, object]], assurance["issues"])
+    assert {issue["code"] for issue in issues} >= {"SOURCE_UNACCOUNTED"}
+
+
+@pytest.mark.integration
+def test_machine_readable_schema_and_rules_are_discoverable(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["config", "schema", "--format", "json"]) == 0
+    schema = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert schema["schema_version"] == 4
+
+    assert main(["rules", "DTO001", "--format", "json"]) == 0
+    rule = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert rule["id"] == "DTO001" and rule["target"] == "module"
+
+
+@pytest.mark.integration
+def test_init_detects_backend_surfaces_and_audit_exposes_inactive_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    files = {
+        "app/router.py": """
+from fastapi import APIRouter
+router = APIRouter()
+@router.get('/items')
+def items(): return []
+""",
+        "app/schema.py": """
+from pydantic import BaseModel
+class ItemSnapshot(BaseModel):
+    value: str
+""",
+        "app/dto.py": """
+from dataclasses import dataclass
+@dataclass(frozen=True)
+class ItemResult:
+    value: str
+""",
+        "app/errors.py": """
+from enum import StrEnum
+class ErrorCode(StrEnum):
+    BAD = 'BAD'
+class AppError(Exception):
+    pass
+""",
+        "app/model.py": (
+            "from sqlalchemy.orm import DeclarativeBase\nclass Base(DeclarativeBase): pass\n"
+        ),
+        "app/service.py": """
+import os
+import httpx
+async def run(session):
+    await session.commit()
+    await httpx.get('https://example.invalid')
+    return os.getenv('TOKEN')
+""",
+        "tests/test_item.py": "def test_item(): pass\n",
+        "migrations/revision.py": "revision = '1'\n",
+        "scripts/repair.py": "def main(): pass\n",
+    }
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content.strip() + "\n")
+
+    assert main(["init", str(tmp_path), "--format", "json"]) == 2
+    proposal = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    discovered = cast(dict[str, object], proposal["discovered"])
+    detected = set(cast(list[str], discovered["features"]))
+    assert detected == set(BUILTIN_ASSURANCE_FEATURES)
+
+    answers = {
+        "project_digest": proposal["project_digest"],
+        "accept_observed_architecture": True,
+        "features": {feature: "required" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    answer_path = tmp_path / "answers.json"
+    answer_path.write_text(json.dumps(answers))
+    assert main(["init", str(tmp_path), "--answers", str(answer_path), "--write"]) == 0
+    capsys.readouterr()
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assurance = cast(dict[str, object], payload["assurance"])
+    features = cast(list[dict[str, object]], assurance["features"])
+    missing = [item["name"] for item in features if item["detected"] is not True]
+    assert not missing
+    issues = cast(list[dict[str, object]], assurance["issues"])
+    assert {item["code"] for item in issues} >= {"FEATURE_POLICY_INACTIVE"}
+
+
+@pytest.mark.integration
+def test_audit_rejects_stale_selectors_exceptions_and_exception_budget(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(
+        tmp_path,
+        "from datetime import datetime\nvalue = datetime.now()  # taut: ignore[TIME001]",
+    )
+    config = tmp_path / ".policy" / "policy.toml"
+    text = config.read_text().replace("max_inline_ignores = 1", "max_inline_ignores = 0")
+    text = text.replace('service = ["service"]', 'service = ["service"]\nghost = ["ghost"]')
+    config.write_text(
+        text
+        + """
+
+[[roles]]
+name = "ghost"
+patterns = ["missing/*.py"]
+
+[[zones]]
+name = "test"
+patterns = ["missing/*.py"]
+
+[[exclusions]]
+patterns = ["generated/*.py"]
+reason = "generated elsewhere"
+
+[[assurance.assertions]]
+domain = "dto"
+kind = "path"
+target = "missing.py"
+state = "not_applicable"
+reason = "legacy generator"
+"""
+    )
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["assurance"] is not None, [
+        item["message"] for item in cast(list[dict[str, object]], payload["engine_issues"])
+    ]
+    assurance = cast(dict[str, object], payload["assurance"])
+    issues = cast(list[dict[str, object]], assurance["issues"])
+    assert {item["code"] for item in issues} >= {
+        "IGNORE_BUDGET_EXCEEDED",
+        "ASSERTION_UNUSED",
+        "EXCLUSION_UNUSED",
+        "ROLE_SELECTOR_UNUSED",
+        "ZONE_SELECTOR_UNUSED",
+    }

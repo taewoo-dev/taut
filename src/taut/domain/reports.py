@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from taut.domain.assurance import AssuranceReport
 from taut.domain.diagnostics import Diagnostic
 from taut.domain.evaluations import EvaluationReason, RuleLevel, RuleTargetRef
 from taut.domain.ids import RuleId, SnapshotId
@@ -93,3 +94,4 @@ class RunReport:
     ignore_audit: IgnoreAudit
     approval_audit: ApprovalAudit
     exit_decision: ExitDecision
+    assurance: AssuranceReport = field(default_factory=AssuranceReport)

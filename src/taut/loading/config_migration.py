@@ -14,6 +14,22 @@ _SCHEMA_LINE = re.compile(r"(?m)^schema_version\s*=\s*\d+\s*$")
 _PACKS_LINE = re.compile(r"(?m)^packs\s*=.*$")
 _PROVIDERS_LINE = re.compile(r"(?m)^providers\s*=.*$")
 _TOOL_HEADER = re.compile(r"(?m)^\[tool\.taut\]\s*$")
+_ASSURANCE_HEADER = re.compile(r"(?m)^\[(?:tool\.taut\.)?assurance\.features\]\s*$")
+_ASSURANCE_FEATURES = (
+    "api",
+    "schema",
+    "dto",
+    "snapshot",
+    "exception_registry",
+    "enum",
+    "database",
+    "transaction",
+    "external_calls",
+    "security",
+    "tests",
+    "migrations",
+    "scripts",
+)
 
 
 def migrate_configuration_text(
@@ -58,9 +74,9 @@ def _migrate_pyproject(text: str) -> str:
     section_end = _next_table_offset(text, match.end())
     section = text[match.end() : section_end]
     if _SCHEMA_LINE.search(section) is None:
-        additions.append("schema_version = 3")
+        additions.append("schema_version = 4")
     else:
-        section = _SCHEMA_LINE.sub("schema_version = 3", section, count=1)
+        section = _SCHEMA_LINE.sub("schema_version = 4", section, count=1)
     if _PACKS_LINE.search(section) is None:
         additions.append('packs = ["taut.backend"]')
     if _PROVIDERS_LINE.search(section) is None:
@@ -68,30 +84,41 @@ def _migrate_pyproject(text: str) -> str:
     prefix = text[: match.end()]
     if additions:
         prefix += "\n" + "\n".join(additions)
-    return prefix + section + text[section_end:]
+    migrated = prefix + section + text[section_end:]
+    if _ASSURANCE_HEADER.search(migrated) is None:
+        migrated = migrated.rstrip() + "\n\n" + _assurance_block("tool.taut.")
+    return migrated
 
 
 def _migrate_standalone(text: str) -> str:
-    migrated = _SCHEMA_LINE.sub("schema_version = 3", text, count=1)
+    migrated = _SCHEMA_LINE.sub("schema_version = 4", text, count=1)
     if migrated == text:
-        migrated = "schema_version = 3\n" + migrated
+        migrated = "schema_version = 4\n" + migrated
     if _PACKS_LINE.search(migrated) is None:
         schema = _SCHEMA_LINE.search(migrated)
         if schema is None:
-            raise PolicyConfigError("cannot insert v3 rule packs")
+            raise PolicyConfigError("cannot insert v4 rule packs")
         migrated = (
             migrated[: schema.end()] + '\npacks = ["taut.backend"]' + migrated[schema.end() :]
         )
     if _PROVIDERS_LINE.search(migrated) is None:
         packs = _PACKS_LINE.search(migrated)
         if packs is None:
-            raise PolicyConfigError("cannot insert v3 fact providers")
+            raise PolicyConfigError("cannot insert v4 fact providers")
         migrated = (
             migrated[: packs.end()]
             + f"\nproviders = [{_DEFAULT_PROVIDERS}]"
             + migrated[packs.end() :]
         )
+    if _ASSURANCE_HEADER.search(migrated) is None:
+        migrated = migrated.rstrip() + "\n\n" + _assurance_block("")
     return migrated
+
+
+def _assurance_block(prefix: str) -> str:
+    lines = [f"[{prefix}assurance.features]"]
+    lines.extend(f'{feature} = "absent"' for feature in _ASSURANCE_FEATURES)
+    return "\n".join(lines) + "\n"
 
 
 def _next_table_offset(text: str, start: int) -> int:

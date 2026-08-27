@@ -5,12 +5,14 @@ import json
 import re
 from dataclasses import dataclass, replace
 from importlib.metadata import entry_points, version
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
 from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvider
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
+from taut.configuration.model import ProjectConfiguration
+from taut.domain.assurance import AssuranceIssue
 from taut.domain.frozen import FrozenMap
 from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS as _BUILTIN_BACKEND_PROVIDER_IDS
 from taut.domain.snapshot import AnalysisSnapshot
@@ -60,12 +62,28 @@ def plugin_environment_digest() -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+class AssuranceAuditorV1(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def version(self) -> str: ...
+
+    @property
+    def audited_rules(self) -> frozenset[str]: ...
+
+    def audit(
+        self, snapshot: AnalysisSnapshot, config: ProjectConfiguration
+    ) -> tuple[AssuranceIssue, ...]: ...
+
+
 @dataclass(frozen=True)
 class RulePackV1:
     id: str
     version: str
     registry: RuleRegistry
     required_capabilities: frozenset[CapabilitySpec] = frozenset()
+    assurance_auditor: AssuranceAuditorV1 | None = None
 
     def __post_init__(self) -> None:
         if _PLUGIN_ID.fullmatch(self.id) is None:
@@ -106,6 +124,21 @@ class PythonCoreProvider:
         return self.analyze(snapshot)
 
 
+@dataclass(frozen=True)
+class BuiltinBackendAssuranceAuditor:
+    id: str = "taut.backend.assurance"
+    version: str = "1"
+    audited_rules: frozenset[str] = frozenset(
+        rule_id.value for rule_id in builtin_rule_registry().definitions
+    )
+
+    def audit(
+        self, snapshot: AnalysisSnapshot, config: ProjectConfiguration
+    ) -> tuple[AssuranceIssue, ...]:
+        del snapshot, config
+        return ()
+
+
 def builtin_backend_pack() -> RulePackV1:
     registry = builtin_rule_registry()
     definitions = (
@@ -123,6 +156,7 @@ def builtin_backend_pack() -> RulePackV1:
         version("pytaut"),
         type(registry).build(definitions),
         frozenset(PythonCoreProvider().provides),
+        BuiltinBackendAssuranceAuditor(),
     )
 
 

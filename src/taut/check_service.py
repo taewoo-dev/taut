@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from taut import __version__
@@ -26,6 +26,7 @@ from taut.analysis.providers import (
 )
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
+from taut.assurance import audit_project_assurance
 from taut.cache import CacheKey, CacheStore
 from taut.cache.authenticated import ModuleBundle, cache_signing_context
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
@@ -279,6 +280,26 @@ class ResidentCheckSession:
             canonicalize=context.model.canonical_symbol,
             preused_approval_keys=policy_result.result.approval_keys,
         )
+        assurance = audit_project_assurance(
+            self.project_root,
+            config,
+            discovery,
+            snapshot,
+            classifications,
+            used_approvals=len(processing.approval_audit.used),
+            used_ignores=len(processing.ignore_audit.used),
+        )
+        extension_assurance = tuple(
+            issue
+            for pack in self._packs
+            if pack.assurance_auditor is not None
+            for issue in pack.assurance_auditor.audit(snapshot, config)
+        )
+        if extension_assurance:
+            assurance = replace(
+                assurance,
+                issues=tuple(sorted(set((*assurance.issues, *extension_assurance)))),
+            )
         report = build_run_report(
             snapshot=snapshot,
             engine_version=__version__,
@@ -296,6 +317,8 @@ class ResidentCheckSession:
             coverage=policy_result.result.coverage,
             ignore_audit=processing.ignore_audit,
             approval_audit=processing.approval_audit,
+            assurance=assurance,
+            enforce_assurance=config.strict,
         )
         rendered = (
             render_json(report)

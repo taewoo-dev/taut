@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
+from tests.utils.config import assurance_toml
 
 from taut.analysis.providers import CapabilitySpec
 from taut.check_service import CheckRequest, CheckResult, ResidentCheckSession, run_check_request
@@ -50,7 +51,7 @@ def _write_config(root: Path, *, providers: tuple[str, ...] = _PROVIDERS, limit:
     (root / ".policy").mkdir(exist_ok=True)
     (root / ".policy" / "policy.toml").write_text(
         f"""
-schema_version = 3
+schema_version = 4
 packs = ["taut.backend"]
 providers = [{values}]
 [project]
@@ -64,6 +65,7 @@ patterns = ["app/*.py"]
 service = ["service"]
 [size]
 default_max_lines = {limit}
+{assurance_toml()}
 """.strip()
     )
 
@@ -109,9 +111,11 @@ def test_external_rule_pack_can_define_and_run_a_custom_rule(
     app.mkdir()
     (app / "service.py").write_text("value = 1\n")
     (tmp_path / ".policy").mkdir()
-    (tmp_path / ".policy" / "policy.toml").write_text(
-        """
-schema_version = 3
+    config_path = tmp_path / ".policy" / "policy.toml"
+    config_path.write_text(
+        f"""
+schema_version = 4
+strict = false
 packs = ["example.pack"]
 providers = []
 [project]
@@ -125,8 +129,15 @@ patterns = ["app/*.py"]
 service = ["service"]
 [rules]
 CUSTOM001 = "enforced"
+{assurance_toml()}
 """.strip()
     )
+
+    strict_text = config_path.read_text().replace("strict = false", "strict = true")
+    config_path.write_text(strict_text)
+    with pytest.raises(ValueError, match="does not provide an assurance auditor"):
+        run_check_request(CheckRequest(tmp_path))
+    config_path.write_text(strict_text.replace("strict = true", "strict = false"))
 
     result = run_check_request(CheckRequest(tmp_path))
 

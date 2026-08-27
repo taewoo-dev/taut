@@ -4,6 +4,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from taut.configuration.assurance import (
+    BUILTIN_ASSURANCE_FEATURES,
+    AssuranceAssertion,
+    AssuranceConfiguration,
+    FeatureExpectation,
+    ScopeExclusion,
+)
 from taut.configuration.catalog import AccessPath, CatalogEntry, Effect, EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy, ImportBoundary
 from taut.configuration.manifest import (
@@ -66,6 +73,9 @@ _ROOT_KEYS = frozenset(
         "boundary_extensions",
         "code_conventions",
         "security",
+        "assurance",
+        "exclusions",
+        "strict",
     }
 )
 
@@ -86,8 +96,8 @@ def load_configuration_bootstrap(
         root = document.root
         _reject_unknown(root, _ROOT_KEYS, "config")
         version = root.get("schema_version")
-        if version != 3:
-            raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
+        if version != 4:
+            raise PolicyConfigError("schema_version must be 4; run 'taut config migrate' first")
         return ConfigurationBootstrap(
             _strings(root.get("packs", ["taut.backend"]), "packs"),
             _strings(
@@ -120,8 +130,8 @@ def _load_project_configuration(
     root = document.root
     _reject_unknown(root, _ROOT_KEYS, "config")
     version = root.get("schema_version")
-    if version != 3:
-        raise PolicyConfigError("schema_version must be 3; run 'taut config migrate' first")
+    if version != 4:
+        raise PolicyConfigError("schema_version must be 4; run 'taut config migrate' first")
 
     packs = _strings(root.get("packs", ["taut.backend"]), "packs")
     providers = _strings(root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)), "providers")
@@ -160,6 +170,7 @@ def _load_project_configuration(
         strict=document.strict,
         rule_levels=BUILTIN_RULE_LEVELS if rule_levels is None else rule_levels,
     )
+    assurance = _load_assurance(root, strict=document.strict)
     manifest = ProjectManifest(roles, zones, default_zone, location)
     _validate_manifest_policy(manifest, policy)
     return ProjectConfiguration(
@@ -169,12 +180,77 @@ def _load_project_configuration(
         manifest,
         catalog,
         policy,
-        schema_version=3,
+        schema_version=4,
         packs=packs,
         providers=providers,
         strict=document.strict,
         cache_enabled=cache_enabled,
         cache_directory=cache_directory,
+        assurance=assurance,
+    )
+
+
+def _load_assurance(root: dict[str, object], *, strict: bool) -> AssuranceConfiguration:
+    raw = _table(root.get("assurance", {}), "assurance")
+    _reject_unknown(
+        raw,
+        frozenset({"features", "assertions", "max_approvals", "max_inline_ignores"}),
+        "assurance",
+    )
+    raw_features = _table(raw.get("features", {}), "assurance.features")
+    unknown = set(raw_features).difference(BUILTIN_ASSURANCE_FEATURES)
+    if unknown:
+        raise PolicyConfigError(f"unknown assurance features: {', '.join(sorted(unknown))}")
+    if strict:
+        missing = set(BUILTIN_ASSURANCE_FEATURES).difference(raw_features)
+        if missing:
+            raise PolicyConfigError(
+                "strict assurance is missing feature decisions: " + ", ".join(sorted(missing))
+            )
+    features: list[tuple[str, FeatureExpectation]] = []
+    for name, value in raw_features.items():
+        try:
+            raw_value = _string(value, f"assurance.features.{name}")
+            features.append((name, FeatureExpectation(raw_value)))
+        except ValueError as error:
+            raise PolicyConfigError(
+                f"assurance.features.{name} must be required or absent"
+            ) from error
+
+    exclusions: list[ScopeExclusion] = []
+    for item in _table_list(root.get("exclusions", []), "exclusions"):
+        _reject_unknown(item, frozenset({"patterns", "reason"}), "exclusions")
+        exclusions.append(
+            ScopeExclusion(
+                _strings(item.get("patterns"), "exclusions.patterns"),
+                _string(item.get("reason"), "exclusions.reason"),
+            )
+        )
+
+    assertions: list[AssuranceAssertion] = []
+    for item in _table_list(raw.get("assertions", []), "assurance.assertions"):
+        _reject_unknown(
+            item,
+            frozenset({"domain", "kind", "target", "state", "reason"}),
+            "assurance.assertions",
+        )
+        assertions.append(
+            AssuranceAssertion(
+                _string(item.get("domain"), "assurance.assertions.domain"),
+                _string(item.get("kind"), "assurance.assertions.kind"),
+                _string(item.get("target"), "assurance.assertions.target"),
+                _string(item.get("state"), "assurance.assertions.state"),
+                _string(item.get("reason"), "assurance.assertions.reason"),
+            )
+        )
+    return AssuranceConfiguration(
+        features=FrozenMap(features),
+        exclusions=tuple(sorted(exclusions)),
+        assertions=tuple(sorted(assertions)),
+        max_approvals=_integer(raw.get("max_approvals", 0), "assurance.max_approvals"),
+        max_inline_ignores=_integer(
+            raw.get("max_inline_ignores", 0), "assurance.max_inline_ignores"
+        ),
     )
 
 
