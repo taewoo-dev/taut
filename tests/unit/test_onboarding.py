@@ -121,3 +121,21 @@ def test_assurance_value_objects_reject_ambiguous_exceptions() -> None:
     assert AssuranceConfiguration.non_strict_default().features == FrozenMap()
     assert AssuranceReport().complete is True
     assert configuration_schema_payload()["schema_version"] == 4
+
+
+def test_getting_started_document_covers_the_machine_onboarding_contract() -> None:
+    project_root = Path(__file__).parents[2]
+    readme = (project_root / "README.md").read_text()
+    guide = (project_root / "docs" / "getting-started.md").read_text()
+
+    for document in (readme, guide):
+        assert 'test "$?" -eq 2' in document
+        assert "Python" in document and "digest" in document
+        assert "accept_observed_architecture" in document
+        assert "does not" in document and "role" in document
+        assert "taut audit" in document and "taut check" in document
+    for feature in BUILTIN_ASSURANCE_FEATURES:
+        assert f'"{feature}"' in guide
+    assert "Prompt for an AI coding agent" in guide
+    assert "SOURCE_UNACCOUNTED" in guide
+    assert "FEATURE_POLICY_INACTIVE" in guide
