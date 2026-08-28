@@ -11,27 +11,111 @@ supports Python 3.12 or newer on platforms supported by Python:
 
 ```bash
 uv add --dev pytaut==0.3.0
-uv run taut init . --format json
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
 branch.
 
-## Configuration
+## Start a new project
 
-`taut init` is read-only by default. Its JSON output contains detected files and features, stable
-questions, a proposed configuration, and a project digest. An AI or developer reviews those
-decisions and then explicitly writes the configuration:
+`taut init` does not produce a finished policy automatically. It observes the repository and
+creates a safe starting proposal. An AI or developer confirms the high-level decisions, writes the
+proposal, completes repository-specific settings, and proves the result with `audit`.
+
+### 1. Generate a proposal
+
+```bash
+uv run taut init . --format json > taut-init.json || test "$?" -eq 2
+```
+
+Taut does not modify the project in this step. The shell redirection (`>`) creates
+`taut-init.json`. Exit code `2` is expected while questions remain; the JSON proposal is still
+valid. It contains detected Python files and features, observed roles/imports, questions, proposed
+TOML, and a `project_digest`.
+
+The digest covers discovered Python file paths and contents—not README files, frontend files,
+dependency manifests, or every project setting. Adding, removing, renaming, or editing Python
+files invalidates earlier answers.
+
+### 2. Answer only the supported decisions
+
+Create `taut-init-answers.json` from the proposal. In version 0.3.0, the supported decisions are
+the returned Python digest, acceptance of the observed import architecture, and all 13 feature
+expectations:
+
+```json
+{
+  "project_digest": "copy from taut-init.json",
+  "accept_observed_architecture": true,
+  "features": {
+    "api": "required",
+    "schema": "required",
+    "dto": "required",
+    "snapshot": "absent",
+    "exception_registry": "required",
+    "enum": "required",
+    "database": "required",
+    "transaction": "required",
+    "external_calls": "required",
+    "security": "required",
+    "tests": "required",
+    "migrations": "required",
+    "scripts": "absent"
+  }
+}
+```
+
+Use `required` only when that capability belongs in this repository, and `absent` only when it
+must not exist. Do not use `absent` to hide configuration work.
+
+The answers file cannot currently edit role patterns, zones, exclusions, exact DTO/exception
+symbols, transaction providers, or external-call wrappers. Those are reviewed after the initial
+write.
+
+### 3. Write the starting configuration
 
 ```bash
 uv run taut init . --answers taut-init-answers.json --write
-uv run taut audit .
-uv run taut check .
 ```
 
-The answers must contain the returned `project_digest`, every feature decision, and an explicit
-decision about the observed import graph. A changed project invalidates stale answers. Existing
-`[tool.taut]` sections are never overwritten by `init`.
+Writing is refused when answers are incomplete or the Python digest is stale. Taut writes through
+a temporary file and atomic replacement. If `[tool.taut]` or `.policy/policy.toml` already exists,
+`init` stops even in preview mode and directs you to `taut audit` or `taut config migrate`.
+
+### 4. Complete repository-specific settings
+
+Review the generated `pyproject.toml`. In particular, connect real code to:
+
+- every Python source through `include`/`source_roots`, or a reasoned exclusion;
+- one architecture role per analyzed module and the intended `allow` graph;
+- test, migration, and script zones;
+- DTO, snapshot, schema, exception, and enum roles or exact symbols;
+- transaction owner roles and session providers;
+- external modules, logged calls, and approved wrappers;
+- approval and inline-ignore budgets, which default to zero.
+
+The generated file is an initial observation, not proof that these details are correct.
+
+### 5. Prove setup, then check code
+
+```bash
+uv run taut config validate .
+uv run taut audit . --format json
+uv run taut check . --no-cache --format json
+```
+
+Repeat `audit` until assurance is complete, then repeat `check` until policy violations are fixed.
+Do not add approvals, inline ignores, broad allow edges, or false `absent` declarations merely to
+make the commands green.
+
+- Exit `0`: complete and compliant
+- Exit `1`: definite enforced policy violations
+- Exit `2`: configuration/assurance/analysis is incomplete or an enforced decision is unreliable
+
+See the complete [new-project guide](docs/getting-started.md) for issue-by-issue remediation, an AI
+handoff prompt, existing-project migration, and a CI example.
+
+## Configuration reference
 
 Define repository roles and allowed dependencies in `pyproject.toml`. Strict mode is enabled by
 default and now includes assurance completeness. File length remains a repository policy parameter.
