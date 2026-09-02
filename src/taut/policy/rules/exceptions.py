@@ -96,17 +96,45 @@ def _code_symbol(
 def _constructor_error_code(
     class_fact: ClassFact,
     calls_by_enclosing: Mapping[SymbolId, Sequence[CallFact]],
+    argument_names: tuple[str, ...],
 ) -> tuple[CallFact, ExpressionSummary] | None:
     constructor = SymbolId(f"{class_fact.symbol_id.value}.__init__")
     candidates: list[tuple[CallFact, ExpressionSummary]] = []
     for call in calls_by_enclosing.get(constructor, ()):
         error_code = next(
-            (argument.value for argument in call.arguments if argument.name == "error_code"),
+            (argument.value for argument in call.arguments if argument.name in argument_names),
             None,
         )
         if error_code is not None:
             candidates.append((call, error_code))
     return candidates[0] if candidates else None
+
+
+def _exception_families(
+    symbol: SymbolId,
+    classes: Mapping[SymbolId, ClassFact],
+    configured: frozenset[SymbolId],
+    context: PolicyContext,
+    visiting: frozenset[SymbolId] = frozenset(),
+) -> frozenset[SymbolId]:
+    canonical = context.model.canonical_symbol(symbol)
+    direct = frozenset(
+        context.model.canonical_symbol(item)
+        for item in configured
+        if context.model.canonical_symbol(item) == canonical
+    )
+    if direct or canonical in visiting:
+        return direct
+    class_fact = classes.get(canonical)
+    if class_fact is None:
+        return frozenset()
+    return frozenset(
+        family
+        for base in _base_symbols(class_fact)
+        for family in _exception_families(
+            base, classes, configured, context, visiting | {canonical}
+        )
+    )
 
 
 class ExceptionRegistryRule:
@@ -157,7 +185,9 @@ class ExceptionRegistryRule:
         )
         if any(
             call.enclosing_symbol in exception_constructors
-            and any(argument.name == "error_code" for argument in call.arguments)
+            and any(
+                argument.name in policy.exception_code_argument_names for argument in call.arguments
+            )
             and set(call.ref.candidates).intersection(exception_constructors)
             for call in uncertain_calls
         ):
@@ -175,11 +205,29 @@ class ExceptionRegistryRule:
         code_owners: dict[SymbolId, list[tuple[ClassFact, FieldFact | CallFact]]] = defaultdict(
             list
         )
-        name_owners: dict[str, list[ClassFact]] = defaultdict(list)
+        name_owners: dict[tuple[str, str], list[ClassFact]] = defaultdict(list)
         for class_fact in domains:
-            name_owners[class_fact.name].append(class_fact)
-            code_field = direct_fields.get((class_fact.symbol_id, "code"))
-            constructor_code = _constructor_error_code(class_fact, calls_by_enclosing)
+            families = _exception_families(
+                class_fact.symbol_id,
+                classes,
+                policy.exception_base_symbols,
+                context,
+            ) or frozenset({SymbolId("taut.unresolved_exception_family")})
+            for family in families:
+                name_owners[(family.value, class_fact.name)].append(class_fact)
+            code_field = next(
+                (
+                    direct_fields.get((class_fact.symbol_id, field_name))
+                    for field_name in policy.exception_code_field_names
+                    if direct_fields.get((class_fact.symbol_id, field_name)) is not None
+                ),
+                None,
+            )
+            constructor_code = _constructor_error_code(
+                class_fact,
+                calls_by_enclosing,
+                policy.exception_code_argument_names,
+            )
             if code_field is None and constructor_code is None:
                 findings.append(
                     _finding(
@@ -188,7 +236,9 @@ class ExceptionRegistryRule:
                         class_fact.id,
                         class_fact.location,
                         "exception.code_missing",
-                        "code or error_code",
+                        " or ".join(
+                            policy.exception_code_field_names + policy.exception_code_argument_names
+                        ),
                     )
                 )
                 continue
@@ -228,7 +278,7 @@ class ExceptionRegistryRule:
                         code.value,
                     )
                 )
-        for name, name_entries in name_owners.items():
+        for (_, name), name_entries in name_owners.items():
             if len(name_entries) < 2:
                 continue
             for class_fact in name_entries:

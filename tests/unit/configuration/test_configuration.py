@@ -33,7 +33,7 @@ from taut.loading.config_loader import (
 from taut.loading.errors import PolicyConfigError
 
 _VALID = f"""
-schema_version = 4
+schema_version = 5
 packs = ['taut.backend']
 [project]
 include = ["src/*.py", "src/**/*.py"]
@@ -213,7 +213,7 @@ reason = "called only inside the notification transaction"
 def test_policy_scope_configuration_rejects_unknown_rules_and_zones(
     tmp_path: Path, extension: str, message: str
 ) -> None:
-    _write(tmp_path, "schema_version = 4\n" + extension)
+    _write(tmp_path, "schema_version = 5\n" + extension)
 
     with pytest.raises(PolicyConfigError, match=message):
         load_project_configuration(tmp_path)
@@ -270,6 +270,30 @@ def test_transaction_provider_item_type_requires_declared_provider(tmp_path: Pat
         match="provider_item_types keys must also be session_providers",
     ):
         load_project_configuration(tmp_path)
+
+
+def test_v5_loads_explicit_symbol_contract_conventions(tmp_path: Path) -> None:
+    content = _VALID.replace(
+        "[transaction.provider_item_types]",
+        'boundary_decorators = ["app.database.transactional"]\n[transaction.provider_item_types]',
+    )
+    content += """
+[code_conventions]
+response_mapper_name = "from_result"
+dto_base_symbols = ["app.contracts.BaseResult"]
+exception_code_argument_names = ["code", "error_code"]
+exception_code_field_names = ["code"]
+test_http_fixture_symbols = ["tests.conftest.api_client"]
+"""
+    _write(tmp_path, content)
+
+    policy = load_project_configuration(tmp_path).policy
+
+    assert policy.code.response_mapper_name == "from_result"
+    assert SymbolId("app.contracts.BaseResult") in policy.code.dto_base_symbols
+    assert policy.code.exception_code_argument_names == ("code", "error_code")
+    assert SymbolId("tests.conftest.api_client") in policy.code.test_http_fixture_symbols
+    assert SymbolId("app.database.transactional") in policy.transaction_boundary_decorators
 
 
 def test_load_v4_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
@@ -349,7 +373,7 @@ def test_missing_configuration_is_an_error(tmp_path: Path) -> None:
 def test_strict_v4_requires_every_assurance_feature_decision(tmp_path: Path) -> None:
     _write(
         tmp_path,
-        "schema_version = 4\npacks = ['taut.backend']\n[assurance.features]\napi='absent'",
+        "schema_version = 5\npacks = ['taut.backend']\n[assurance.features]\napi='absent'",
     )
 
     with pytest.raises(PolicyConfigError, match="missing feature decisions"):
@@ -360,30 +384,30 @@ def test_strict_v4_requires_every_assurance_feature_decision(tmp_path: Path) -> 
     "content",
     [
         "schema_version = 1",
-        "schema_version = 4\npacks = ['taut.backend']\n[rules]\nTIME001 = 'off'",
-        "schema_version = 4\npacks = ['taut.backend']\n[rules]\nCAT001 = 'enforced'",
-        "schema_version = 4\npacks = ['taut.backend']\n[rules]\nUNKNOWN001 = 'enforced'",
-        "schema_version = 4\npacks = ['taut.backend']\nunknown = true",
-        "schema_version = 4\npacks = ['taut.backend']\n[project]\nunknown = true",
+        "schema_version = 5\npacks = ['taut.backend']\n[rules]\nTIME001 = 'off'",
+        "schema_version = 5\npacks = ['taut.backend']\n[rules]\nCAT001 = 'enforced'",
+        "schema_version = 5\npacks = ['taut.backend']\n[rules]\nUNKNOWN001 = 'enforced'",
+        "schema_version = 5\npacks = ['taut.backend']\nunknown = true",
+        "schema_version = 5\npacks = ['taut.backend']\n[project]\nunknown = true",
         (
-            "schema_version = 4\npacks = ['taut.backend']\n[[roles]]\n"
+            "schema_version = 5\npacks = ['taut.backend']\n[[roles]]\n"
             "name='service'\npatterns=['**']\nunknown=true"
         ),
         (
-            "schema_version = 4\npacks = ['taut.backend']\n[[zones]]\n"
+            "schema_version = 5\npacks = ['taut.backend']\n[[zones]]\n"
             "name='test'\npatterns=['tests/**']\nunknown=true"
         ),
         (
-            "schema_version = 4\npacks = ['taut.backend']\n[[effects]]\n"
+            "schema_version = 5\npacks = ['taut.backend']\n[[effects]]\n"
             "symbol='app.x'\neffects=['unknown.effect']"
         ),
-        "schema_version = 4\npacks = ['taut.backend']\n[architecture]\nunknown=true",
-        "schema_version = 4\npacks = ['taut.backend']\n[transaction]\nunknown=true",
-        "schema_version = 4\npacks = ['taut.backend']\n[[boundaries]]\nunknown=true",
-        "schema_version = 4\npacks = ['taut.backend']\n[size]\nunknown=true",
-        "schema_version = 4\npacks = ['taut.backend']\n[boundary_extensions]\nunknown=true",
-        "schema_version = 4\npacks = ['taut.backend']\n[security]\nallowed_roles=['service']",
-        "schema_version = 4\npacks = ['taut.backend']\n[code_conventions]\nunknown=[]",
+        "schema_version = 5\npacks = ['taut.backend']\n[architecture]\nunknown=true",
+        "schema_version = 5\npacks = ['taut.backend']\n[transaction]\nunknown=true",
+        "schema_version = 5\npacks = ['taut.backend']\n[[boundaries]]\nunknown=true",
+        "schema_version = 5\npacks = ['taut.backend']\n[size]\nunknown=true",
+        "schema_version = 5\npacks = ['taut.backend']\n[boundary_extensions]\nunknown=true",
+        "schema_version = 5\npacks = ['taut.backend']\n[security]\nallowed_roles=['service']",
+        "schema_version = 5\npacks = ['taut.backend']\n[code_conventions]\nunknown=[]",
     ],
 )
 def test_unknown_or_weakening_configuration_is_rejected(
@@ -400,7 +424,7 @@ def test_architecture_map_must_cover_declared_roles(tmp_path: Path) -> None:
     _write(
         tmp_path,
         f"""
-schema_version = 4\npacks = ['taut.backend']
+schema_version = 5\npacks = ['taut.backend']
 [[roles]]
 name = "service"
 patterns = ["app/**"]

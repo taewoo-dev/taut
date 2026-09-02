@@ -65,10 +65,11 @@ _MESSAGES = {
     "transaction.external_call_while_open": (
         "DB session 또는 transaction을 연 채 외부 호출 {call}을 기다립니다."
     ),
+    "transaction.multi_write_unprotected": "여러 DB 쓰기가 transaction 경계 없이 실행됩니다.",
     "async.blocking_call": "async 함수 안에서 동기 호출 {call}을 사용했습니다.",
     "security.direct_access": "{role} 역할에서 보안 관련 함수 {call}을 직접 사용했습니다.",
     "catalog.unknown_risky_call": "위험 여부가 등록되지 않은 외부 호출입니다: {call}",
-    "dto.not_frozen": "내부 DTO {symbol}이 frozen dataclass가 아닙니다.",
+    "dto.not_frozen": "내부 DTO {symbol}이 불변 dataclass/Pydantic model이 아닙니다.",
     "dto.mutable_field": "내부 DTO {symbol}에 변경 가능한 필드 타입이 있습니다.",
     "dto.name_suffix": "내부 DTO {symbol}의 이름이 역할 suffix를 사용하지 않습니다.",
     "snapshot.wrong_role": "저장 Snapshot {symbol}이 snapshots 역할 밖에 있습니다.",
@@ -76,6 +77,10 @@ _MESSAGES = {
     "schema.invalid_config": "HTTP Schema {symbol}의 필수 설정이 올바르지 않습니다.",
     "schema.field_inheritance": "HTTP Schema {symbol}이 업무 필드를 상속합니다.",
     "schema.from_internal_missing": "응답 Schema {symbol}에 from_internal이 없습니다.",
+    "schema.mapper_missing": "응답 Schema {symbol}에 설정된 변환 메서드가 없습니다.",
+    "schema.mapper_not_classmethod": "응답 Schema {symbol}의 변환 메서드는 classmethod여야 합니다.",
+    "schema.mapper_input_untyped": "응답 Schema {symbol}의 변환 입력 타입이 없습니다.",
+    "schema.mapper_return_untyped": "응답 Schema {symbol}의 변환 반환 타입이 없습니다.",
     "schema.bulk_mapping": "응답 Schema {symbol}이 자동 또는 일괄 복사를 사용합니다.",
     "schema.router_direct_mapping": "Router {symbol}가 응답 Schema {missing}을 직접 조립합니다.",
     "api.endpoint_docstring_missing": "Endpoint {symbol}에 설명이 없습니다.",

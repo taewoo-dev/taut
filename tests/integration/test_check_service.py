@@ -51,7 +51,7 @@ def _write_config(root: Path, *, providers: tuple[str, ...] = _PROVIDERS, limit:
     (root / ".policy").mkdir(exist_ok=True)
     (root / ".policy" / "policy.toml").write_text(
         f"""
-schema_version = 4
+schema_version = 5
 packs = ["taut.backend"]
 providers = [{values}]
 [project]
@@ -114,7 +114,7 @@ def test_external_rule_pack_can_define_and_run_a_custom_rule(
     config_path = tmp_path / ".policy" / "policy.toml"
     config_path.write_text(
         f"""
-schema_version = 4
+schema_version = 5
 strict = false
 packs = ["example.pack"]
 providers = []

@@ -28,7 +28,7 @@ def _write_project(
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text(
         f"""
-schema_version = 4
+schema_version = 5
 strict = {str(strict).lower()}
 packs = ["taut.backend"]
 [project]
@@ -218,7 +218,7 @@ def test_cli_json_v4_is_deterministic_for_compliant_project(
 
     assert first_code == second_code == 0
     assert first == second
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     coverage = cast(dict[str, object], payload["coverage"])
     analysis = cast(dict[str, object], coverage["analysis"])
     calls = cast(dict[str, int], analysis["calls"])
@@ -258,7 +258,7 @@ def test_cli_invalid_or_missing_configuration_returns_two(
     policy_dir.mkdir()
     (policy_dir / "policy.toml").write_text("schema_version = 1")
     assert main(["check", str(tmp_path)]) == 2
-    assert "schema_version must be 4" in capsys.readouterr().err
+    assert "schema_version must be 5" in capsys.readouterr().err
 
 
 @pytest.mark.integration
@@ -270,7 +270,7 @@ def test_cli_configuration_error_respects_json_format(
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
 
     assert code == 2
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert cast(dict[str, object], payload["exit"])["code"] == 2
     assert cast(list[dict[str, object]], payload["engine_issues"])[0]["code"] == (
         "INVALID_CONFIGURATION"
@@ -293,12 +293,13 @@ def test_config_validate_and_rule_explanation(
 
     assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
     config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
-    assert config_explanation["schema_version"] == 4
+    assert config_explanation["schema_version"] == 5
     assert config_explanation["packs"] == ["taut.backend"]
     assert config_explanation["providers"] == [
         "taut.python-core",
         "taut.fastapi",
         "taut.pydantic",
+        "taut.pytest",
         "taut.sqlalchemy",
         "taut.tortoise",
     ]
@@ -351,7 +352,7 @@ def test_explicit_provider_list_remains_predictable(
 
 
 @pytest.mark.integration
-def test_config_migrate_outputs_v4_without_modifying_source(
+def test_config_migrate_outputs_v5_without_modifying_source(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -364,12 +365,12 @@ def test_config_migrate_outputs_v4_without_modifying_source(
     assert main(["config", "migrate", str(tmp_path)]) == 0
     migrated = capsys.readouterr().out
 
-    assert "schema_version = 4" in migrated
+    assert "schema_version = 5" in migrated
     assert "[assurance.features]" in migrated
     assert 'packs = ["taut.backend"]' in migrated
     assert (
         'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", '
-        '"taut.sqlalchemy", "taut.tortoise"]' in migrated
+        '"taut.pytest", "taut.sqlalchemy", "taut.tortoise"]' in migrated
     )
     assert source.read_text() == original
 
@@ -386,7 +387,7 @@ def test_config_migrate_writes_only_to_explicit_new_output(
 
     assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 0
     assert capsys.readouterr().out == ""
-    assert "schema_version = 4" in output.read_text()
+    assert "schema_version = 5" in output.read_text()
     assert main(["config", "migrate", str(tmp_path), "--output", str(output)]) == 2
     assert "output already exists" in capsys.readouterr().err
 
@@ -481,9 +482,10 @@ def test_init_json_is_read_only_then_writes_only_with_complete_answers(
     assert not (tmp_path / "pyproject.toml").exists()
 
     answers = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": proposal["project_digest"],
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
     answer_path = tmp_path / "answers.json"
@@ -491,7 +493,7 @@ def test_init_json_is_read_only_then_writes_only_with_complete_answers(
 
     assert main(["init", str(tmp_path), "--answers", str(answer_path), "--write"]) == 0
     capsys.readouterr()
-    assert "schema_version = 4" in (tmp_path / "pyproject.toml").read_text()
+    assert "schema_version = 5" in (tmp_path / "pyproject.toml").read_text()
     assert main(["audit", str(tmp_path), "--format", "json"]) == 0
     audit = cast(dict[str, object], json.loads(capsys.readouterr().out))
     assert cast(dict[str, object], audit["assurance"])["complete"] is True
@@ -508,9 +510,10 @@ def test_init_rejects_stale_answers_without_writing(
     answers.write_text(
         json.dumps(
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "project_digest": "0" * 64,
                 "accept_observed_architecture": True,
+                "size": {"accept_observed": True},
                 "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
             }
         )
@@ -581,7 +584,7 @@ def test_machine_readable_schema_and_rules_are_discoverable(
 ) -> None:
     assert main(["config", "schema", "--format", "json"]) == 0
     schema = cast(dict[str, object], json.loads(capsys.readouterr().out))
-    assert schema["schema_version"] == 4
+    assert schema["schema_version"] == 5
 
     assert main(["rules", "DTO001", "--format", "json"]) == 0
     rule = cast(dict[str, object], json.loads(capsys.readouterr().out))
@@ -634,11 +637,14 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def transaction():
     yield object()
+@asynccontextmanager
 async def logged_call():
-    return await httpx.get('https://example.invalid')
+    yield
 async def run(session):
-    await session.commit()
-    await httpx.get('https://example.invalid')
+    async with transaction():
+        await session.commit()
+    async with logged_call():
+        await httpx.get('https://example.invalid')
     return os.getenv('TOKEN')
 """,
         "tests/test_item.py": "def test_item(): pass\n",
@@ -657,9 +663,10 @@ async def run(session):
     assert detected == set(BUILTIN_ASSURANCE_FEATURES)
 
     answers = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": proposal["project_digest"],
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "roles": {"app/snapshot.py": "snapshot"},
         "features": {feature: "required" for feature in BUILTIN_ASSURANCE_FEATURES},
         "policy": {

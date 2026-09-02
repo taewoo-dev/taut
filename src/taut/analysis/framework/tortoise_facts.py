@@ -14,7 +14,7 @@ from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.provenance import Provenance
 
 TORTOISE_PROVIDER_ID = "taut.tortoise"
-TORTOISE_PROVIDER_VERSION = "1"
+TORTOISE_PROVIDER_VERSION = "2"
 TORTOISE_MODELS = "taut.tortoise.models@1"
 TORTOISE_FIELDS = "taut.tortoise.fields@1"
 TORTOISE_RELATIONSHIPS = "taut.tortoise.relationships@1"

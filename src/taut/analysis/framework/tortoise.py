@@ -23,7 +23,14 @@ from taut.analysis.framework.tortoise_facts import (
 )
 from taut.analysis.framework.tortoise_incremental import analyze_incremental_tortoise
 from taut.analysis.providers import CapabilitySpec
-from taut.domain.facts import CallFact, ClassFact, FieldFact, ResolutionState, SymbolRef
+from taut.domain.facts import (
+    CallFact,
+    ClassFact,
+    FieldFact,
+    FunctionFact,
+    ResolutionState,
+    SymbolRef,
+)
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, SymbolId
 from taut.domain.location import SourceRange
@@ -171,6 +178,7 @@ class TortoiseProvider:
     def analyze(self, snapshot: AnalysisSnapshot) -> FrozenMap[str, tuple[object, ...]]:
         classes = tuple(item for module in snapshot.modules.values() for item in module.classes)
         fields = tuple(item for module in snapshot.modules.values() for item in module.fields)
+        functions = tuple(item for module in snapshot.modules.values() for item in module.functions)
         calls = tuple(item for module in snapshot.modules.values() for item in module.calls)
         models = self._models(snapshot, classes)
         model_symbols = frozenset(item.symbol for item in models)
@@ -182,7 +190,7 @@ class TortoiseProvider:
                 (TORTOISE_RELATIONSHIPS, relationships),
                 (TORTOISE_CONNECTIONS, self._connections(calls)),
                 (TORTOISE_TRANSACTIONS, self._transactions(calls)),
-                (TORTOISE_QUERIES, self._queries(calls, model_symbols)),
+                (TORTOISE_QUERIES, self._queries(calls, model_symbols, functions)),
                 (TORTOISE_RAW_SQL, self._raw_sql(calls, model_symbols)),
             )
         )
@@ -354,7 +362,9 @@ class TortoiseProvider:
 
     @staticmethod
     def _queries(
-        calls: tuple[CallFact, ...], models: frozenset[SymbolId]
+        calls: tuple[CallFact, ...],
+        models: frozenset[SymbolId],
+        functions: tuple[FunctionFact, ...] = (),
     ) -> tuple[TortoiseQueryFact, ...]:
         result: list[TortoiseQueryFact] = []
         operations = _READ_QUERIES | _WRITE_QUERIES
@@ -365,6 +375,28 @@ class TortoiseProvider:
             )
         )
         confidence_by_call: dict[FactId, ResolutionState] = {}
+        query_returning = {
+            function.symbol_id
+            for function in functions
+            if any(
+                returned.value.rsplit(".", 1)[-1] in operations
+                and any(
+                    returned.value == model.value or returned.value.startswith(f"{model.value}.")
+                    for model in models
+                )
+                for returned in function.returned_symbols
+            )
+        }
+        changed = True
+        while changed:
+            changed = False
+            for function in functions:
+                if function.symbol_id in query_returning or not set(
+                    function.returned_symbols
+                ).intersection(query_returning):
+                    continue
+                query_returning.add(function.symbol_id)
+                changed = True
         for call in calls:
             operation = _operation(call.ref, operations)
             if operation is None or not (
@@ -374,6 +406,9 @@ class TortoiseProvider:
                 continue
             confidence_by_call[call.id] = call.ref.state
             result.append(_query_fact(call, operation, call.ref.state))
+        for call in calls:
+            if call.ref.symbol in query_returning:
+                confidence_by_call[call.id] = call.ref.state
         pending: list[CallFact] = [call for call in calls if call.id not in confidence_by_call]
         while pending:
             remaining: list[CallFact] = []

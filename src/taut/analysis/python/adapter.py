@@ -14,8 +14,12 @@ from taut.analysis.python.expression_summary import (
     ExpressionSummarizer,
 )
 from taut.analysis.python.fact_order import fact_sort_key
-from taut.analysis.python.import_intent import catches_import_error
+from taut.analysis.python.import_intent import optional_import_nodes
 from taut.analysis.python.module_relations import emit_module_relations
+from taut.analysis.python.return_summaries import (
+    resolved_return_symbols,
+    returned_mapping_keys,
+)
 from taut.analysis.python.scope_flow import BindingState
 from taut.analysis.python.symbol_resolver import (
     PythonSymbolResolver,
@@ -75,6 +79,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self._optional_import_nodes: set[ast.Import | ast.ImportFrom] = set()
         self.class_symbols: set[SymbolId] = set()
         self.function_symbols: set[SymbolId] = set()
+        self._function_nodes: dict[SymbolId, ast.FunctionDef | ast.AsyncFunctionDef] = {}
         self._deferred_bodies: list[tuple[SymbolId, list[ast.stmt]]] = []
         self.enclosing_contexts: list[SymbolRef] = []
         self._syntax = SyntaxContextStack()
@@ -97,7 +102,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
     def extract(self, tree: ast.Module) -> ModuleFacts:
         self._prime_statements(tree.body, None)
         self._index_binding_targets(tree)  # type: ignore[misc]
-        self._index_optional_imports(tree)
+        self._optional_import_nodes = optional_import_nodes(tree)
         self.visit(tree)
         deferred_index = 0
         while deferred_index < len(self._deferred_bodies):
@@ -108,6 +113,21 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             for statement in body:
                 self.visit(statement)
             self.current_scope = previous
+        previous_scope = self.current_scope
+        resolved_functions: list[FunctionFact] = []
+        for function in self.functions:
+            node = self._function_nodes[function.symbol_id]
+            self.current_scope = function.symbol_id
+            resolved_functions.append(
+                replace(
+                    function,
+                    returned_symbols=resolved_return_symbols(
+                        node, self._resolve, self._written_name, self._location
+                    ),
+                )
+            )
+        self.functions = resolved_functions
+        self.current_scope = previous_scope
         module = ModuleIdentity(
             id=self.source.module_id,
             path=self.source.path,
@@ -145,36 +165,6 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             completeness=completeness,
         )
         return facts
-
-    def _index_optional_imports(self, tree: ast.Module) -> None:
-        extractor = self
-
-        class OptionalImportVisitor(ast.NodeVisitor):
-            def visit_Try(self, node: ast.Try) -> None:
-                if catches_import_error(node.handlers):
-                    for statement in node.body:
-                        self._visit_optional_body(statement)
-                self.generic_visit(node)
-
-            def visit_TryStar(self, node: ast.TryStar) -> None:
-                if catches_import_error(node.handlers):
-                    for statement in node.body:
-                        self._visit_optional_body(statement)
-                self.generic_visit(node)
-
-            def _visit_optional_body(self, node: ast.AST) -> None:
-                if isinstance(node, (ast.Import, ast.ImportFrom)):
-                    extractor._optional_import_nodes.add(node)
-                    return
-                if isinstance(
-                    node,
-                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
-                ):
-                    return
-                for child in ast.iter_child_nodes(node):
-                    self._visit_optional_body(child)
-
-        OptionalImportVisitor().visit(tree)
 
     def relations(self, facts: ModuleFacts) -> ModuleRelations:
         return emit_module_relations(
@@ -291,6 +281,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         definition_id = self._next_fact_id(FactKind.DEFINITION, f"function:{symbol.value}")
         self._declare(node.name, symbol, definition_id)
         self.function_symbols.add(symbol)
+        self._function_nodes[symbol] = node
         decorator_refs = tuple(self._resolve(decorator) for decorator in node.decorator_list)
         self._enter_type_resolution()
         parameters = self._summarizer.parameters(node)
@@ -324,6 +315,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
                 location=self._location(node),
                 provenance=self._provenance(node),
                 context=self._syntax_context(),
+                returned_mapping_keys=returned_mapping_keys(node),
             )
         )
         for decorator in node.decorator_list:

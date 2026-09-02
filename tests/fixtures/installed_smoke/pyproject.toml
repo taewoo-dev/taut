@@ -3,7 +3,7 @@ name = "taut-installed-smoke"
 version = "0.0.0"
 
 [tool.taut]
-schema_version = 4
+schema_version = 5
 packs = ["taut.backend"]
 providers = ["taut.python-core"]
 source_roots = ["."]

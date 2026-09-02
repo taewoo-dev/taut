@@ -89,10 +89,10 @@ def test_capability_and_pack_contracts_validate_identity() -> None:
         packs.RulePackV1("example.pack", " ", registry)
 
 
-def test_builtin_pack_declares_capabilities_for_all_48_rules() -> None:
+def test_builtin_pack_declares_capabilities_for_all_49_rules() -> None:
     pack = packs.load_rule_pack(packs.BACKEND_PACK_ID)
 
-    assert len(pack.registry.definitions) == 48
+    assert len(pack.registry.definitions) == 49
     assert all(
         definition.requirements.capabilities for definition in pack.registry.definitions.values()
     )

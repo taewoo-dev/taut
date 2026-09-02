@@ -163,7 +163,7 @@ def render_json(report: RunReport) -> str:
 
 def render_configuration_error_json(engine_version: str, message: str) -> str:
     payload = {
-        "schema_version": 4,
+        "schema_version": 5,
         "engine_version": engine_version,
         "snapshot_id": None,
         "decision_digest": None,

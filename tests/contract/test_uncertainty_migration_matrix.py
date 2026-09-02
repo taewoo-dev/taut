@@ -45,9 +45,9 @@ def test_uncertainty_matrix_covers_exact_builtin_registry_once() -> None:
         "insufficient_analysis_stage",
         "missing_required_fact",
     }
-    assert matrix["expected_builtin_count"] == 48
-    assert len(registry_ids) == 48
-    assert len(rows) == 48
+    assert matrix["expected_builtin_count"] == 49
+    assert len(registry_ids) == 49
+    assert len(rows) == 49
     assert len(row_ids) == len(set(row_ids))
     assert set(row_ids) == registry_ids
     assert not {row["target"] for row in rows}.difference(
@@ -81,7 +81,7 @@ def test_uncertainty_matrix_groups_are_disjoint_and_dependency_ordered() -> None
         grouped[row["implementation_group"]].add(row["id"])
         assert row["source_module"] in matrix["groups"][row["implementation_group"]]["files"]
         assert row["group_files"] == matrix["groups"][row["implementation_group"]]["files"]
-    assert sum(len(ids) for ids in grouped.values()) == 48
+    assert sum(len(ids) for ids in grouped.values()) == 49
     assert all(len(ids) in range(9, 17) for ids in grouped.values())
     assert len({path for group in matrix["groups"].values() for path in group["files"]}) == sum(
         len(group["files"]) for group in matrix["groups"].values()

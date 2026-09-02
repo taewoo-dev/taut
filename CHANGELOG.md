@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.0
+
+### Explicit cross-project contracts
+
+- Separated class-level DTO, Request, Response, Enum, Exception, and Snapshot contracts from
+  module architecture roles.
+- Added one configurable Response mapper name while retaining strict typed-classmethod and
+  explicit-field mapping requirements; bulk object/dict transfer remains rejected.
+- Extended immutable DTO enforcement to Pydantic `ConfigDict(frozen=True)` models and configured
+  first-party DTO bases.
+- Made exception constructor/field code names configurable and scoped duplicate class names to
+  their configured exception family while keeping public error-code uniqueness global.
+
+### Framework and transaction precision
+
+- Added `taut.pytest.fixtures@1` provenance and fixture-dependency facts so raw HTTP test-client
+  exceptions require a proven approved fixture origin.
+- Propagated Tortoise QuerySet identity through statically resolved first-party return values.
+- Added `TX003` for multiple writes outside a proven transaction context or decorator, including
+  capped interprocedural write summaries and relevant uncertainty propagation.
+- Added static mapping-key summaries for endpoint documentation helpers without executing project
+  code.
+
+### Auditable onboarding and assurance
+
+- Added schema/report/init v5, exact activation-symbol liveness and local kind checks, response
+  mapper discovery, and transaction decorator configuration.
+- Added a mandatory review of observed file-size recommendations or explicit project/role limits;
+  init no longer hides the default size budget.
+- Bumped the Python AST adapter identity and Tortoise provider version to prevent stale cache reuse
+  across changed semantic facts.
+
 ## 0.4.0
 
 ### Tortoise ORM support

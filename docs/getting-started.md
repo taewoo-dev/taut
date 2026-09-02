@@ -1,7 +1,7 @@
 # Start using pytaut in a project
 
 This guide covers the complete path from a repository without Taut to strict CI. It describes
-pytaut 0.4.0 and configuration schema v4.
+pytaut 0.5.0 and configuration schema v5.
 
 ## Choose the correct entry path
 
@@ -11,8 +11,8 @@ Use `taut init` only when the repository has no `[tool.taut]` section and no
 | Repository state | Start with |
 |---|---|
 | No Taut configuration | `taut init . --format json` |
-| Existing schema-v4 configuration | `taut audit .` |
-| Existing schema v1-v3 | `taut config migrate . --output migrated-policy.toml` |
+| Existing schema-v5 configuration | `taut audit .` |
+| Existing schema v1-v4 | `taut config migrate . --output migrated-policy.toml` |
 
 `init` refuses an existing configuration during preview as well as during write. It never merges
 or replaces an existing policy.
@@ -20,7 +20,7 @@ or replaces an existing policy.
 ## 1. Install a fixed version
 
 ```bash
-uv add --dev pytaut==0.4.0
+uv add --dev pytaut==0.5.0
 uv run taut --version
 ```
 
@@ -39,9 +39,9 @@ The responsibilities are deliberately separate:
 - Exit code `2` means unresolved onboarding questions; it is expected for the first proposal.
 - No Taut configuration is written without `--write`.
 
-The v4 proposal includes a status, Python paths, detected features, package-aware source-root
+The v5 proposal includes a status, Python paths, detected features, package-aware source-root
 evidence, per-file role candidates, confidence and conflicts, recommended answers, proposed TOML,
-and a project digest.
+observed Response mapper names, an initial size-budget distribution, and a project digest.
 Treat recommendations as evidence to review, not decisions to accept blindly.
 
 Role confidence has four values: `high` for exact directory or semantic evidence, `medium` for a
@@ -68,10 +68,13 @@ exact roles, custom directory aliases, zones, reasoned exclusions, and exact act
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "project_digest": "value returned by init",
   "accept_observed_architecture": true,
   "accept_observed_source_scope": true,
+  "size": {
+    "accept_observed": true
+  },
   "roles": {
     "app/services/payment_client.py": "adapter"
   },
@@ -149,6 +152,16 @@ exception registry, enum, transaction, or external-call feature. Taut validates 
 renders them into TOML, but does not invent repository-owned symbols. Advanced rule-specific
 extensions and approvals remain deliberate post-init edits.
 
+Review `discovered.size` and answer the `size.accept_observed` question. To override it, use
+`"size": {"default_max_lines": 700, "role_max_lines": {"service": 400}}`. Role limits cannot
+exceed the default. Recommendations use the observed 95th percentile with 20 percent headroom,
+round to 50 lines, and apply a 200-line role floor. An unusually large file can therefore remain a
+visible violation instead of silently defining the standard.
+
+If Response models already expose `from_internal()` or `from_result()`, init reports the observed
+names. Mixed conventions or a non-default convention require one explicit
+`policy.code_conventions.response_mapper_name` decision.
+
 ## 4. Write once, safely
 
 ```bash
@@ -217,14 +230,21 @@ Required features often need repository-specific symbols:
 [tool.taut.transaction]
 owner_roles = ["service"]
 session_providers = ["app.db.get_async_session"]
+# Or, for decorator-managed transactions:
+# boundary_decorators = ["app.db.atomic"]
 
 [tool.taut.code_conventions]
 dto_roles = ["dto"]
+dto_base_symbols = ["app.contracts.BaseResult"]
 snapshot_roles = ["snapshot"]
+response_mapper_name = "from_internal"
 request_config_symbols = ["app.schemas.REQUEST_MODEL_CONFIG"]
 response_config_symbols = ["app.schemas.RESPONSE_MODEL_CONFIG"]
 exception_base_symbols = ["app.exceptions.DomainError"]
 error_code_enum_symbols = ["app.enums.ErrorCode"]
+exception_code_argument_names = ["error_code"]
+exception_code_field_names = ["code"]
+test_http_fixture_symbols = ["tests.conftest.api_client"]
 
 [tool.taut.external]
 logged_calls = ["httpx.AsyncClient.get", "httpx.AsyncClient.post"]
@@ -234,7 +254,15 @@ wrappers = ["app.observability.external_call"]
 shared_modules = ["app.enums"]
 ```
 
-Use symbols that exist in the repository. Stale selectors and assertions are assurance failures.
+Use symbols that exist in the repository. Required policy symbols must resolve exactly; missing
+symbols and local class/value/callable kind mismatches are assurance failures.
+
+Every Response contract must expose the configured mapper as a typed `classmethod`. The name is
+configurable, but bulk transfer through `model_dump()`, `model_validate()`, `dict()`, `vars()`,
+`asdict()`, or `**payload` remains a violation: the mapping itself must stay explicit.
+
+Frozen dataclasses and Pydantic models with `ConfigDict(frozen=True)` satisfy the immutable DTO
+contract. A Pydantic DTO can inherit the frozen setting from a first-party frozen base.
 
 For Tortoise ORM, use `tortoise.transactions.in_transaction` directly or identify the connection
 type yielded by a project wrapper:
@@ -249,7 +277,8 @@ session_providers = ["app.db.transaction"]
 ```
 
 Keep `taut.tortoise` in the provider list. Taut then classifies Tortoise models, fields,
-relationships, reads, writes, transactions, and raw SQL. The item-type mapping is unnecessary when
+relationships, reads, writes, QuerySets returned through first-party helpers, transactions, and
+raw SQL. The item-type mapping is unnecessary when
 `session_providers` contains `tortoise.transactions.in_transaction` itself.
 
 The generic database, boundary, transaction, and raw-SQL policies apply to Tortoise. The
@@ -288,6 +317,7 @@ Common assurance codes have direct actions:
 | `FEATURE_ABSENT_DETECTED` | Code contradicts an absent declaration | Mark it required and configure it, or use an exact reasoned assertion when truly not applicable |
 | `FEATURE_POLICY_INACTIVE` | Evidence exists but its role/symbol/zone policy is not active | Connect the corresponding policy settings |
 | `FRAMEWORK_PROVIDER_MISSING` | Imported framework has no semantic provider | Add the corresponding built-in provider instead of accepting syntax-only coverage |
+| `POLICY_SYMBOL_UNRESOLVED` / `POLICY_SYMBOL_KIND_MISMATCH` | An activation symbol is stale or has the wrong local kind | Point the setting at the exact live class, value, or callable |
 | `EXCLUSION_UNUSED` / `ASSERTION_UNUSED` | An exception became stale | Remove or correct it |
 | `APPROVAL_BUDGET_EXCEEDED` / `IGNORE_BUDGET_EXCEEDED` | Used exceptions exceed the declared budget | Remove exceptions or deliberately review the exact budget |
 
@@ -325,7 +355,7 @@ Keep the same pytaut version in the lockfile locally and in CI.
 
 ## Existing projects
 
-Do not run `init` over an existing policy. For schema v1-v3:
+Do not run `init` over an existing policy. For schema v1-v4:
 
 ```bash
 uv run taut config migrate . --output migrated-policy.toml
@@ -347,7 +377,7 @@ Install the repository-pinned pytaut version and onboard this Python project saf
    while questions remain. Do not claim that the proposal is a finished policy.
 2. Review feature and role evidence. Create answers containing project_digest,
    accept_observed_architecture, all 13 required/absent feature decisions, exact-path roles for
-   conflicts, and role_aliases only for real custom directory conventions.
+   conflicts, an explicit size decision, and role_aliases only for real custom directory conventions.
 3. Run init with --answers and --write. Never overwrite an existing Taut configuration.
 4. Review and correct source scope, reasoned exclusions, roles, allow edges, zones, exact symbols,
    transaction providers, external-call wrappers, and exception budgets in pyproject.toml.

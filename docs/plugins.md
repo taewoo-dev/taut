@@ -100,7 +100,7 @@ Then enable it in the checked repository:
 
 ```toml
 [tool.taut]
-schema_version = 4
+schema_version = 5
 packs = ["taut.backend", "example.rules"]
 
 [tool.taut.rules]

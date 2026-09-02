@@ -128,6 +128,30 @@ search.raw("not sql")
     assert result.capabilities[TORTOISE_RAW_SQL] == ()
 
 
+def test_tortoise_provider_propagates_queryset_through_first_party_return() -> None:
+    snapshot = analyze(
+        make_source(
+            "app/models.py",
+            "from tortoise.models import Model\nclass User(Model): pass\n",
+        ),
+        make_source(
+            "app/repository.py",
+            "from app.models import User\ndef active_users(): return User.filter(active=True)\n",
+        ),
+        make_source(
+            "app/service.py",
+            "from app.repository import active_users\n"
+            "async def disable(): return await active_users().update(active=False)\n",
+        ),
+    )
+    result = apply_fact_providers(snapshot, (TortoiseProvider(),))
+    queries = cast(tuple[TortoiseQueryFact, ...], result.capabilities[TORTOISE_QUERIES])
+
+    assert any(
+        fact.operation == "update" and fact.module_id.value == "app.service" for fact in queries
+    )
+
+
 def test_tortoise_connection_registry_get_is_not_a_model_query() -> None:
     snapshot = analyze(
         make_source(

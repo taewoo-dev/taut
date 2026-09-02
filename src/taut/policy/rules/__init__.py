@@ -43,6 +43,9 @@ from taut.policy.rules.model_shapes import (
 from taut.policy.rules.persistence import (
     persistence_rule_definitions as _persistence_rule_definitions,
 )
+from taut.policy.rules.response_mapping import (
+    response_mapping_rule_definition as _response_mapping_rule_definition,
+)
 from taut.policy.rules.responsibility_boundaries import (
     responsibility_boundary_rule_definitions as _responsibility_boundary_rule_definitions,
 )
@@ -58,6 +61,9 @@ from taut.policy.rules.test_boundaries import (
 )
 from taut.policy.rules.time_access import time_rule_definition as _time_rule_definition
 from taut.policy.rules.transaction import (
+    multi_write_atomicity_rule_definition as _multi_write_atomicity_rule_definition,
+)
+from taut.policy.rules.transaction import (
     transaction_rule_definition as _transaction_rule_definition,
 )
 
@@ -70,6 +76,7 @@ def builtin_rule_registry() -> _RuleRegistry:
             _classification_rule_definition(),
             _time_rule_definition(),
             _transaction_rule_definition(),
+            _multi_write_atomicity_rule_definition(),
             *_session_rule_definitions(),
             *_convention_rule_definitions(),
             _boundary_rule_definition(),
@@ -85,6 +92,7 @@ def builtin_rule_registry() -> _RuleRegistry:
             _catalog_coverage_rule_definition(),
             *_model_shape_rule_definitions(),
             *_api_rule_definitions(),
+            _response_mapping_rule_definition(),
             _enum_rule_definition(),
             *_persistence_rule_definitions(),
             _exception_rule_definition(),

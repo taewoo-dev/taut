@@ -136,6 +136,7 @@ class ExpressionSummary:
     arguments: tuple[CallArgument, ...] = ()
     has_unpack: bool = False
     is_dynamic_string: bool = False
+    mapping_keys: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.kind.strip() or not self.written.strip():
@@ -144,6 +145,10 @@ class ExpressionSummary:
             raise ValueError("expression symbols must be unique and sorted")
         if self.collection_size is not None and self.collection_size < 0:
             raise ValueError("expression collection size cannot be negative")
+        if self.mapping_keys is not None and self.mapping_keys != tuple(
+            sorted(set(self.mapping_keys))
+        ):
+            raise ValueError("mapping keys must be unique and sorted")
 
 
 @dataclass(frozen=True)
@@ -276,6 +281,8 @@ class FunctionFact:
     location: SourceRange
     provenance: Provenance
     context: SyntaxContext
+    returned_mapping_keys: tuple[str, ...] | None = None
+    returned_symbols: tuple[SymbolId, ...] = ()
 
 
 @dataclass(frozen=True)

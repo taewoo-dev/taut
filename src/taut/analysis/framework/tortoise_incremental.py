@@ -19,7 +19,7 @@ from taut.analysis.framework.tortoise_facts import (
     TortoiseRelationshipFact,
     TortoiseTransactionFact,
 )
-from taut.domain.facts import CallFact, ClassFact, FieldFact
+from taut.domain.facts import CallFact, ClassFact, FieldFact, FunctionFact
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.domain.snapshot import AnalysisSnapshot
@@ -46,7 +46,8 @@ def analyze_incremental_tortoise(
     connections_from: Callable[[tuple[CallFact, ...]], tuple[TortoiseConnectionFact, ...]],
     transactions_from: Callable[[tuple[CallFact, ...]], tuple[TortoiseTransactionFact, ...]],
     queries_from: Callable[
-        [tuple[CallFact, ...], frozenset[SymbolId]], tuple[TortoiseQueryFact, ...]
+        [tuple[CallFact, ...], frozenset[SymbolId], tuple[FunctionFact, ...]],
+        tuple[TortoiseQueryFact, ...],
     ],
     raw_sql_from: Callable[
         [tuple[CallFact, ...], frozenset[SymbolId]], tuple[TortoiseRawSQLFact, ...]
@@ -62,6 +63,7 @@ def analyze_incremental_tortoise(
     classes = tuple(item for module in selected for item in module.classes)
     fields = tuple(item for module in selected for item in module.fields)
     calls = tuple(item for module in selected for item in module.calls)
+    functions = tuple(item for module in snapshot.modules.values() for item in module.functions)
     old_models = cast(tuple[TortoiseModelFact, ...], previous.get(TORTOISE_MODELS, ()))
     inherited = frozenset(item.symbol for item in old_models if item.module_id not in impacted)
     fresh_models = models_from(snapshot, classes, inherited)
@@ -123,7 +125,7 @@ def analyze_incremental_tortoise(
                 _merge_capability(
                     previous,
                     TORTOISE_QUERIES,
-                    queries_from(calls, all_models),
+                    queries_from(calls, all_models, functions),
                     impacted,
                     lambda item: (item.module_id, item.call.location),
                 ),

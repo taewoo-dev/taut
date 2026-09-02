@@ -125,7 +125,7 @@ def run_config_schema(output_format: str) -> int:
     if output_format == "json":
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
     else:
-        print("Taut 설정 스키마 v4")
+        print("Taut 설정 스키마 v5")
         print("strict=true: 규칙 위반과 assurance 완전성을 함께 강제")
         print("기능 상태: required 또는 absent")
         print("기능: " + ", ".join(BUILTIN_ASSURANCE_FEATURES))

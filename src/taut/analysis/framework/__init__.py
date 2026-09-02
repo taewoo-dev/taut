@@ -29,6 +29,7 @@ from .pydantic import (
     PydanticSerializerFact,
     PydanticValidatorFact,
 )
+from .pytest import PYTEST_FIXTURES, PYTEST_PROVIDER_ID, PytestFixtureFact, PytestProvider
 from .sqlalchemy import (
     SQLALCHEMY_MAPPED_COLUMNS,
     SQLALCHEMY_MODELS,
@@ -63,6 +64,8 @@ __all__ = [
     "PYDANTIC_PROVIDER_ID",
     "PYDANTIC_SERIALIZERS",
     "PYDANTIC_VALIDATORS",
+    "PYTEST_FIXTURES",
+    "PYTEST_PROVIDER_ID",
     "SQLALCHEMY_MAPPED_COLUMNS",
     "SQLALCHEMY_MODELS",
     "SQLALCHEMY_PROVIDER_ID",
@@ -84,6 +87,8 @@ __all__ = [
     "PydanticProvider",
     "PydanticSerializerFact",
     "PydanticValidatorFact",
+    "PytestFixtureFact",
+    "PytestProvider",
     "SQLAlchemyColumnFact",
     "SQLAlchemyConfidence",
     "SQLAlchemyMappedColumnFact",

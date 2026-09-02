@@ -20,6 +20,10 @@ _CODE_SYMBOL_KEYS = frozenset(
         "abstract_exception_symbols",
         "error_code_enum_symbols",
         "reserved_error_code_symbols",
+        "dto_base_symbols",
+        "exception_code_argument_names",
+        "exception_code_field_names",
+        "test_http_fixture_symbols",
     }
 )
 
@@ -35,9 +39,12 @@ class InitPolicyAnswers:
     zones: tuple[tuple[str, tuple[str, ...]], ...] = ()
     exclusions: tuple[InitExclusion, ...] = ()
     code_conventions: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    response_mapper_name: str = "from_internal"
+    response_mapper_explicit: bool = False
     transaction_roles: tuple[str, ...] = ()
     transaction_participants: tuple[str, ...] = ()
     session_providers: tuple[str, ...] = ()
+    boundary_decorators: tuple[str, ...] = ()
     provider_item_types: tuple[tuple[str, str], ...] = ()
     external_modules: tuple[str, ...] = ()
     logged_calls: tuple[str, ...] = ()
@@ -58,17 +65,34 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
     _reject_unknown(policy, {"code_conventions", "transaction", "external", "enum"}, "policy")
 
     code = _table(policy.get("code_conventions", {}), "policy.code_conventions")
-    _reject_unknown(code, _CODE_SYMBOL_KEYS, "policy.code_conventions")
+    _reject_unknown(
+        code,
+        _CODE_SYMBOL_KEYS | {"response_mapper_name"},
+        "policy.code_conventions",
+    )
+    mapper = code.get("response_mapper_name", "from_internal")
+    if not isinstance(mapper, str) or not mapper.isidentifier():
+        raise PolicyConfigError(
+            "policy.code_conventions.response_mapper_name must be a Python identifier"
+        )
     code_values = tuple(
         sorted(
-            (key, _symbols(value, f"policy.code_conventions.{key}")) for key, value in code.items()
+            (key, _symbols(value, f"policy.code_conventions.{key}"))
+            for key, value in code.items()
+            if key != "response_mapper_name"
         )
     )
 
     transaction = _table(policy.get("transaction", {}), "policy.transaction")
     _reject_unknown(
         transaction,
-        {"owner_roles", "participant_roles", "session_providers", "provider_item_types"},
+        {
+            "owner_roles",
+            "participant_roles",
+            "session_providers",
+            "provider_item_types",
+            "boundary_decorators",
+        },
         "policy.transaction",
     )
     owners = _roles(transaction.get("owner_roles", []), "policy.transaction.owner_roles")
@@ -77,6 +101,10 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
     )
     providers = _symbols(
         transaction.get("session_providers", []), "policy.transaction.session_providers"
+    )
+    boundary_decorators = _symbols(
+        transaction.get("boundary_decorators", []),
+        "policy.transaction.boundary_decorators",
     )
     provider_types = _symbol_mapping(
         transaction.get("provider_item_types", {}), "policy.transaction.provider_item_types"
@@ -99,9 +127,12 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
         zones=zones,
         exclusions=exclusions,
         code_conventions=code_values,
+        response_mapper_name=mapper,
+        response_mapper_explicit="response_mapper_name" in code,
         transaction_roles=owners,
         transaction_participants=participants,
         session_providers=providers,
+        boundary_decorators=boundary_decorators,
         provider_item_types=provider_types,
         external_modules=modules,
         logged_calls=logged,
@@ -127,9 +158,9 @@ def missing_policy_decisions(
     if expectations["enum"] == "required" and not policy.shared_enum_modules:
         missing.append(("enum", "shared_modules"))
     if expectations["transaction"] == "required" and not (
-        policy.transaction_roles and policy.session_providers
+        policy.transaction_roles and (policy.session_providers or policy.boundary_decorators)
     ):
-        missing.append(("transaction", "owner_roles and session_providers"))
+        missing.append(("transaction", "owner_roles and session_providers or boundary_decorators"))
     if expectations["external_calls"] == "required" and not (
         policy.logged_calls and policy.external_wrappers
     ):
@@ -163,16 +194,19 @@ def render_policy_lines(policy: InitPolicyAnswers) -> tuple[str, ...]:
                 f"reason = {json.dumps(exclusion.reason)}",
             )
         )
-    if policy.code_conventions:
+    if policy.code_conventions or policy.response_mapper_name != "from_internal":
         lines.extend(("", "[tool.taut.code_conventions]"))
+        lines.append(f"response_mapper_name = {json.dumps(policy.response_mapper_name)}")
         for name, values in policy.code_conventions:
             lines.append(f"{name} = {_toml_array(values)}")
-    if policy.transaction_roles or policy.session_providers:
+    if policy.transaction_roles or policy.session_providers or policy.boundary_decorators:
         lines.extend(("", "[tool.taut.transaction]"))
         lines.append(f"owner_roles = {_toml_array(policy.transaction_roles)}")
         if policy.transaction_participants:
             lines.append(f"participant_roles = {_toml_array(policy.transaction_participants)}")
         lines.append(f"session_providers = {_toml_array(policy.session_providers)}")
+        if policy.boundary_decorators:
+            lines.append(f"boundary_decorators = {_toml_array(policy.boundary_decorators)}")
         if policy.provider_item_types:
             lines.extend(("", "[tool.taut.transaction.provider_item_types]"))
             for provider, item_type in policy.provider_item_types:

@@ -19,6 +19,7 @@ from taut.analysis.framework.tortoise import (
     TORTOISE_RAW_SQL,
     TORTOISE_TRANSACTIONS,
 )
+from taut.assurance_symbols import policy_symbol_issues, same_symbol
 from taut.configuration.assurance import FeatureExpectation
 from taut.configuration.manifest import ClassificationIndex
 from taut.configuration.model import ProjectConfiguration
@@ -133,6 +134,7 @@ def audit_project_assurance(
     framework_providers = {
         "fastapi": "taut.fastapi",
         "pydantic": "taut.pydantic",
+        "pytest": "taut.pytest",
         "sqlalchemy": "taut.sqlalchemy",
         "tortoise": "taut.tortoise",
     }
@@ -158,6 +160,7 @@ def audit_project_assurance(
             )
 
     raw_evidence = _feature_evidence(config, snapshot, classifications)
+    issues.extend(policy_symbol_issues(config, snapshot))
     filtered, used_assertions = _apply_assertions(raw_evidence, config)
     feature_reports: list[FeatureAssurance] = []
     for name, expectation in config.assurance.features.items():
@@ -185,7 +188,7 @@ def audit_project_assurance(
                 )
             )
         if expectation is FeatureExpectation.REQUIRED and detected:
-            issues.extend(_activation_issues(name, config, classifications))
+            issues.extend(_activation_issues(name, config, classifications, snapshot))
 
     for assertion in config.assurance.assertions:
         key = _assertion_key(assertion.domain, assertion.kind, assertion.target)
@@ -387,6 +390,7 @@ def _activation_issues(
     domain: str,
     config: ProjectConfiguration,
     classifications: ClassificationIndex,
+    snapshot: AnalysisSnapshot,
 ) -> tuple[AssuranceIssue, ...]:
     roles = {item.role for item in classifications.modules.values() if item.role is not None}
     code = config.policy.code
@@ -402,7 +406,8 @@ def _activation_issues(
         )
         key = "code_conventions.schema_roles/request_config_symbols/response_config_symbols"
     elif domain == "dto":
-        active, key = bool(roles.intersection(code.dto_roles)), "code_conventions.dto_roles"
+        active = bool(roles.intersection(code.dto_roles) or code.dto_base_symbols)
+        key = "code_conventions.dto_roles/dto_base_symbols"
     elif domain == "snapshot":
         active = bool(roles.intersection(code.snapshot_roles))
         key = "code_conventions.snapshot_roles"
@@ -417,10 +422,37 @@ def _activation_issues(
     elif domain == "transaction":
         active = bool(config.policy.transaction_owner_roles) and bool(
             config.policy.transaction_session_providers
+            or config.policy.transaction_boundary_decorators
         )
-        key = "transaction.owner_roles/session_providers"
+        if active:
+            transaction_symbols = config.policy.transaction_session_providers.union(
+                config.policy.transaction_boundary_decorators
+            )
+            active = any(
+                decorator.ref.symbol is not None
+                and any(same_symbol(decorator.ref.symbol, item) for item in transaction_symbols)
+                for module in snapshot.modules.values()
+                for decorator in module.decorators
+            ) or any(
+                call.ref.symbol is not None
+                and any(same_symbol(call.ref.symbol, item) for item in transaction_symbols)
+                for module in snapshot.modules.values()
+                for call in module.calls
+            )
+        key = "transaction.owner_roles/session_providers/boundary_decorators"
     elif domain == "external_calls":
         active = bool(boundaries.logged_external_calls) and bool(boundaries.external_call_wrappers)
+        if active:
+            active = any(
+                ref.symbol is not None
+                and any(
+                    same_symbol(ref.symbol, wrapper)
+                    for wrapper in boundaries.external_call_wrappers
+                )
+                for module in snapshot.modules.values()
+                for call in module.calls
+                for ref in call.enclosing_contexts
+            )
         key = "external.logged_calls/wrappers"
     elif domain == "tests":
         active = any(item.zone.value == "test" for item in classifications.modules.values())

@@ -1,7 +1,7 @@
 {
   "schema": "taut.backend_uncertainty_migration.v2",
   "version": "0.2.0",
-  "expected_builtin_count": 48,
+  "expected_builtin_count": 49,
   "implemented_evidence": {
     "scope": "groups A-D",
     "status": "implemented",
@@ -508,6 +508,63 @@
       ],
       "dependencies": [
         "A"
+      ]
+    },
+    {
+      "id": "ASYNC001",
+      "source_module": "src/taut/policy/rules/async_safety.py",
+      "evaluator": {
+        "class": "BlockingCallInAsyncRule",
+        "function": "evaluate"
+      },
+      "target": "call",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "enclosing function asyncness",
+        "effect catalog",
+        "access path"
+      ],
+      "resolution_source": "effect_resolution",
+      "resolution_policy": {
+        "resolved": "not_applicable",
+        "conditional": "indeterminate",
+        "ambiguous": "indeterminate",
+        "unresolved": "not_applicable",
+        "dynamic": "not_applicable"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/async_safety.py",
+        "anchors": [
+          "BlockingCallInAsyncRule.evaluate",
+          "ASYNC001 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed; unknown effect currently becomes not_applicable",
+        "provider_opportunity": "complete blocking-effect provider facts"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
       ]
     },
     {
@@ -1123,7 +1180,7 @@
           "ExceptionRegistryRule.evaluate",
           "EXC001 RuleDefinition"
         ],
-      "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous relevant candidates=indeterminate; unresolved/dynamic without candidates=evaluate"
+        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous relevant candidates=indeterminate; unresolved/dynamic without candidates=evaluate"
       },
       "required_code_test_change": "propagate only relevant conditional/ambiguous constructor candidates; unresolved/dynamic without candidates remain compatible evaluation",
       "heuristic_provider_migration": {
@@ -2562,6 +2619,63 @@
       ]
     },
     {
+      "id": "TX003",
+      "source_module": "src/taut/policy/rules/transaction.py",
+      "evaluator": {
+        "class": "MultiWriteAtomicityRule",
+        "function": "evaluate"
+      },
+      "target": "project",
+      "syntax_only": false,
+      "semantic_facts_consumed": [
+        "service call graph",
+        "SQLAlchemy/Tortoise write facts",
+        "transaction scopes"
+      ],
+      "resolution_source": "derived facts only; no SymbolRef state read by evaluator",
+      "resolution_policy": {
+        "resolved": "evaluate",
+        "conditional": "evaluate",
+        "ambiguous": "evaluate",
+        "unresolved": "evaluate",
+        "dynamic": "evaluate"
+      },
+      "missing_capability_completeness": {
+        "missing_capability": "indeterminate",
+        "incomplete_project": "indeterminate",
+        "insufficient_analysis_stage": "indeterminate",
+        "missing_required_fact": "indeterminate"
+      },
+      "current_code_evidence": {
+        "module": "src/taut/policy/rules/transaction.py",
+        "anchors": [
+          "MultiWriteAtomicityRule.evaluate",
+          "TX003 RuleDefinition"
+        ],
+        "current_uncertainty_behavior": "resolved=evaluate; conditional=evaluate; ambiguous=evaluate; unresolved=evaluate; dynamic=evaluate"
+      },
+      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
+      "heuristic_provider_migration": {
+        "current_heuristics": "none observed in evaluator; verify derived facts are complete",
+        "provider_opportunity": "typed provider fact with completeness/confidence"
+      },
+      "implementation_group": "D",
+      "group_files": [
+        "src/taut/policy/rules/persistence.py",
+        "src/taut/policy/rules/runtime_safety.py",
+        "src/taut/policy/rules/session.py",
+        "src/taut/policy/rules/time_access.py",
+        "src/taut/policy/rules/transaction.py",
+        "src/taut/policy/rules/async_safety.py",
+        "src/taut/policy/rules/catalog_coverage.py"
+      ],
+      "dependencies": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    {
       "id": "WIRING001",
       "source_module": "src/taut/policy/rules/construction_boundaries.py",
       "evaluator": {
@@ -2614,63 +2728,6 @@
       "dependencies": [
         "A",
         "B"
-      ]
-    },
-    {
-      "id": "ASYNC001",
-      "source_module": "src/taut/policy/rules/async_safety.py",
-      "evaluator": {
-        "class": "BlockingCallInAsyncRule",
-        "function": "evaluate"
-      },
-      "target": "call",
-      "syntax_only": false,
-      "semantic_facts_consumed": [
-        "enclosing function asyncness",
-        "effect catalog",
-        "access path"
-      ],
-      "resolution_source": "effect_resolution",
-      "resolution_policy": {
-        "resolved": "not_applicable",
-        "conditional": "indeterminate",
-        "ambiguous": "indeterminate",
-        "unresolved": "not_applicable",
-        "dynamic": "not_applicable"
-      },
-      "missing_capability_completeness": {
-        "missing_capability": "indeterminate",
-        "incomplete_project": "indeterminate",
-        "insufficient_analysis_stage": "indeterminate",
-        "missing_required_fact": "indeterminate"
-      },
-      "current_code_evidence": {
-        "module": "src/taut/policy/rules/async_safety.py",
-        "anchors": [
-          "BlockingCallInAsyncRule.evaluate",
-          "ASYNC001 RuleDefinition"
-        ],
-        "current_uncertainty_behavior": "resolved=evaluate; conditional/ambiguous/unresolved/dynamic=not_applicable"
-      },
-      "required_code_test_change": "propagate derived-fact uncertainty as INDETERMINATE before PASS/FAIL; add resolved/conditional/ambiguous/unresolved/dynamic fixtures",
-      "heuristic_provider_migration": {
-        "current_heuristics": "none observed; unknown effect currently becomes not_applicable",
-        "provider_opportunity": "complete blocking-effect provider facts"
-      },
-      "implementation_group": "D",
-      "group_files": [
-        "src/taut/policy/rules/persistence.py",
-        "src/taut/policy/rules/runtime_safety.py",
-        "src/taut/policy/rules/session.py",
-        "src/taut/policy/rules/time_access.py",
-        "src/taut/policy/rules/transaction.py",
-        "src/taut/policy/rules/async_safety.py",
-        "src/taut/policy/rules/catalog_coverage.py"
-      ],
-      "dependencies": [
-        "A",
-        "B",
-        "C"
       ]
     }
   ]

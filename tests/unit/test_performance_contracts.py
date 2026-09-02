@@ -138,7 +138,7 @@ def test_timed_provider_preserves_contract_and_records_duration() -> None:
 
 def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[tool.taut]\nschema_version=4\nstrict=false\ninclude=["app/*.py"]\nsource_roots=["."]\n'
+        '[tool.taut]\nschema_version=5\nstrict=false\ninclude=["app/*.py"]\nsource_roots=["."]\n'
     )
     (tmp_path / "app").mkdir()
     (tmp_path / "app/main.py").write_text("value = 1\n")
@@ -155,6 +155,7 @@ def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path)
         "taut.python-core",
         "taut.fastapi",
         "taut.pydantic",
+        "taut.pytest",
         "taut.sqlalchemy",
         "taut.tortoise",
     }
@@ -163,7 +164,7 @@ def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path)
 
 def test_real_checkout_aggregates_inline_ignore_issue(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[tool.taut]\nschema_version=4\nstrict=false\ninclude=["app/*.py"]\nsource_roots=["."]\n'
+        '[tool.taut]\nschema_version=5\nstrict=false\ninclude=["app/*.py"]\nsource_roots=["."]\n'
     )
     (tmp_path / "app").mkdir()
     (tmp_path / "app/main.py").write_text("value = 1  # taut: ignore\n")
