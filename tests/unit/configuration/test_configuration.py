@@ -56,6 +56,8 @@ service = ["service"]
 owner_roles = ["service"]
 participant_roles = ["service"]
 session_providers = ["app.database.get_async_session"]
+[transaction.provider_item_types]
+"app.database.get_async_session" = "tortoise.backends.base.client.TransactionalDBClient"
 
 [size]
 default_max_lines = 500
@@ -256,6 +258,20 @@ def test_pyproject_configuration_rejects_invalid_or_unknown_values(
         load_project_configuration(tmp_path)
 
 
+def test_transaction_provider_item_type_requires_declared_provider(tmp_path: Path) -> None:
+    invalid = _VALID.replace(
+        '"app.database.get_async_session" = "tortoise.backends.base.client.TransactionalDBClient"',
+        '"app.database.unknown" = "tortoise.backends.base.client.TransactionalDBClient"',
+    )
+    _write(tmp_path, invalid)
+
+    with pytest.raises(
+        PolicyConfigError,
+        match="provider_item_types keys must also be session_providers",
+    ):
+        load_project_configuration(tmp_path)
+
+
 def test_load_v4_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
     _write(tmp_path)
 
@@ -265,6 +281,14 @@ def test_load_v4_configuration_uses_backend_pack_policy(tmp_path: Path) -> None:
     assert config.policy.setting(RuleId("DTO002")).level is RuleLevel.ENFORCED
     assert config.policy.setting(RuleId("CAT001")).level is RuleLevel.ADVISORY
     assert config.policy.transaction_participant_roles == frozenset({Role("service")})
+    assert config.policy.transaction_provider_item_types == FrozenMap(
+        (
+            (
+                SymbolId("app.database.get_async_session"),
+                SymbolId("tortoise.backends.base.client.TransactionalDBClient"),
+            ),
+        )
+    )
     wrapper = config.catalog.entries[SymbolId("app.clock.utc_now")]
     assert wrapper.effects == frozenset({Effect.TIME_NOW})
     assert wrapper.access_path is AccessPath.APPROVED_WRAPPER

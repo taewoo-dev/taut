@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
 from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvider
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
+from taut.analysis.framework.tortoise import TORTOISE_PROVIDER_ID, TortoiseProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
 from taut.configuration.model import ProjectConfiguration
 from taut.domain.assurance import AssuranceIssue
@@ -194,6 +195,8 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
         return SQLAlchemyProvider()
     if provider_id == PYDANTIC_PROVIDER_ID:
         return PydanticProvider()
+    if provider_id == TORTOISE_PROVIDER_ID:
+        return TortoiseProvider()
     matches = tuple(
         point for point in _entry_points("taut.fact_providers.v1") if point.name == provider_id
     )

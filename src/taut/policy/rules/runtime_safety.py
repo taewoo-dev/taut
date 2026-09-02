@@ -122,10 +122,17 @@ class ExternalCallTransactionRule:
                 in {
                     SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin"),
                     SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin_nested"),
+                    SymbolId("tortoise.transactions.atomic"),
+                    SymbolId("tortoise.transactions.in_transaction"),
                 }
                 for symbol in context_symbols
             )
-            if holds_session or holds_transaction:
+            atomic_function = any(
+                decorator.decorated_symbol == call.enclosing_symbol
+                and decorator.ref.symbol == SymbolId("tortoise.transactions.atomic")
+                for decorator in context.model.module(target.module_id).decorators
+            )
+            if holds_session or holds_transaction or atomic_function:
                 findings.append(
                     _finding(
                         TRANSACTION_RULE_ID,

@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.4.0
+
+### Tortoise ORM support
+
+- Added the built-in `taut.tortoise` semantic provider for models, fields, relationships,
+  connections, transactions, queries, and raw SQL.
+- Connected Tortoise facts to database assurance, layer and query boundaries, transaction
+  ownership, and raw-SQL enforcement without relying on receiver variable names.
+- Added optional `transaction.provider_item_types` mappings for project-owned transaction
+  wrappers while preserving SQLAlchemy wrapper compatibility.
+- Added public plugin exports, onboarding detection/defaults, contract tests, and user guidance.
+
+### Reviewable role onboarding
+
+- Added exact singular/plural directory aliases for conventional backend roles without unsafe
+  automatic word singularization.
+- Added role observations with candidates, evidence, confidence, and explicit conflict state to
+  the init JSON v4 contract.
+- Added exact-path `roles` overrides and custom-directory `role_aliases` answers; conflicting
+  evidence now blocks writes until an exact role decision is supplied.
+- Added semantic corroboration for FastAPI routers, Pydantic schemas, and Tortoise models, while
+  keeping low-confidence application fallback visible for review.
+- Stopped treating comments containing `Snapshot` as snapshot-policy evidence.
+
+### Package-aware source onboarding
+
+- Added generic source-root evidence for uv workspaces, Hatch, setuptools, Poetry, PDM, and
+  conventional `src` layouts to the init JSON v4 contract.
+- Added explicit source-scope acceptance and `source_roots` overrides; missing or contradictory
+  package metadata blocks automatic acceptance instead of being guessed.
+- Included the packaging manifests used by discovery in the project digest so stale source-scope
+  answers are rejected after workspace or build configuration changes.
+- Made overlapping source roots deterministic: each Python file is analyzed once relative to its
+  most specific root, while genuine duplicate module identities still fail discovery.
+
+### Complete machine-readable onboarding decisions
+
+- Versioned both proposals and answers at init schema v4 and reject missing or mismatched answer
+  versions with regeneration guidance.
+- Added validated answers for zones, reasoned exclusions, schema and exception symbols, enum
+  modules, transaction providers, and external-call logging wrappers.
+- Required activation details before writing policies for required schema, exception, enum,
+  transaction, and external-call features instead of deferring predictable inactive-policy errors.
+- Proposed only semantic providers supported by real import statements and centralized module ID,
+  relative-import, and internal-import resolution across init and check.
+- Expanded source-module conflict diagnostics with both paths and the source root used for each.
+
 ## 0.3.0
 
 ### Complete project assurance

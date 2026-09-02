@@ -1022,6 +1022,30 @@ async def run(client: httpx.AsyncClient):
     }
 
 
+def test_external_call_rule_recognizes_tortoise_atomic_decorator() -> None:
+    source = make_source(
+        "app/service.py",
+        "from tortoise.transactions import atomic\n"
+        "import requests\n"
+        "@atomic()\n"
+        "def run():\n    return requests.get('https://example.test')\n",
+    )
+    boundaries = replace(
+        _boundary_policy(),
+        logged_external_calls=(SymbolId("requests.get"),),
+    )
+
+    result = _run(
+        source,
+        roles={"service": ("app/**",)},
+        allowed_imports={"service": frozenset({"service"})},
+        boundary_policy=boundaries,
+        code_policy=_code_policy(),
+    )
+
+    assert RuleId("TX002") in {finding.rule_id for finding in result.findings}
+
+
 def test_exception_registry_rule_checks_missing_duplicate_and_unused_codes() -> None:
     base = make_source("app/errors.py", "class AppException(Exception):\n    pass")
     codes = make_source(

@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 
 from taut.analysis.contracts import SourceInput
+from taut.analysis.module_identity import absolute_import_base
 from taut.analysis.python.fact_ids import next_fact_id
 from taut.analysis.python.identity import PYTHON_AST_IDENTITY
 from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
@@ -262,15 +263,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         return self._written_names[node]
 
     def _absolute_import_base(self, module: str | None, level: int) -> str:
-        if level == 0:
-            return module or ""
-        parts = self.source.module_id.value.split(".")
-        if not self.source.is_package:
-            parts = parts[:-1]
-        parts = parts[: max(0, len(parts) - level + 1)]
-        if module:
-            parts.extend(module.split("."))
-        return ".".join(parts)
+        return absolute_import_base(self.source.module_id, self.source.is_package, module, level)
 
     def _scope_chain(self) -> list[SymbolId | None]:
         result: list[SymbolId | None] = []

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import tomllib
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -50,6 +52,7 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
+                "schema_version": 4,
                 "project_digest": proposal.project_digest,
                 "accept_observed_architecture": True,
                 "features": {"unknown": "required"},
@@ -59,6 +62,7 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
+                "schema_version": 4,
                 "project_digest": proposal.project_digest,
                 "accept_observed_architecture": True,
                 "features": [],
@@ -68,6 +72,7 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
     ready = build_init_proposal(
         tmp_path,
         {
+            "schema_version": 4,
             "project_digest": proposal.project_digest,
             "accept_observed_architecture": True,
             "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -132,6 +137,8 @@ def test_getting_started_document_covers_the_machine_onboarding_contract() -> No
         assert 'test "$?" -eq 2' in document
         assert "Python" in document and "digest" in document
         assert "accept_observed_architecture" in document
+        assert "accept_observed_source_scope" in document
+        assert "source_roots" in document and "workspace" in document
         assert "does not" in document and "role" in document
         assert "taut audit" in document and "taut check" in document
     for feature in BUILTIN_ASSURANCE_FEATURES:
@@ -139,3 +146,420 @@ def test_getting_started_document_covers_the_machine_onboarding_contract() -> No
     assert "Prompt for an AI coding agent" in guide
     assert "SOURCE_UNACCOUNTED" in guide
     assert "FEATURE_POLICY_INACTIVE" in guide
+
+
+def test_init_classifies_conventional_singular_and_plural_role_directories(
+    tmp_path: Path,
+) -> None:
+    expected = {
+        "router": ("router", "routers"),
+        "dto": ("dto", "dtos"),
+        "snapshot": ("snapshot", "snapshots"),
+        "exception": ("exceptions", "errors"),
+        "enum": ("enum", "enums"),
+        "schema": ("schema", "schemas"),
+        "model": ("model", "models"),
+        "repository": ("repository", "repositories"),
+        "validator": ("validator", "validators"),
+        "aggregator": ("aggregator", "aggregators"),
+        "adapter": ("adapter", "adapters", "client", "clients"),
+        "service": ("service", "services"),
+        "configuration": ("config", "configuration", "settings"),
+    }
+    for directories in expected.values():
+        for directory in directories:
+            source = tmp_path / "src" / "app" / directory / "orders.py"
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("value = 1\n")
+
+    proposal = build_init_proposal(tmp_path, None)
+    roles = tomllib.loads(proposal.toml)["tool"]["taut"]["roles"]
+
+    for role, directories in expected.items():
+        assert {f"src/app/{directory}/orders.py" for directory in directories}.issubset(roles[role])
+
+
+def test_init_classifies_api_version_modules_and_ignores_snapshot_comments(
+    tmp_path: Path,
+) -> None:
+    route = tmp_path / "src" / "app" / "api" / "v1" / "orders.py"
+    route.parent.mkdir(parents=True)
+    route.write_text("value = 1\n")
+    conftest = tmp_path / "conftest.py"
+    conftest.write_text("# Context - Snapshot\n")
+
+    proposal = build_init_proposal(tmp_path, None)
+    roles = tomllib.loads(proposal.toml)["tool"]["taut"]["roles"]
+
+    assert roles["router"] == ["src/app/api/v1/orders.py"]
+    assert roles["test"] == ["conftest.py"]
+    assert "snapshot" not in proposal.detected_features
+
+
+def test_init_proposes_only_providers_supported_by_import_evidence(tmp_path: Path) -> None:
+    (tmp_path / "api.py").write_text(
+        "from fastapi import APIRouter\nfrom pydantic import BaseModel\n"
+    )
+
+    proposal = build_init_proposal(tmp_path, None)
+
+    assert proposal.providers == ("taut.python-core", "taut.fastapi", "taut.pydantic")
+    assert "taut.sqlalchemy" not in proposal.toml
+    assert "taut.tortoise" not in proposal.toml
+
+
+def test_init_exposes_conflicting_role_evidence_and_requires_exact_override(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "src" / "app" / "services" / "order_model.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("from tortoise.models import Model\nclass Order(Model): pass\n")
+    initial = build_init_proposal(tmp_path, None)
+    complete_answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "accept_observed_source_scope": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+
+    conflicted = build_init_proposal(tmp_path, complete_answers)
+
+    assert conflicted.status == "needs_input"
+    observation = conflicted.role_observations[0]
+    assert observation.path == "src/app/services/order_model.py"
+    assert observation.recommended == "service"
+    assert observation.candidates == ("service", "model")
+    assert observation.requires_review is True
+    assert any(question.id == f"role.{observation.path}" for question in conflicted.questions)
+    discovered = conflicted.json_payload()["discovered"]
+    assert isinstance(discovered, dict)
+    assert conflicted.json_payload()["schema_version"] == 4
+    assert discovered["roles"] == [observation.json_payload()]
+
+    complete_answers["roles"] = {observation.path: "service"}
+    resolved = build_init_proposal(tmp_path, complete_answers)
+
+    assert resolved.status == "ready"
+    assert resolved.role_observations[0].recommended == "service"
+    assert resolved.role_observations[0].confidence == "explicit"
+    roles = tomllib.loads(resolved.toml)["tool"]["taut"]["roles"]
+    assert roles["service"] == [observation.path]
+
+
+def test_init_role_aliases_are_exact_reviewable_directory_decisions(tmp_path: Path) -> None:
+    source = tmp_path / "src" / "app" / "usecases" / "orders.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "accept_observed_source_scope": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+        "role_aliases": {"usecases": "service"},
+    }
+
+    proposal = build_init_proposal(tmp_path, answers)
+
+    assert proposal.status == "ready"
+    observation = proposal.role_observations[0]
+    assert observation.recommended == "service"
+    assert observation.confidence == "high"
+    assert observation.evidence[0].kind == "custom_directory_alias"
+
+
+def test_init_observes_uv_workspace_and_hatch_source_roots(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.uv.workspace]\nmembers = ["packages/*"]\n')
+    member = tmp_path / "packages" / "orders"
+    package = member / "src" / "orders"
+    package.mkdir(parents=True)
+    (member / "pyproject.toml").write_text(
+        '[build-system]\nbuild-backend = "hatchling.build"\n'
+        '[tool.hatch.build.targets.wheel]\npackages = ["src/orders"]\n'
+    )
+    (package / "__init__.py").write_text("")
+    (package / "service.py").write_text("value = 1\n")
+    (tmp_path / "conftest.py").write_text("value = 2\n")
+
+    initial = build_init_proposal(tmp_path, None)
+    scope = initial.json_payload()["discovered"]
+    assert isinstance(scope, dict)
+    source_scope = cast(dict[str, object], scope["source_scope"])
+    assert source_scope["recommended_source_roots"] == (
+        ".",
+        "packages/orders/src",
+    )
+    assert any(question.id == "source_scope.accept_observed" for question in initial.questions)
+
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "accept_observed_source_scope": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    ready = build_init_proposal(tmp_path, answers)
+
+    assert ready.status == "ready"
+    config = tomllib.loads(ready.toml)["tool"]["taut"]
+    assert config["source_roots"] == [".", "packages/orders/src"]
+
+
+def test_init_requires_explicit_source_roots_for_conflicting_workspace_metadata(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/missing"]\n'
+    )
+    (tmp_path / "app.py").write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+    base_answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+
+    with pytest.raises(PolicyConfigError, match="has conflicts"):
+        build_init_proposal(
+            tmp_path,
+            {**base_answers, "accept_observed_source_scope": True},
+        )
+
+    resolved = build_init_proposal(tmp_path, {**base_answers, "source_roots": ["."]})
+    assert resolved.status == "ready"
+
+
+def test_init_requires_review_for_source_root_init_without_module_identity(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.hatch.build.targets.wheel]\npackages = ["src/app"]\n'
+    )
+    source = tmp_path / "src"
+    package = source / "app"
+    package.mkdir(parents=True)
+    (source / "__init__.py").write_text("")
+    (package / "__init__.py").write_text("")
+
+    initial = build_init_proposal(tmp_path, None)
+
+    assert any("non-importable __init__.py" in item for item in initial.source_scope.conflicts)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "source_roots": ["src"],
+        "accept_observed_architecture": True,
+        "exclusions": [{"patterns": ["src/__init__.py"], "reason": "not an importable package"}],
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    resolved = build_init_proposal(tmp_path, answers)
+
+    assert resolved.status == "ready"
+
+
+def test_init_digest_includes_package_metadata(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "example"\n')
+    (tmp_path / "app.py").write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+    pyproject.write_text('[project]\nname = "renamed"\n')
+
+    with pytest.raises(PolicyConfigError, match="stale"):
+        build_init_proposal(
+            tmp_path,
+            {
+                "schema_version": 4,
+                "project_digest": initial.project_digest,
+                "accept_observed_architecture": True,
+                "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+            },
+        )
+
+
+def test_init_renders_reasoned_scope_and_exact_policy_answers(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("value = 1\n")
+    generated = tmp_path / "generated" / "client.py"
+    generated.parent.mkdir()
+    generated.write_text("value = 2\n")
+    initial = build_init_proposal(tmp_path, None)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "zones": {"test": ["spec/**"]},
+        "exclusions": [
+            {
+                "patterns": ["generated/**"],
+                "reason": "generated from the checked-in service contract",
+            }
+        ],
+        "policy": {
+            "code_conventions": {
+                "request_config_symbols": ["app.REQUEST_CONFIG"],
+                "exception_base_symbols": ["app.DomainError"],
+                "error_code_enum_symbols": ["app.ErrorCode"],
+            },
+            "transaction": {
+                "owner_roles": ["application"],
+                "session_providers": ["app.transaction"],
+                "provider_item_types": {"app.transaction": "app.Session"},
+            },
+            "external": {
+                "modules": ["vendor_sdk"],
+                "logged_calls": ["vendor_sdk.Client.send"],
+                "wrappers": ["app.logged_call"],
+            },
+            "enum": {"shared_modules": ["app"]},
+        },
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+
+    proposal = build_init_proposal(tmp_path, answers)
+    config = tomllib.loads(proposal.toml)["tool"]["taut"]
+
+    assert proposal.status == "ready"
+    assert "generated/**" in config["exclude"]
+    assert config["zones"]["test"] == ["spec/**"]
+    assert config["exclusions"][0]["reason"].startswith("generated from")
+    assert config["transaction"]["provider_item_types"] == {"app.transaction": "app.Session"}
+    assert config["external"]["modules"] == ["vendor_sdk"]
+    assert "generated/client.py" not in {
+        path for paths in config["roles"].values() for path in paths
+    }
+
+
+def test_init_requires_current_answers_schema_version(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+
+    for version in (None, 3):
+        answers: dict[str, object] = {"project_digest": initial.project_digest}
+        if version is not None:
+            answers["schema_version"] = version
+        with pytest.raises(PolicyConfigError, match="schema_version must be 4"):
+            build_init_proposal(tmp_path, answers)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        '[tool.setuptools.package-dir]\n"" = "src"\n',
+        '[tool.poetry]\npackages = [{ include = "acme", from = "src" }]\n',
+        '[tool.pdm.build]\npackage-dir = "src"\n',
+    ],
+)
+def test_init_supports_standard_package_source_metadata(tmp_path: Path, metadata: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(metadata)
+    package = tmp_path / "src" / "acme"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+
+    proposal = build_init_proposal(tmp_path, None)
+
+    assert proposal.source_roots == ("src",)
+    assert proposal.source_scope.conflicts == ()
+    assert any(item.confidence == "high" for item in proposal.source_scope.evidence)
+
+
+@pytest.mark.parametrize(
+    ("source_answer", "message"),
+    [
+        ({"source_roots": []}, "non-empty string array"),
+        ({"source_roots": ["missing"]}, "does not exist"),
+        ({"source_roots": ["src"]}, "do not cover every"),
+        (
+            {"accept_observed_source_scope": True, "source_roots": ["."]},
+            "cannot combine",
+        ),
+    ],
+)
+def test_init_rejects_invalid_or_incomplete_source_scope_answers(
+    tmp_path: Path, source_answer: dict[str, object], message: str
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("value = 1\n")
+    (tmp_path / "root_script.py").write_text("value = 2\n")
+    initial = build_init_proposal(tmp_path, None)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+        **source_answer,
+    }
+
+    with pytest.raises(PolicyConfigError, match=message):
+        build_init_proposal(tmp_path, answers)
+
+
+def test_init_prefers_structural_role_evidence_while_exposing_semantic_conflicts(
+    tmp_path: Path,
+) -> None:
+    main = tmp_path / "src" / "app" / "main.py"
+    main.parent.mkdir(parents=True)
+    main.write_text("from fastapi import APIRouter\nrouter = APIRouter()\n")
+    route = tmp_path / "src" / "app" / "routers" / "orders.py"
+    route.parent.mkdir(parents=True)
+    route.write_text("from pydantic import BaseModel\nclass Request(BaseModel): pass\n")
+
+    proposal = build_init_proposal(tmp_path, None)
+    observations = {item.path: item for item in proposal.role_observations}
+
+    assert observations["src/app/main.py"].candidates == ("bootstrap", "router")
+    assert observations["src/app/routers/orders.py"].candidates == ("router", "schema")
+    assert all(item.requires_review for item in observations.values())
+
+
+def test_init_allow_graph_uses_canonical_relative_import_resolution(tmp_path: Path) -> None:
+    service = tmp_path / "src" / "app" / "services" / "orders.py"
+    service.parent.mkdir(parents=True)
+    service.write_text("def load(): return 1\n")
+    router = tmp_path / "src" / "app" / "routers" / "orders.py"
+    router.parent.mkdir(parents=True)
+    router.write_text("from ..services import orders\n")
+    initial = build_init_proposal(tmp_path, None)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "accept_observed_source_scope": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+
+    proposal = build_init_proposal(tmp_path, answers)
+    allow = tomllib.loads(proposal.toml)["tool"]["taut"]["allow"]
+
+    assert "service" in allow["router"]
+
+
+@pytest.mark.parametrize(
+    ("update", "message"),
+    [
+        ({"unexpected": True}, "unknown init answer keys"),
+        ({"accept_observed_architecture": "yes"}, "must be a boolean"),
+        ({"roles": {"missing.py": "service"}}, "does not match"),
+        ({"role_aliases": {"bad/path": "service"}}, "invalid init role alias"),
+        (
+            {"role_aliases": {"services": "repository"}},
+            "cannot redefine built-in directory",
+        ),
+    ],
+)
+def test_init_rejects_ambiguous_or_stale_role_answers(
+    tmp_path: Path, update: dict[str, object], message: str
+) -> None:
+    (tmp_path / "app.py").write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+    answers: dict[str, object] = {
+        "schema_version": 4,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    answers.update(update)
+
+    with pytest.raises(PolicyConfigError, match=message):
+        build_init_proposal(tmp_path, answers)

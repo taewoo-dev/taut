@@ -5,13 +5,7 @@ from dataclasses import dataclass
 from taut.configuration.catalog import Effect, EffectResolutionState
 from taut.configuration.manifest import Role, Zone
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
-from taut.domain.facts import (
-    AnalysisStage,
-    CallFact,
-    GuardKind,
-    ImportFact,
-    ResolutionState,
-)
+from taut.domain.facts import AnalysisStage, CallFact, GuardKind, ImportFact, ResolutionState
 from taut.domain.findings import EvidenceItem, Finding, FindingSubject
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
@@ -75,7 +69,12 @@ def _database_primitive(call: CallFact, context: PolicyContext) -> str | None:
     statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls, context)
     if statement is not None:
         return statement.value
-    return None
+    tortoise = context.tortoise_queries.get(call.id)
+    return (
+        f"tortoise:{tortoise.operation}"
+        if tortoise is not None and tortoise.confidence is ResolutionState.RESOLVED
+        else None
+    )
 
 
 def _external_call(call: CallFact, context: PolicyContext) -> str | None:
@@ -297,6 +296,9 @@ class _RoleBoundaryRule:
             if transport is not None:
                 return "transport", call.ref.symbol.value if call.ref.symbol else transport.value
         elif self.mode == "query":
+            tortoise = context.tortoise_queries.get(call.id)
+            if tortoise is not None and tortoise.is_write:
+                return "write", f"tortoise:{tortoise.operation}"
             symbol = call.ref.symbol
             if (
                 symbol is not None

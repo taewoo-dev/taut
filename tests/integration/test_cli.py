@@ -300,6 +300,7 @@ def test_config_validate_and_rule_explanation(
         "taut.fastapi",
         "taut.pydantic",
         "taut.sqlalchemy",
+        "taut.tortoise",
     ]
 
 
@@ -367,8 +368,8 @@ def test_config_migrate_outputs_v4_without_modifying_source(
     assert "[assurance.features]" in migrated
     assert 'packs = ["taut.backend"]' in migrated
     assert (
-        'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]'
-        in migrated
+        'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", '
+        '"taut.sqlalchemy", "taut.tortoise"]' in migrated
     )
     assert source.read_text() == original
 
@@ -480,6 +481,7 @@ def test_init_json_is_read_only_then_writes_only_with_complete_answers(
     assert not (tmp_path / "pyproject.toml").exists()
 
     answers = {
+        "schema_version": 4,
         "project_digest": proposal["project_digest"],
         "accept_observed_architecture": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -506,6 +508,7 @@ def test_init_rejects_stale_answers_without_writing(
     answers.write_text(
         json.dumps(
             {
+                "schema_version": 4,
                 "project_digest": "0" * 64,
                 "accept_observed_architecture": True,
                 "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -551,6 +554,28 @@ def test_audit_reports_python_source_outside_configured_scope(
 
 
 @pytest.mark.integration
+def test_audit_requires_semantic_provider_for_imported_tortoise(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(
+        tmp_path,
+        "from tortoise.models import Model\nclass User(Model): pass\n",
+        role="model",
+    )
+    _add_provider_list(tmp_path, ("taut.python-core",))
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assurance = cast(dict[str, object], payload["assurance"])
+    issues = cast(list[dict[str, object]], assurance["issues"])
+    assert any(
+        issue["code"] == "FRAMEWORK_PROVIDER_MISSING" and issue["subject"] == "tortoise"
+        for issue in issues
+    )
+
+
+@pytest.mark.integration
 def test_machine_readable_schema_and_rules_are_discoverable(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -564,7 +589,7 @@ def test_machine_readable_schema_and_rules_are_discoverable(
 
 
 @pytest.mark.integration
-def test_init_detects_backend_surfaces_and_audit_exposes_inactive_setup(
+def test_init_requires_backend_policy_details_and_writes_active_setup(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -576,6 +601,12 @@ router = APIRouter()
 def items(): return []
 """,
         "app/schema.py": """
+from pydantic import BaseModel, ConfigDict
+REQUEST_CONFIG = ConfigDict(extra='forbid')
+class Item(BaseModel):
+    value: str
+""",
+        "app/snapshot.py": """
 from pydantic import BaseModel
 class ItemSnapshot(BaseModel):
     value: str
@@ -599,6 +630,12 @@ class AppError(Exception):
         "app/service.py": """
 import os
 import httpx
+from contextlib import asynccontextmanager
+@asynccontextmanager
+async def transaction():
+    yield object()
+async def logged_call():
+    return await httpx.get('https://example.invalid')
 async def run(session):
     await session.commit()
     await httpx.get('https://example.invalid')
@@ -620,23 +657,40 @@ async def run(session):
     assert detected == set(BUILTIN_ASSURANCE_FEATURES)
 
     answers = {
+        "schema_version": 4,
         "project_digest": proposal["project_digest"],
         "accept_observed_architecture": True,
+        "roles": {"app/snapshot.py": "snapshot"},
         "features": {feature: "required" for feature in BUILTIN_ASSURANCE_FEATURES},
+        "policy": {
+            "code_conventions": {
+                "request_config_symbols": ["app.schema.REQUEST_CONFIG"],
+                "exception_base_symbols": ["app.errors.AppError"],
+                "error_code_enum_symbols": ["app.errors.ErrorCode"],
+            },
+            "enum": {"shared_modules": ["app.errors"]},
+            "transaction": {
+                "owner_roles": ["service"],
+                "session_providers": ["app.service.transaction"],
+            },
+            "external": {
+                "logged_calls": ["httpx.get"],
+                "wrappers": ["app.service.logged_call"],
+            },
+        },
     }
     answer_path = tmp_path / "answers.json"
     answer_path.write_text(json.dumps(answers))
     assert main(["init", str(tmp_path), "--answers", str(answer_path), "--write"]) == 0
     capsys.readouterr()
 
-    assert main(["audit", str(tmp_path), "--format", "json"]) == 2
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 0
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
     assurance = cast(dict[str, object], payload["assurance"])
     features = cast(list[dict[str, object]], assurance["features"])
     missing = [item["name"] for item in features if item["detected"] is not True]
     assert not missing
-    issues = cast(list[dict[str, object]], assurance["issues"])
-    assert {item["code"] for item in issues} >= {"FEATURE_POLICY_INACTIVE"}
+    assert cast(list[dict[str, object]], assurance["issues"]) == []
 
 
 @pytest.mark.integration

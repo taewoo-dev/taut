@@ -232,6 +232,9 @@ class EffectivePolicy:
     transaction_owner_roles: frozenset[Role]
     transaction_participant_roles: frozenset[Role] = frozenset()
     transaction_session_providers: frozenset[SymbolId] = frozenset()
+    transaction_provider_item_types: FrozenMap[SymbolId, SymbolId] = field(
+        default_factory=lambda: FrozenMap[SymbolId, SymbolId]()
+    )
     rule_zones: FrozenMap[RuleId, frozenset[Zone]] = field(
         default_factory=lambda: FrozenMap[RuleId, frozenset[Zone]]()
     )
@@ -259,6 +262,10 @@ class EffectivePolicy:
             raise ValueError("policy approvals must be sorted")
         if len({approval.key for approval in self.approvals}) != len(self.approvals):
             raise ValueError("policy approvals must be unique")
+        if not set(self.transaction_provider_item_types).issubset(
+            self.transaction_session_providers
+        ):
+            raise ValueError("transaction provider item types require a configured provider")
 
     def setting(self, rule_id: RuleId) -> RuleSetting:
         return self.rules[rule_id]
@@ -306,6 +313,10 @@ class EffectivePolicy:
             "transaction_session_providers": sorted(
                 symbol.value for symbol in self.transaction_session_providers
             ),
+            "transaction_provider_item_types": [
+                (provider.value, item_type.value)
+                for provider, item_type in self.transaction_provider_item_types.items()
+            ],
             "rule_zones": [
                 (rule_id.value, sorted(zone.value for zone in zones))
                 for rule_id, zones in self.rule_zones.items()

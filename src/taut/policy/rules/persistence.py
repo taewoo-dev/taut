@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from taut.analysis.framework.sqlalchemy_facts import SQLALCHEMY_RAW_SQL, SQLAlchemyRawSQLFact
+from taut.analysis.framework.tortoise_facts import TORTOISE_RAW_SQL, TortoiseRawSQLFact
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
@@ -215,11 +216,33 @@ class RawSqlRule:
             )
             if provider_uncertain is not None:
                 return provider_uncertain
-        provider_calls = {
+        tortoise_relevant = TORTOISE_RAW_SQL in context.model.capabilities() or any(
+            call.ref.symbol is not None and call.ref.symbol.value.startswith("tortoise.")
+            for call in module.calls
+        )
+        if tortoise_relevant:
+            provider_uncertain = uncertain_provider_evaluation(
+                RAW_SQL_RULE_ID,
+                target,
+                context,
+                (TORTOISE_RAW_SQL,),
+                target.module_id,
+                require_capabilities=True,
+            )
+            if provider_uncertain is not None:
+                return provider_uncertain
+        provider_calls: dict[FactId, SQLAlchemyRawSQLFact | TortoiseRawSQLFact] = {
             fact.call.id: fact
             for fact in context.model.capability_values(SQLALCHEMY_RAW_SQL)
             if isinstance(fact, SQLAlchemyRawSQLFact) and fact.module_id == target.module_id
         }
+        provider_calls.update(
+            {
+                fact.call.id: fact
+                for fact in context.model.capability_values(TORTOISE_RAW_SQL)
+                if isinstance(fact, TortoiseRawSQLFact) and fact.module_id == target.module_id
+            }
+        )
         findings: list[Finding] = []
         for call in module.calls:
             provider_fact = provider_calls.get(call.id)
@@ -229,6 +252,12 @@ class RawSqlRule:
                 in {
                     "execute",
                     "exec_driver_sql",
+                    "execute_insert",
+                    "execute_many",
+                    "execute_query",
+                    "execute_query_dict",
+                    "execute_script",
+                    "raw",
                 }
                 and (provider_fact.is_literal or provider_fact.is_dynamic)
             ):
@@ -372,9 +401,9 @@ class RawSqlRule:
         first = next((argument.value for argument in call.arguments if argument.name is None), None)
         if first is None or not (first.literal_kind == "str" or first.is_dynamic_string):
             return False
-        # SQL execution is recognized only through the resolved SQLAlchemy
-        # symbol contract; receiver spelling is not a semantic signal.
-        return call.ref.symbol.value.startswith("sqlalchemy.")
+        # SQL execution is recognized only through a resolved ORM symbol
+        # contract; receiver spelling is not a semantic signal.
+        return call.ref.symbol.value.startswith(("sqlalchemy.", "tortoise."))
 
 
 def _range_contains(outer: SourceRange, inner: SourceRange) -> bool:
@@ -412,8 +441,7 @@ def persistence_rule_definitions() -> tuple[RuleDefinition, ...]:
         (
             RAW_SQL_RULE_ID,
             "Raw SQL 통제 경계",
-            "일반 코드는 SQLAlchemy 표현식을 사용하고, 필요한 Raw SQL은 "
-            "승인된 공용 실행 통로에 두세요.",
+            "일반 코드는 ORM 표현식을 사용하고, 필요한 Raw SQL은 승인된 공용 실행 통로에 두세요.",
             RawSqlRule(),
             "raw_sql",
         ),

@@ -156,6 +156,7 @@ def test_real_checkout_timing_schema_and_provider_ids_are_stable(tmp_path: Path)
         "taut.fastapi",
         "taut.pydantic",
         "taut.sqlalchemy",
+        "taut.tortoise",
     }
     assert result["status"] == "complete" and result["engine_issues"] == 0
 

@@ -54,6 +54,7 @@ from taut.reporting.json import render_json
 from taut.reporting.text import render_text
 
 _ASYNC_SESSION_TYPE = SymbolId("sqlalchemy.ext.asyncio.AsyncSession")
+_TORTOISE_CONNECTION_TYPE = SymbolId("tortoise.backends.base.client.TransactionalDBClient")
 _MINIMUM_PARALLEL_SOURCES = 100
 _MAXIMUM_ANALYSIS_WORKERS = 4
 
@@ -175,7 +176,12 @@ class ResidentCheckSession:
         _timed(timings, "discovery", started)
 
         context_managers = {
-            ContextManagerProvider(symbol, _ASYNC_SESSION_TYPE)
+            ContextManagerProvider(
+                symbol,
+                config.policy.transaction_provider_item_types.get(
+                    symbol, _context_manager_item_type(symbol)
+                ),
+            )
             for symbol in config.policy.transaction_session_providers
         }
         context_managers.update(
@@ -471,3 +477,9 @@ def _analysis_workers(source_count: int) -> int:
         return 1
     available = os.cpu_count() or 1
     return max(1, min(available, _MAXIMUM_ANALYSIS_WORKERS, source_count))
+
+
+def _context_manager_item_type(symbol: SymbolId) -> SymbolId:
+    if symbol.value.startswith("tortoise."):
+        return _TORTOISE_CONNECTION_TYPE
+    return _ASYNC_SESSION_TYPE
