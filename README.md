@@ -4,13 +4,13 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.4.0 adds reviewable, package-aware onboarding and built-in Tortoise ORM semantics while
-preserving strict project assurance. It verifies source scope, role evidence, activation details,
-and every required or absent backend capability before writing policy. It supports Python 3.12 or
-newer on platforms supported by Python:
+Version 0.5.0 strengthens framework-neutral contracts: onboarding now confirms size budgets and
+the project-wide Response mapper, required policy symbols must be live and of the right kind,
+Pydantic DTOs can prove immutability, pytest fixtures retain provenance, and Tortoise QuerySets
+propagate through first-party helpers. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.4.0
+uv add --dev pytaut==0.5.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -30,7 +30,7 @@ uv run taut init . --format json > taut-init.json || test "$?" -eq 2
 
 Taut does not modify the project in this step. The shell redirection (`>`) creates
 `taut-init.json`. Exit code `2` is expected while questions remain; the JSON proposal is still
-valid. Its v4 JSON contains detected Python files and features, package-aware source-root evidence,
+valid. Its v5 JSON contains detected Python files and features, package-aware source-root evidence,
 per-file role candidates, confidence and conflicts, questions, proposed TOML, and a
 `project_digest`.
 
@@ -46,10 +46,13 @@ exclusions, and the repository-specific symbols that activate required policies:
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "project_digest": "copy from taut-init.json",
   "accept_observed_architecture": true,
   "accept_observed_source_scope": true,
+  "size": {
+    "accept_observed": true
+  },
   "roles": {
     "app/services/payment_client.py": "adapter"
   },
@@ -113,6 +116,11 @@ The `policy` object accepts validated `code_conventions`, `transaction`, `extern
 settings. If schema, exception registry, enum, transaction, or external calls are `required`, Taut
 refuses to write until their activation values are present. It never invents project-owned symbols.
 
+The proposed size budget uses the observed per-role 95th percentile with headroom and a minimum
+floor. Review it explicitly with `"size": {"accept_observed": true}` or provide
+`default_max_lines` plus optional `role_max_lines`. This is an initial growth guard, not permission
+to preserve an oversized outlier indefinitely.
+
 ### 3. Write the starting configuration
 
 ```bash
@@ -133,7 +141,9 @@ real code to:
 - one architecture role per analyzed module and the intended `allow` graph;
 - test, migration, and script zones;
 - DTO, snapshot, schema, exception, and enum roles or exact symbols;
-- transaction owner roles and session providers;
+- the single Response mapper name and explicit field mapping inside that mapper;
+- transaction owner roles, session providers, or transaction decorators;
+- pytest HTTP-fixture roles or exact fixture symbols;
 - external modules, logged calls, and approved wrappers;
 - approval and inline-ignore budgets, which default to zero.
 
@@ -165,12 +175,13 @@ default and now includes assurance completeness. File length remains a repositor
 
 ```toml
 [tool.taut]
-schema_version = 4
+schema_version = 5
 packs = ["taut.backend"]
 providers = [
     "taut.python-core",
     "taut.fastapi",
     "taut.pydantic",
+    "taut.pytest",
     "taut.sqlalchemy",
     "taut.tortoise",
 ]
@@ -191,6 +202,11 @@ test = ["tests/*.py", "tests/**/*.py"]
 [tool.taut.transaction]
 owner_roles = ["service"]
 session_providers = ["app.database.get_async_session"]
+# Decorator-managed projects may use:
+# boundary_decorators = ["app.database.atomic"]
+
+[tool.taut.code_conventions]
+response_mapper_name = "from_internal"
 
 [tool.taut.assurance]
 max_approvals = 0
@@ -215,6 +231,18 @@ scripts = "absent"
 Every feature key is mandatory in strict mode. `required` needs real semantic evidence and active
 roles, symbols, and zones. `absent` fails if matching evidence appears. Ambiguous exact paths or
 symbols can be classified only with a reasoned `[[tool.taut.assurance.assertions]]` entry.
+
+Required activation symbols are checked against the analyzed program. A stale symbol produces
+`POLICY_SYMBOL_UNRESOLVED`; a local class/value/callable of the wrong kind produces
+`POLICY_SYMBOL_KIND_MISMATCH`. Response contracts use exactly one configured mapper name. The
+mapper must be a typed `classmethod`, and its body must map fields explicitly—renaming it to
+`from_result` is supported, but bulk `model_dump()`/`model_validate()` or `**payload` copying is
+still rejected. DTO immutability accepts frozen dataclasses and Pydantic models configured with
+`ConfigDict(frozen=True)`, including inheritance from a proven frozen base.
+
+`TEST002` trusts only pytest fixtures whose decorator and dependency chain are present in the
+`taut.pytest.fixtures@1` capability. Approve the fixture by a configured fixture role or an exact
+`test_http_fixture_symbols` entry; a same-named ordinary parameter is not sufficient.
 
 Every Python file below the project root must be analyzed or excluded with a reason:
 
@@ -323,8 +351,8 @@ taut check /path/to/project --config /path/to/audit-policy.toml --no-cache
 
 Role patterns and `source_roots` are resolved relative to the target project, not the
 configuration file. The `.policy/policy.toml` location and explicit external configuration files
-remain supported. Configuration content uses schema v4. Checks reject v1-v3 with an exact
-`taut config migrate` command. Migration prints v4 without changing the source unless an explicit
+remain supported. Configuration content uses schema v5. Checks reject v1-v4 with an exact
+`taut config migrate` command. Migration prints v5 without changing the source unless an explicit
 output path is supplied; generated feature decisions start at `absent`, so the first audit exposes
 every detected policy surface that must be reviewed.
 
@@ -335,7 +363,7 @@ Long findings wrap to the next indented line. Non-terminal output uses a width o
 override it with an option such as `--width 100`. Use `--verbose` only when you need related
 locations, remediation guidance, decision counts, and the decision digest.
 
-JSON report schema v4 includes a structured assurance report in addition to resolved, unresolved,
+JSON report schema v5 includes a structured assurance report in addition to resolved, unresolved,
 ambiguous, and dynamic call/reference counts;
 resolved and unresolved imports; unavailable capabilities; skipped evaluations; and coverage gaps.
 It reports used and unused symbol approvals separately from inline ignores. A rule runs only when
@@ -367,7 +395,7 @@ f-strings or string concatenation.
 
 ## Built-in rules
 
-With the default `strict = true`, `CAT001` is advisory and the other 47 rules are enforced.
+With the default `strict = true`, `CAT001` is advisory and the other 48 rules are enforced.
 Individual rules cannot be disabled. Use `strict = false` before adoption to report every finding
 as a warning.
 
@@ -375,7 +403,7 @@ as a warning.
 |---|---|
 | Architecture | `ARCH000`-`002`, `BOUNDARY001`-`003`, `ENTRY001`, `SERVICE001`, `QUERY001`, `MODEL001`, `ADAPTER001`-`002`, `WIRING001`, `CONFIG001`, `DEPENDS001` |
 | Runtime safety | `TIME001`, `ASYNC001`, `RUNTIME001`, `IMPORT001`, `IMPORT002`, `SIZE001`, `SEC001` |
-| Database and transactions | `TX001`, `TX002`, `SESSION001`-`003`, `ORM001`, `ORM002`, `DB001`, `SQL001` |
+| Database and transactions | `TX001`-`003`, `SESSION001`-`003`, `ORM001`, `ORM002`, `DB001`, `SQL001` |
 | External calls | `HTTP001`, `LOG001`, `CAT001` |
 | Data contracts | `DTO001`, `DTO002`, `SNAPSHOT001`, `SCHEMA001`-`003`, `API001`-`003`, `ENUM001`, `EXC001` |
 | Test boundaries | `TEST001`, `TEST002` |
@@ -395,7 +423,7 @@ target, so each group-C rule follows its matrix row (`evaluate`-compatible for r
 continue, `not_applicable` where no target exists). This preserves unrelated-uncertainty behavior
 and avoids manufacturing relevance from written names.
 
-The built-in backend pack contains all 48 rules. It consumes versioned semantic capabilities from
+The built-in backend pack contains all 49 rules. It consumes versioned semantic capabilities from
 the built-in Python provider (`taut.syntax@1`, `taut.bindings@1`, `taut.imports@1`, and
 `taut.uses@1`). Third-party integrations can use the public `taut.plugins.v1` and
 `taut.semantic.v1` contracts without importing the concrete AST analyzer. See
@@ -411,14 +439,15 @@ provenance in the snapshot and JSON analysis coverage, so integrations can repro
 
 When `taut.backend` is used without an explicit `providers` setting, configuration loads the
 built-in providers in stable order: `taut.python-core`, `taut.fastapi`, `taut.pydantic`,
-`taut.sqlalchemy`, and `taut.tortoise`. An explicit `providers` list is authoritative (for example,
+`taut.pytest`, `taut.sqlalchemy`, and `taut.tortoise`. An explicit `providers` list is authoritative (for example,
 listing only `taut.python-core` intentionally omits framework providers); provider IDs must be
 unique.
 
 ### Tortoise ORM
 
 The built-in `taut.tortoise` provider recognizes `Model` inheritance, `fields.*Field`
-declarations, relationship fields, model/query-set reads and writes, transaction contexts, and
+declarations, relationship fields, model/query-set reads and writes (including QuerySets returned
+through first-party helpers), transaction contexts, and
 raw SQL through `Model.raw`, `RawSQL`, or `BaseDBAsyncClient.execute_*`. These facts participate in
 database assurance, layer boundaries, query write restrictions, transaction checks, and `SQL001`.
 

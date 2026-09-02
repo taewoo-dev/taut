@@ -74,9 +74,9 @@ def _migrate_pyproject(text: str) -> str:
     section_end = _next_table_offset(text, match.end())
     section = text[match.end() : section_end]
     if _SCHEMA_LINE.search(section) is None:
-        additions.append("schema_version = 4")
+        additions.append("schema_version = 5")
     else:
-        section = _SCHEMA_LINE.sub("schema_version = 4", section, count=1)
+        section = _SCHEMA_LINE.sub("schema_version = 5", section, count=1)
     if _PACKS_LINE.search(section) is None:
         additions.append('packs = ["taut.backend"]')
     if _PROVIDERS_LINE.search(section) is None:
@@ -87,24 +87,24 @@ def _migrate_pyproject(text: str) -> str:
     migrated = prefix + section + text[section_end:]
     if _ASSURANCE_HEADER.search(migrated) is None:
         migrated = migrated.rstrip() + "\n\n" + _assurance_block("tool.taut.")
-    return migrated
+    return _ensure_response_mapper(migrated, "tool.taut.")
 
 
 def _migrate_standalone(text: str) -> str:
-    migrated = _SCHEMA_LINE.sub("schema_version = 4", text, count=1)
+    migrated = _SCHEMA_LINE.sub("schema_version = 5", text, count=1)
     if migrated == text:
-        migrated = "schema_version = 4\n" + migrated
+        migrated = "schema_version = 5\n" + migrated
     if _PACKS_LINE.search(migrated) is None:
         schema = _SCHEMA_LINE.search(migrated)
         if schema is None:
-            raise PolicyConfigError("cannot insert v4 rule packs")
+            raise PolicyConfigError("cannot insert v5 rule packs")
         migrated = (
             migrated[: schema.end()] + '\npacks = ["taut.backend"]' + migrated[schema.end() :]
         )
     if _PROVIDERS_LINE.search(migrated) is None:
         packs = _PACKS_LINE.search(migrated)
         if packs is None:
-            raise PolicyConfigError("cannot insert v4 fact providers")
+            raise PolicyConfigError("cannot insert v5 fact providers")
         migrated = (
             migrated[: packs.end()]
             + f"\nproviders = [{_DEFAULT_PROVIDERS}]"
@@ -112,7 +112,7 @@ def _migrate_standalone(text: str) -> str:
         )
     if _ASSURANCE_HEADER.search(migrated) is None:
         migrated = migrated.rstrip() + "\n\n" + _assurance_block("")
-    return migrated
+    return _ensure_response_mapper(migrated, "")
 
 
 def _assurance_block(prefix: str) -> str:
@@ -124,3 +124,16 @@ def _assurance_block(prefix: str) -> str:
 def _next_table_offset(text: str, start: int) -> int:
     match = re.search(r"(?m)^\[", text[start:])
     return len(text) if match is None else start + match.start()
+
+
+def _ensure_response_mapper(text: str, prefix: str) -> str:
+    header = re.compile(rf"(?m)^\[{re.escape(prefix)}code_conventions\]\s*$")
+    match = header.search(text)
+    if match is None:
+        addition = f'\n\n[{prefix}code_conventions]\nresponse_mapper_name = "from_internal"\n'
+        return text.rstrip() + addition
+    end = _next_table_offset(text, match.end())
+    section = text[match.end() : end]
+    if re.search(r"(?m)^response_mapper_name\s*=", section):
+        return text
+    return text[: match.end()] + '\nresponse_mapper_name = "from_internal"' + text[match.end() :]

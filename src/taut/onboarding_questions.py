@@ -8,6 +8,7 @@ from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
 from taut.onboarding_policy import InitPolicyAnswers, missing_policy_decisions
 from taut.onboarding_roles import InitRoleObservation
 from taut.onboarding_scope import InitSourceScope
+from taut.onboarding_size import InitSizePolicy
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ def build_init_questions(
     expectations: dict[str, str],
     feature_evidence: dict[str, list[str]],
     policy: InitPolicyAnswers,
+    observed_response_mappers: tuple[str, ...],
+    size: InitSizePolicy,
 ) -> tuple[InitQuestion, ...]:
     questions: list[InitQuestion] = []
     if not source_scope_resolved:
@@ -51,6 +54,16 @@ def build_init_questions(
                 ("accept", "review"),
                 "review",
                 paths,
+            )
+        )
+    if not size.resolved:
+        questions.append(
+            InitQuestion(
+                "size.accept_observed",
+                "현재 파일 크기 분포에서 계산한 초기 역할별 상한을 사용할까요?",
+                ("accept", "override"),
+                "accept",
+                size.evidence(),
             )
         )
     for observation in role_observations:
@@ -75,6 +88,22 @@ def build_init_questions(
                 ("provide_policy", "set_feature_absent"),
                 "provide_policy",
                 tuple(feature_evidence[feature]),
+            )
+        )
+    observed_mapper = next(iter(observed_response_mappers), None)
+    if (
+        expectations["schema"] == "required"
+        and observed_mapper is not None
+        and (len(observed_response_mappers) > 1 or observed_mapper != "from_internal")
+        and not policy.response_mapper_explicit
+    ):
+        questions.append(
+            InitQuestion(
+                "policy.schema_mapper",
+                "프로젝트 전체에서 사용할 Response 변환 메서드 하나를 선택하세요.",
+                observed_response_mappers,
+                observed_mapper,
+                observed_response_mappers,
             )
         )
     return tuple(questions)

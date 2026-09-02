@@ -30,11 +30,16 @@ _KEYS = frozenset(
         "abstract_exception_symbols",
         "error_code_enum_symbols",
         "reserved_error_code_symbols",
+        "dto_base_symbols",
+        "response_mapper_name",
+        "exception_code_argument_names",
+        "exception_code_field_names",
         "dto_name_suffixes",
         "test_root_paths",
         "raw_test_http_calls",
         "raw_test_http_client_constructors",
         "test_http_fixture_roles",
+        "test_http_fixture_symbols",
     }
 )
 
@@ -83,6 +88,10 @@ def load_code_conventions(value: object) -> CodeConventionPolicy:
     def locked_values(name: str, defaults: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(sorted(set(defaults).union(values(name))))
 
+    mapper = table.get("response_mapper_name", "from_internal")
+    if not isinstance(mapper, str) or not mapper.isidentifier():
+        raise PolicyConfigError("code_conventions.response_mapper_name must be a Python identifier")
+
     return CodeConventionPolicy(
         dto_roles=roles("dto_roles", ["dto"]),
         schema_roles=roles("schema_roles", ["schema"]),
@@ -103,6 +112,12 @@ def load_code_conventions(value: object) -> CodeConventionPolicy:
         abstract_exception_symbols=symbols("abstract_exception_symbols"),
         error_code_enum_symbols=symbols("error_code_enum_symbols"),
         reserved_error_code_symbols=symbols("reserved_error_code_symbols"),
+        dto_base_symbols=symbols("dto_base_symbols"),
+        response_mapper_name=mapper,
+        exception_code_argument_names=tuple(
+            sorted(values("exception_code_argument_names", ["error_code"]))
+        ),
+        exception_code_field_names=tuple(sorted(values("exception_code_field_names", ["code"]))),
         dto_name_suffixes=locked_values("dto_name_suffixes", ("Data", "Result", "Row")),
         test_root_paths=tuple(
             ProjectPath(item) for item in locked_values("test_root_paths", ("tests",))
@@ -135,4 +150,5 @@ def load_code_conventions(value: object) -> CodeConventionPolicy:
             )
         ),
         test_http_fixture_roles=roles("test_http_fixture_roles", []),
+        test_http_fixture_symbols=symbols("test_http_fixture_symbols"),
     )

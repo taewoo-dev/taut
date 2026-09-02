@@ -10,6 +10,7 @@ BUILTIN_RULE_LEVELS = FrozenMap(
         "ARCH000",
         "TIME001",
         "TX001",
+        "TX003",
         "SESSION001",
         "SESSION002",
         "SESSION003",

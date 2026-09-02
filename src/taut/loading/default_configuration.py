@@ -57,7 +57,7 @@ def default_project_configuration(
             transaction_owner_roles=frozenset(),
             security=security,
         ),
-        schema_version=4,
+        schema_version=5,
         strict=False,
         assurance=AssuranceConfiguration.non_strict_default(),
     )

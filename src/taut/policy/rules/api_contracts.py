@@ -5,8 +5,14 @@ from taut.analysis.framework.fastapi import (
     FASTAPI_RESPONSE_MODELS,
     FASTAPI_ROUTERS,
 )
-from taut.analysis.framework.pydantic import PYDANTIC_FIELDS, PYDANTIC_OPERATIONS
-from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
+from taut.analysis.framework.pydantic import PYDANTIC_FIELDS
+from taut.domain.evaluations import (
+    ChangeImpact,
+    EvaluationReason,
+    RuleTarget,
+    RuleTargetRef,
+    RuleVerdict,
+)
 from taut.domain.facts import (
     AnalysisStage,
     CallFact,
@@ -26,7 +32,6 @@ from taut.policy.rules.helpers import (
 ENDPOINT_RULE_ID = RuleId("API001")
 FIELD_RULE_ID = RuleId("API002")
 ROUTER_METADATA_RULE_ID = RuleId("API003")
-MAPPING_RULE_ID = RuleId("SCHEMA003")
 RULE_VERSION = 1
 FIELD_RULE_VERSION = 2
 ROUTER_METADATA_RULE_VERSION = 2
@@ -54,6 +59,76 @@ def _is_endpoint(decorator: DecoratorFact) -> bool:
 
 def _keyword(decorator: DecoratorFact, name: str) -> ExpressionSummary | None:
     return next((argument.value for argument in decorator.arguments if argument.name == name), None)
+
+
+def _mapping_keys(expression: ExpressionSummary, context: PolicyContext) -> tuple[str, ...] | None:
+    if expression.mapping_keys is not None:
+        return expression.mapping_keys
+    functions = {
+        context.model.canonical_symbol(function.symbol_id): function
+        for module_id in context.model.modules()
+        for function in context.model.module(module_id).functions
+    }
+    fields = {
+        context.model.canonical_symbol(field.symbol_id): field
+        for module_id in context.model.modules()
+        for field in context.model.module(module_id).fields
+        if field.value is not None
+    }
+
+    def keys_for_symbol(
+        symbol: SymbolId, visiting: frozenset[SymbolId] = frozenset()
+    ) -> tuple[str, ...] | None:
+        canonical = context.model.canonical_symbol(symbol)
+        if canonical in visiting:
+            return None
+        function = functions.get(canonical)
+        if function is not None and function.returned_mapping_keys is not None:
+            return function.returned_mapping_keys
+        if function is not None:
+            forwarded = tuple(
+                keys
+                for returned in function.returned_symbols
+                if (keys := keys_for_symbol(returned, visiting | {canonical})) is not None
+            )
+            if forwarded:
+                return _intersect_keys(forwarded)
+        field = fields.get(canonical)
+        if field is not None and field.value is not None and field.value.mapping_keys is not None:
+            return field.value.mapping_keys
+        return None
+
+    candidates = tuple(
+        keys for symbol in expression.symbols if (keys := keys_for_symbol(symbol)) is not None
+    )
+    if not candidates:
+        return None
+    return _intersect_keys(candidates)
+
+
+def _intersect_keys(candidates: tuple[tuple[str, ...], ...]) -> tuple[str, ...]:
+    common = set(candidates[0])
+    for candidate in candidates[1:]:
+        common.intersection_update(candidate)
+    return tuple(sorted(common))
+
+
+def _keyword_state(decorator: DecoratorFact, name: str, context: PolicyContext) -> bool | None:
+    if _keyword(decorator, name) is not None:
+        return True
+    unpacked = tuple(
+        argument.value for argument in decorator.arguments[1:] if argument.name is None
+    )
+    if not unpacked:
+        return False
+    unknown = False
+    for expression in unpacked:
+        keys = _mapping_keys(expression, context)
+        if keys is None:
+            unknown = True
+        elif name in keys:
+            return True
+    return None if unknown else False
 
 
 def _is_no_body_type(expression: ExpressionSummary | None) -> bool:
@@ -94,6 +169,7 @@ class EndpointDocumentationRule:
         module = context.model.module(target.module_id)
         functions = {function.symbol_id: function for function in module.functions}
         findings: list[Finding] = []
+        coverage_gaps: list[EvaluationReason] = []
         for decorator in module.decorators:
             if not _is_endpoint(decorator):
                 continue
@@ -112,7 +188,8 @@ class EndpointDocumentationRule:
                         "docstring",
                     )
                 )
-            if _keyword(decorator, "responses") is None:
+            responses = _keyword_state(decorator, "responses", context)
+            if responses is False:
                 findings.append(
                     build_policy_finding(
                         ENDPOINT_RULE_ID,
@@ -124,7 +201,15 @@ class EndpointDocumentationRule:
                         "responses",
                     )
                 )
-            if _keyword(decorator, "response_model") is None and not _no_response_model_needed(
+            elif responses is None:
+                coverage_gaps.append(
+                    EvaluationReason(
+                        "unresolved_mapping",
+                        f"{function.symbol_id.value}의 responses mapping을 확정하지 못했습니다.",
+                    )
+                )
+            response_model = _keyword_state(decorator, "response_model", context)
+            if response_model is False and not _no_response_model_needed(
                 decorator, function.return_annotation
             ):
                 findings.append(
@@ -138,8 +223,31 @@ class EndpointDocumentationRule:
                         "response_model",
                     )
                 )
+            elif response_model is None:
+                coverage_gaps.append(
+                    EvaluationReason(
+                        "unresolved_mapping",
+                        f"{function.symbol_id.value}의 response_model mapping을 "
+                        "확정하지 못했습니다.",
+                    )
+                )
         if findings:
-            return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.FAIL, tuple(findings))
+            return RuleEvaluation(
+                ENDPOINT_RULE_ID,
+                target,
+                RuleVerdict.FAIL,
+                tuple(findings),
+                coverage_gaps=tuple(sorted(set(coverage_gaps), key=lambda item: item.message)),
+            )
+        if coverage_gaps:
+            return RuleEvaluation(
+                ENDPOINT_RULE_ID,
+                target,
+                RuleVerdict.INDETERMINATE,
+                (),
+                coverage_gaps[0],
+                tuple(sorted(set(coverage_gaps), key=lambda item: item.message)),
+            )
         return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.PASS, ())
 
 
@@ -323,96 +431,6 @@ class RouterMetadataRule:
         return RuleEvaluation(ROUTER_METADATA_RULE_ID, target, RuleVerdict.PASS, ())
 
 
-class ResponseMappingRule:
-    def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
-        if target.module_id is None:
-            raise ValueError("SCHEMA003 requires a module target")
-        role = context.classification.get(target.module_id).role
-        if (
-            role not in context.policy.code.schema_roles
-            and role not in context.policy.code.router_roles
-        ):
-            return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(
-            MAPPING_RULE_ID, target, context, (PYDANTIC_OPERATIONS,), True
-        )
-        if uncertainty is not None:
-            return uncertainty
-        module = context.model.module(target.module_id)
-        findings: list[Finding] = []
-        if role in context.policy.code.schema_roles:
-            functions = {function.symbol_id: function for function in module.functions}
-            for class_fact in module.classes:
-                if not class_fact.name.endswith(("Response", "ResponseModel")):
-                    continue
-                method_symbol = SymbolId(f"{class_fact.symbol_id.value}.from_internal")
-                method = functions.get(method_symbol)
-                if method is None:
-                    findings.append(
-                        build_policy_finding(
-                            MAPPING_RULE_ID,
-                            target.module_id,
-                            class_fact.symbol_id,
-                            class_fact.id,
-                            class_fact.location,
-                            "schema.from_internal_missing",
-                            "from_internal",
-                        )
-                    )
-                    continue
-                unsafe = tuple(
-                    call
-                    for call in module.calls
-                    if call.enclosing_symbol == method_symbol
-                    and (
-                        call.has_keyword_unpack
-                        or (
-                            call.ref.symbol is not None
-                            and call.ref.symbol.value.rsplit(".", maxsplit=1)[-1]
-                            in {"asdict", "model_dump", "model_validate", "vars"}
-                        )
-                    )
-                )
-                findings.extend(
-                    build_policy_finding(
-                        MAPPING_RULE_ID,
-                        target.module_id,
-                        class_fact.symbol_id,
-                        call.id,
-                        call.location,
-                        "schema.bulk_mapping",
-                        call.ref.written_name,
-                    )
-                    for call in unsafe
-                )
-        elif role in context.policy.code.router_roles:
-            for call in module.calls:
-                symbol = call.ref.symbol
-                if symbol is None:
-                    continue
-                class_name = symbol.value.rsplit(".", maxsplit=1)[-1]
-                if symbol.value.startswith(("fastapi.", "starlette.")):
-                    continue
-                if not class_name.endswith("Response"):
-                    continue
-                findings.append(
-                    build_policy_finding(
-                        MAPPING_RULE_ID,
-                        target.module_id,
-                        call.enclosing_symbol or symbol,
-                        call.id,
-                        call.location,
-                        "schema.router_direct_mapping",
-                        class_name,
-                    )
-                )
-        else:
-            return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        if findings:
-            return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.FAIL, tuple(findings))
-        return RuleEvaluation(MAPPING_RULE_ID, target, RuleVerdict.PASS, ())
-
-
 def api_rule_definitions() -> tuple[RuleDefinition, ...]:
     requirements = RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False)
     project_requirements = RuleRequirements(
@@ -458,17 +476,5 @@ def api_rule_definitions() -> tuple[RuleDefinition, ...]:
             RouterMetadataRule(),
             ("tests/fixtures/rules/api_metadata/compliant.py",),
             ("tests/fixtures/rules/api_metadata/violation.py",),
-        ),
-        RuleDefinition(
-            MAPPING_RULE_ID,
-            RULE_VERSION,
-            "응답 자료 변환 경계",
-            "응답 변환은 Response.from_internal에서 필드를 하나씩 명시하세요.",
-            RuleTarget.MODULE,
-            requirements,
-            ChangeImpact.SELF,
-            ResponseMappingRule(),
-            ("tests/fixtures/rules/response_mapping/compliant.py",),
-            ("tests/fixtures/rules/response_mapping/violation.py",),
         ),
     )

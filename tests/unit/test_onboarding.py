@@ -52,9 +52,10 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "project_digest": proposal.project_digest,
                 "accept_observed_architecture": True,
+                "size": {"accept_observed": True},
                 "features": {"unknown": "required"},
             },
         )
@@ -62,9 +63,10 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "project_digest": proposal.project_digest,
                 "accept_observed_architecture": True,
+                "size": {"accept_observed": True},
                 "features": [],
             },
         )
@@ -72,20 +74,21 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
     ready = build_init_proposal(
         tmp_path,
         {
-            "schema_version": 4,
+            "schema_version": 5,
             "project_digest": proposal.project_digest,
             "accept_observed_architecture": True,
+            "size": {"accept_observed": True},
             "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
         },
     )
     target = Path("taut.toml")
     write_init_configuration(tmp_path, target, ready)
-    assert (tmp_path / target).read_text().startswith("schema_version = 4")
+    assert (tmp_path / target).read_text().startswith("schema_version = 5")
     with pytest.raises(PolicyConfigError, match="configuration already exists"):
         write_init_configuration(tmp_path, target, ready)
 
     standalone = tmp_path / "taut.toml"
-    standalone.write_text("schema_version = 4\n")
+    standalone.write_text("schema_version = 5\n")
     with pytest.raises(PolicyConfigError, match="configuration already exists"):
         ensure_init_target_is_new(tmp_path, standalone)
 
@@ -125,7 +128,7 @@ def test_assurance_value_objects_reject_ambiguous_exceptions() -> None:
     assert AssuranceConfiguration.all_absent().features["api"] is FeatureExpectation.ABSENT
     assert AssuranceConfiguration.non_strict_default().features == FrozenMap()
     assert AssuranceReport().complete is True
-    assert configuration_schema_payload()["schema_version"] == 4
+    assert configuration_schema_payload()["schema_version"] == 5
 
 
 def test_getting_started_document_covers_the_machine_onboarding_contract() -> None:
@@ -216,9 +219,10 @@ def test_init_exposes_conflicting_role_evidence_and_requires_exact_override(
     source.write_text("from tortoise.models import Model\nclass Order(Model): pass\n")
     initial = build_init_proposal(tmp_path, None)
     complete_answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -234,7 +238,7 @@ def test_init_exposes_conflicting_role_evidence_and_requires_exact_override(
     assert any(question.id == f"role.{observation.path}" for question in conflicted.questions)
     discovered = conflicted.json_payload()["discovered"]
     assert isinstance(discovered, dict)
-    assert conflicted.json_payload()["schema_version"] == 4
+    assert conflicted.json_payload()["schema_version"] == 5
     assert discovered["roles"] == [observation.json_payload()]
 
     complete_answers["roles"] = {observation.path: "service"}
@@ -253,9 +257,10 @@ def test_init_role_aliases_are_exact_reviewable_directory_decisions(tmp_path: Pa
     source.write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
         "role_aliases": {"usecases": "service"},
@@ -268,6 +273,51 @@ def test_init_role_aliases_are_exact_reviewable_directory_decisions(tmp_path: Pa
     assert observation.recommended == "service"
     assert observation.confidence == "high"
     assert observation.evidence[0].kind == "custom_directory_alias"
+
+
+def test_init_requires_one_explicit_response_mapper_when_project_convention_differs(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app" / "schemas" / "user.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        """from pydantic import BaseModel
+class UserResponse(BaseModel):
+    @classmethod
+    def from_result(cls, value):
+        return cls.model_validate(value)
+"""
+    )
+
+    proposal = build_init_proposal(tmp_path, None)
+
+    discovered = cast(dict[str, object], proposal.json_payload()["discovered"])
+    assert discovered["response_mappers"] == ("from_result",)
+    mapper_question = next(item for item in proposal.questions if item.id == "policy.schema_mapper")
+    assert mapper_question.choices == ("from_result",)
+
+
+def test_init_requires_reviewed_size_budget_and_renders_explicit_override(tmp_path: Path) -> None:
+    source = tmp_path / "app" / "services" / "orders.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("\n".join(f"value_{index} = {index}" for index in range(30)) + "\n")
+    initial = build_init_proposal(tmp_path, None)
+
+    assert any(item.id == "size.accept_observed" for item in initial.questions)
+    answers: dict[str, object] = {
+        "schema_version": 5,
+        "project_digest": initial.project_digest,
+        "accept_observed_architecture": True,
+        "accept_observed_source_scope": True,
+        "size": {"default_max_lines": 600, "role_max_lines": {"service": 250}},
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    ready = build_init_proposal(tmp_path, answers)
+
+    assert ready.status == "ready"
+    config = tomllib.loads(ready.toml)["tool"]["taut"]
+    assert config["max_lines"] == 600
+    assert config["role_max_lines"] == {"service": 250}
 
 
 def test_init_observes_uv_workspace_and_hatch_source_roots(tmp_path: Path) -> None:
@@ -294,9 +344,10 @@ def test_init_observes_uv_workspace_and_hatch_source_roots(tmp_path: Path) -> No
     assert any(question.id == "source_scope.accept_observed" for question in initial.questions)
 
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -316,9 +367,10 @@ def test_init_requires_explicit_source_roots_for_conflicting_workspace_metadata(
     (tmp_path / "app.py").write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     base_answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
 
@@ -348,10 +400,11 @@ def test_init_requires_review_for_source_root_init_without_module_identity(
 
     assert any("non-importable __init__.py" in item for item in initial.source_scope.conflicts)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "source_roots": ["src"],
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "exclusions": [{"patterns": ["src/__init__.py"], "reason": "not an importable package"}],
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -371,9 +424,10 @@ def test_init_digest_includes_package_metadata(tmp_path: Path) -> None:
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 4,
+                "schema_version": 5,
                 "project_digest": initial.project_digest,
                 "accept_observed_architecture": True,
+                "size": {"accept_observed": True},
                 "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
             },
         )
@@ -386,9 +440,10 @@ def test_init_renders_reasoned_scope_and_exact_policy_answers(tmp_path: Path) ->
     generated.write_text("value = 2\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "zones": {"test": ["spec/**"]},
         "exclusions": [
             {
@@ -439,7 +494,7 @@ def test_init_requires_current_answers_schema_version(tmp_path: Path) -> None:
         answers: dict[str, object] = {"project_digest": initial.project_digest}
         if version is not None:
             answers["schema_version"] = version
-        with pytest.raises(PolicyConfigError, match="schema_version must be 4"):
+        with pytest.raises(PolicyConfigError, match="schema_version must be 5"):
             build_init_proposal(tmp_path, answers)
 
 
@@ -484,9 +539,10 @@ def test_init_rejects_invalid_or_incomplete_source_scope_answers(
     (tmp_path / "root_script.py").write_text("value = 2\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
         **source_answer,
     }
@@ -522,9 +578,10 @@ def test_init_allow_graph_uses_canonical_relative_import_resolution(tmp_path: Pa
     router.write_text("from ..services import orders\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -554,9 +611,10 @@ def test_init_rejects_ambiguous_or_stale_role_answers(
     (tmp_path / "app.py").write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "project_digest": initial.project_digest,
         "accept_observed_architecture": True,
+        "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
     answers.update(update)

@@ -2,6 +2,7 @@ from tests.utils.builders import analyze, make_source
 
 from taut.analysis.framework.fastapi import FASTAPI_ENDPOINTS
 from taut.analysis.framework.pydantic import PYDANTIC_MODELS
+from taut.analysis.framework.pytest import PYTEST_FIXTURES
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_MODELS
 from taut.analysis.framework.tortoise import TORTOISE_MODELS
 from taut.analysis.providers import apply_fact_providers
@@ -17,6 +18,7 @@ from taut.plugins.v1 import (
 from taut.plugins.v1 import (
     PYDANTIC_MODELS as PUBLIC_PYDANTIC_MODELS,
 )
+from taut.plugins.v1 import PYTEST_FIXTURES as PUBLIC_PYTEST_FIXTURES
 from taut.plugins.v1 import (
     SQLALCHEMY_MODELS as PUBLIC_SQLALCHEMY_MODELS,
 )
@@ -65,12 +67,14 @@ def test_builtin_provider_ids_and_public_capabilities_are_compatible() -> None:
         "taut.python-core",
         "taut.fastapi",
         "taut.pydantic",
+        "taut.pytest",
         "taut.sqlalchemy",
         "taut.tortoise",
     )
     assert PUBLIC_FASTAPI_ENDPOINTS == FASTAPI_ENDPOINTS
     assert PUBLIC_SQLALCHEMY_MODELS == SQLALCHEMY_MODELS
     assert PUBLIC_PYDANTIC_MODELS == PYDANTIC_MODELS
+    assert PUBLIC_PYTEST_FIXTURES == PYTEST_FIXTURES
     assert PUBLIC_TORTOISE_MODELS == TORTOISE_MODELS
     assert [load_fact_provider(item).id for item in BUILTIN_BACKEND_PROVIDER_IDS] == list(
         BUILTIN_BACKEND_PROVIDER_IDS

@@ -9,6 +9,7 @@ from typing import Any, Protocol, cast
 
 from taut.analysis.framework.fastapi import FASTAPI_PROVIDER_ID, FastAPIProvider
 from taut.analysis.framework.pydantic import PYDANTIC_PROVIDER_ID, PydanticProvider
+from taut.analysis.framework.pytest import PYTEST_PROVIDER_ID, PytestProvider
 from taut.analysis.framework.sqlalchemy import SQLALCHEMY_PROVIDER_ID, SQLAlchemyProvider
 from taut.analysis.framework.tortoise import TORTOISE_PROVIDER_ID, TortoiseProvider
 from taut.analysis.providers import CapabilitySpec, FactProviderV1
@@ -168,7 +169,10 @@ def _capabilities_for(rule_id: str) -> frozenset[str]:
         return frozenset({SYNTAX_CAPABILITY})
     if rule_id in imports:
         return frozenset({SYNTAX_CAPABILITY, IMPORT_CAPABILITY})
-    return frozenset({SYNTAX_CAPABILITY, BINDING_CAPABILITY, USE_CAPABILITY})
+    values = {SYNTAX_CAPABILITY, BINDING_CAPABILITY, USE_CAPABILITY}
+    if rule_id == "TEST002":
+        values.add("taut.pytest.fixtures@1")
+    return frozenset(values)
 
 
 def load_rule_pack(pack_id: str) -> RulePackV1:
@@ -195,6 +199,8 @@ def load_fact_provider(provider_id: str) -> FactProviderV1:
         return SQLAlchemyProvider()
     if provider_id == PYDANTIC_PROVIDER_ID:
         return PydanticProvider()
+    if provider_id == PYTEST_PROVIDER_ID:
+        return PytestProvider()
     if provider_id == TORTOISE_PROVIDER_ID:
         return TortoiseProvider()
     matches = tuple(

@@ -96,8 +96,8 @@ def load_configuration_bootstrap(
         root = document.root
         _reject_unknown(root, _ROOT_KEYS, "config")
         version = root.get("schema_version")
-        if version != 4:
-            raise PolicyConfigError("schema_version must be 4; run 'taut config migrate' first")
+        if version != 5:
+            raise PolicyConfigError("schema_version must be 5; run 'taut config migrate' first")
         return ConfigurationBootstrap(
             _strings(root.get("packs", ["taut.backend"]), "packs"),
             _strings(
@@ -130,8 +130,8 @@ def _load_project_configuration(
     root = document.root
     _reject_unknown(root, _ROOT_KEYS, "config")
     version = root.get("schema_version")
-    if version != 4:
-        raise PolicyConfigError("schema_version must be 4; run 'taut config migrate' first")
+    if version != 5:
+        raise PolicyConfigError("schema_version must be 5; run 'taut config migrate' first")
 
     packs = _strings(root.get("packs", ["taut.backend"]), "packs")
     providers = _strings(root.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)), "providers")
@@ -180,7 +180,7 @@ def _load_project_configuration(
         manifest,
         catalog,
         policy,
-        schema_version=4,
+        schema_version=5,
         packs=packs,
         providers=providers,
         strict=document.strict,
@@ -350,7 +350,15 @@ def _load_policy(
     transaction = _table(root.get("transaction", {}), "transaction")
     _reject_unknown(
         transaction,
-        frozenset({"owner_roles", "participant_roles", "session_providers", "provider_item_types"}),
+        frozenset(
+            {
+                "owner_roles",
+                "participant_roles",
+                "session_providers",
+                "provider_item_types",
+                "boundary_decorators",
+            }
+        ),
         "transaction",
     )
     owners = frozenset(
@@ -370,8 +378,17 @@ def _load_policy(
             "transaction.session_providers",
         )
     )
-    if session_providers and not owners:
-        raise PolicyConfigError("transaction.session_providers requires owner_roles")
+    boundary_decorators = frozenset(
+        SymbolId(value)
+        for value in _strings(
+            transaction.get("boundary_decorators", []),
+            "transaction.boundary_decorators",
+        )
+    )
+    if (session_providers or boundary_decorators) and not owners:
+        raise PolicyConfigError(
+            "transaction.session_providers/boundary_decorators require owner_roles"
+        )
     provider_item_types = FrozenMap(
         (
             SymbolId(provider),
@@ -404,6 +421,7 @@ def _load_policy(
         transaction_owner_roles=owners,
         transaction_participant_roles=participants,
         transaction_session_providers=session_providers,
+        transaction_boundary_decorators=boundary_decorators,
         transaction_provider_item_types=provider_item_types,
         rule_zones=rule_zones,
         approvals=approvals,

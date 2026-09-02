@@ -30,7 +30,7 @@ def build_run_report(
 ) -> RunReport:
     assurance = assurance or AssuranceReport()
     return RunReport(
-        run=RunMetadata(engine_version, 4, snapshot.id, decision_digest),
+        run=RunMetadata(engine_version, 5, snapshot.id, decision_digest),
         diagnostics=diagnostics,
         engine_issues=engine_issues,
         coverage=coverage,

@@ -69,6 +69,7 @@ class ExpressionSummarizer:
         collection_size: int | None = None
         arguments: tuple[CallArgument, ...] = ()
         has_unpack = False
+        mapping_keys: tuple[str, ...] | None = None
         if isinstance(node, ast.Constant):
             literal_kind = type(node.value).__name__
             literal_value = repr(node.value)
@@ -78,6 +79,13 @@ class ExpressionSummarizer:
         elif isinstance(node, ast.Dict):
             collection_size = len(node.keys)
             has_unpack = any(key is None for key in node.keys)
+            keys = tuple(
+                key.value
+                for key in node.keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            )
+            if not has_unpack and len(keys) == len(node.keys):
+                mapping_keys = tuple(sorted(set(keys)))
         elif isinstance(node, ast.Call):
             arguments = self.arguments(node)
             has_unpack = any(
@@ -95,6 +103,7 @@ class ExpressionSummarizer:
             arguments=arguments,
             has_unpack=has_unpack,
             is_dynamic_string=_is_dynamic_string(node),
+            mapping_keys=mapping_keys,
         )
         self._expressions[node] = summary
         return summary

@@ -844,6 +844,58 @@ class ReportSnapshot(BaseModel):
     assert len([finding for finding in result.findings if finding.rule_id == RuleId("DTO001")]) == 2
 
 
+def test_dto_rule_accepts_frozen_pydantic_contract_and_rejects_mutable_one() -> None:
+    source = make_source(
+        "app/dtos/order.py",
+        """from pydantic import BaseModel, ConfigDict
+
+class FrozenResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    value: tuple[str, ...]
+
+class MutableResult(BaseModel):
+    value: str
+""",
+    )
+    result = _run(
+        source,
+        roles={"dto": ("app/dtos/**",)},
+        allowed_imports={"dto": frozenset({"dto"})},
+        code_policy=_code_policy(),
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("DTO001")]
+    assert len(findings) == 1
+    assert findings[0].enclosing_symbol == SymbolId("app.dtos.order.MutableResult")
+
+
+def test_configured_dto_base_activates_contract_outside_dto_module_role() -> None:
+    base = make_source(
+        "app/contracts.py",
+        """from pydantic import BaseModel, ConfigDict
+class BaseResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+""",
+    )
+    concrete = make_source(
+        "app/feature.py",
+        "from app.contracts import BaseResult\nclass Payload(BaseResult): value: str",
+    )
+    result = _run(
+        base,
+        concrete,
+        roles={"application": ("app/**",)},
+        allowed_imports={"application": frozenset({"application"})},
+        code_policy=replace(
+            _code_policy(),
+            dto_base_symbols=frozenset({SymbolId("app.contracts.BaseResult")}),
+        ),
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("DTO001")]
+    assert len([finding for finding in result.findings if finding.rule_id == RuleId("DTO002")]) == 1
+
+
 def test_schema_and_api_rules_read_config_fields_and_endpoint_decorators() -> None:
     schema = make_source(
         "app/schemas/user.py",
@@ -1128,7 +1180,7 @@ class UserResponse(BaseModel):
     name: str = Field(description="Name", examples=["Ada"])
 
     @classmethod
-    def from_internal(cls, data):
+    def from_internal(cls, data: object) -> "UserResponse":
         return cls(name=data.name)
 """.strip(),
     )
@@ -1228,7 +1280,117 @@ async def delete_user() -> Response:
     )
 
     assert not [finding for finding in result.findings if finding.rule_id == RuleId("API001")]
-    assert not [finding for finding in result.findings if finding.rule_id == RuleId("SCHEMA003")]
+
+
+def test_endpoint_metadata_helper_is_resolved_without_executing_it() -> None:
+    router = make_source(
+        "app/apis/items.py",
+        '''from fastapi import APIRouter
+router = APIRouter()
+
+class ItemResponse: pass
+
+def base_endpoint_docs():
+    return {"responses": {404: {}}, "response_model": ItemResponse}
+
+def endpoint_docs():
+    return base_endpoint_docs()
+
+@router.get("/items", **endpoint_docs())
+async def list_items() -> ItemResponse:
+    """List items."""
+    return ItemResponse()
+''',
+    )
+    result = _run(
+        router,
+        roles={"router": ("app/apis/**",)},
+        allowed_imports={"router": frozenset({"router"})},
+        code_policy=_code_policy(),
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("API001")]
+
+
+def test_response_mapper_name_is_configurable_but_bulk_copy_remains_forbidden() -> None:
+    schema = make_source(
+        "app/schemas/user.py",
+        """from pydantic import BaseModel
+
+class UserResponse(BaseModel):
+    @classmethod
+    def from_result(cls, result: object) -> "UserResponse":
+        notify(**{"kind": "user"})
+        return cls(name=result.name)
+
+class UnsafeResponse(BaseModel):
+    @classmethod
+    def from_result(cls, result: object) -> "UnsafeResponse":
+        return cls.model_validate(result.model_dump())
+""",
+    )
+    result = _run(
+        schema,
+        roles={"schema": ("app/schemas/**",)},
+        allowed_imports={"schema": frozenset({"schema"})},
+        code_policy=replace(_code_policy(), response_mapper_name="from_result"),
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("SCHEMA003")]
+    assert [finding.message_key for finding in findings] == [
+        "schema.bulk_mapping",
+        "schema.bulk_mapping",
+    ]
+
+
+def test_multi_write_atomicity_propagates_first_party_helpers_and_accepts_decorator() -> None:
+    model = make_source(
+        "app/models/user.py",
+        "from tortoise.models import Model\nclass User(Model): pass",
+    )
+    repository = make_source(
+        "app/repositories/user.py",
+        """from app.models.user import User
+async def create_first():
+    await User.create(name="first")
+async def create_second():
+    await User.create(name="second")
+""",
+    )
+    service = make_source(
+        "app/services/user.py",
+        """from tortoise.transactions import atomic
+from app.repositories.user import create_first, create_second
+async def unsafe():
+    await create_first()
+    await create_second()
+@atomic()
+async def safe():
+    await create_first()
+    await create_second()
+""",
+    )
+    result = _run(
+        model,
+        repository,
+        service,
+        roles={
+            "model": ("app/models/**",),
+            "repository": ("app/repositories/**",),
+            "service": ("app/services/**",),
+        },
+        allowed_imports={
+            "model": frozenset({"model"}),
+            "repository": frozenset({"repository", "model"}),
+            "service": frozenset({"service", "repository"}),
+        },
+        code_policy=_code_policy(),
+    )
+
+    findings = [finding for finding in result.findings if finding.rule_id == RuleId("TX003")]
+    assert [finding.enclosing_symbol for finding in findings] == [
+        SymbolId("app.services.user.unsafe")
+    ]
 
 
 def test_strict_persistence_examples_pass_orm_rules() -> None:
@@ -1380,6 +1542,51 @@ def test_exception_registry_accepts_error_code_passed_to_base_constructor() -> N
     )
 
     assert not [finding for finding in result.findings if finding.rule_id == RuleId("EXC001")]
+
+
+def test_exception_names_are_unique_within_each_configured_family() -> None:
+    source = make_source(
+        "app/errors.py",
+        """from enum import StrEnum
+class ErrorCode(StrEnum):
+    FIRST = "first"
+    SECOND = "second"
+class DomainError(Exception): pass
+class TransportError(Exception): pass
+""",
+    )
+    policy = replace(
+        _code_policy(),
+        exception_base_symbols=frozenset(
+            {SymbolId("app.errors.DomainError"), SymbolId("app.errors.TransportError")}
+        ),
+    )
+    # Give the two concrete classes the same public name in distinct modules/families.
+    domain = make_source(
+        "app/domain.py",
+        "from app.errors import DomainError, ErrorCode\n"
+        "class SameError(DomainError): code = ErrorCode.FIRST",
+    )
+    transport = make_source(
+        "app/transport.py",
+        "from app.errors import TransportError, ErrorCode\n"
+        "class SameError(TransportError): code = ErrorCode.SECOND",
+    )
+    result = _run(
+        source,
+        domain,
+        transport,
+        roles={"core": ("app/**",)},
+        allowed_imports={"core": frozenset({"core"})},
+        code_policy=policy,
+    )
+
+    duplicate_names = [
+        finding
+        for finding in result.findings
+        if finding.rule_id == RuleId("EXC001") and finding.message_key == "exception.name_duplicate"
+    ]
+    assert duplicate_names == []
 
 
 def test_exception_registry_counts_direct_production_error_code_reference_as_used() -> None:
@@ -1770,6 +1977,49 @@ def test_test_http_fixture_role_may_construct_shared_client() -> None:
         roles={"test_fixture": ("tests/fixtures.py",)},
         zones={"test": ("tests/**",)},
         allowed_imports={"test_fixture": frozenset({"test_fixture"})},
+        code_policy=code_policy,
+    )
+    result = PolicyEngine(builtin_rule_registry()).run(context)
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("TEST002")]
+
+
+def test_test_http_client_use_requires_proven_approved_fixture_origin() -> None:
+    fixture = make_source(
+        "tests/conftest.py",
+        """import httpx
+import pytest
+
+@pytest.fixture
+def api_client():
+    return httpx.AsyncClient()
+""",
+    )
+    test = make_source(
+        "tests/test_api.py",
+        """import httpx
+
+async def test_list(api_client: httpx.AsyncClient):
+    await api_client.get("/items")
+""",
+    )
+    code_policy = replace(
+        _code_policy(),
+        raw_test_http_calls=(SymbolId("httpx.AsyncClient.get"),),
+        raw_test_http_client_constructors=(SymbolId("httpx.AsyncClient"),),
+        test_http_fixture_roles=frozenset({Role("test_fixture")}),
+    )
+    context = make_context(
+        analyze(fixture, test),
+        roles={
+            "test_fixture": ("tests/conftest.py",),
+            "test": ("tests/test_*.py",),
+        },
+        zones={"test": ("tests/**",)},
+        allowed_imports={
+            "test_fixture": frozenset({"test_fixture"}),
+            "test": frozenset({"test", "test_fixture"}),
+        },
         code_policy=code_policy,
     )
     result = PolicyEngine(builtin_rule_registry()).run(context)

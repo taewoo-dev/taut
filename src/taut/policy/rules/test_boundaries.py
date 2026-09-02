@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from taut.analysis.framework.pytest_facts import PYTEST_FIXTURES, PytestFixtureFact
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import AnalysisStage
 from taut.domain.findings import Finding
-from taut.domain.ids import RuleId
+from taut.domain.ids import RuleId, SymbolId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
@@ -64,6 +65,7 @@ class TestRawHttpRule:
         role = context.classification.get(target.module_id).role
         if role in context.policy.code.test_http_fixture_roles:
             return RuleEvaluation(TEST_HTTP_RULE_ID, target, RuleVerdict.PASS, ())
+        approved_fixtures = _approved_http_fixtures(context)
         forbidden = set(context.policy.code.raw_test_http_calls).union(
             context.policy.code.raw_test_http_client_constructors
         )
@@ -76,6 +78,13 @@ class TestRawHttpRule:
         for call in context.model.calls_in(target.module_id):
             symbol = call.ref.symbol
             if symbol is None or symbol not in forbidden:
+                continue
+            if _uses_approved_fixture(
+                call.ref.written_name,
+                call.enclosing_symbol,
+                context,
+                approved_fixtures,
+            ):
                 continue
             findings.append(
                 build_boundary_finding(
@@ -90,6 +99,57 @@ class TestRawHttpRule:
                 )
             )
         return boundary_result(TEST_HTTP_RULE_ID, target, findings)
+
+
+def _approved_http_fixtures(context: PolicyContext) -> frozenset[str]:
+    fixtures = tuple(
+        fact
+        for fact in context.model.capability_values(PYTEST_FIXTURES)
+        if isinstance(fact, PytestFixtureFact)
+    )
+    approved = {
+        fixture.name
+        for fixture in fixtures
+        if context.classification.get(fixture.module_id).role
+        in context.policy.code.test_http_fixture_roles
+        or context.symbol_in(fixture.symbol, context.policy.code.test_http_fixture_symbols)
+    }
+    changed = True
+    while changed:
+        changed = False
+        for fixture in fixtures:
+            if fixture.name in approved or not any(
+                dependency in approved for dependency in fixture.dependencies
+            ):
+                continue
+            approved.add(fixture.name)
+            changed = True
+    return frozenset(approved)
+
+
+def _uses_approved_fixture(
+    written_name: str,
+    enclosing_symbol: SymbolId | None,
+    context: PolicyContext,
+    approved: frozenset[str],
+) -> bool:
+    if enclosing_symbol is None or "." not in written_name:
+        return False
+    receiver = written_name.split(".", 1)[0]
+    if receiver not in approved:
+        return False
+    function = next(
+        (
+            item
+            for module_id in context.model.modules()
+            for item in context.model.module(module_id).functions
+            if item.symbol_id == enclosing_symbol
+        ),
+        None,
+    )
+    return function is not None and any(
+        parameter.name == receiver for parameter in function.parameters
+    )
 
 
 def test_boundary_rule_definitions() -> tuple[RuleDefinition, ...]:

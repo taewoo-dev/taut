@@ -5,11 +5,11 @@ import json
 from dataclasses import dataclass, field
 
 from taut.configuration.catalog import Effect
+from taut.configuration.code_conventions import CodeConventionPolicy as CodeConventionPolicy
 from taut.configuration.manifest import Role, Zone
 from taut.domain.evaluations import RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
-from taut.domain.location import ProjectPath
 
 _APPROVAL_KINDS = frozenset(
     {"allow", "entrypoint", "factory", "lazy_import", "managed", "participant", "security_wrapper"}
@@ -159,52 +159,6 @@ class PolicyApproval:
 
 
 @dataclass(frozen=True)
-class CodeConventionPolicy:
-    dto_roles: frozenset[Role] = frozenset()
-    schema_roles: frozenset[Role] = frozenset()
-    router_roles: frozenset[Role] = frozenset()
-    service_roles: frozenset[Role] = frozenset()
-    model_roles: frozenset[Role] = frozenset()
-    snapshot_roles: frozenset[Role] = frozenset()
-    request_config_symbols: frozenset[SymbolId] = frozenset()
-    response_config_symbols: frozenset[SymbolId] = frozenset()
-    shared_enum_modules: tuple[ModuleId, ...] = ()
-    uppercase_enum_exceptions: frozenset[SymbolId] = frozenset()
-    non_str_enum_exceptions: frozenset[SymbolId] = frozenset()
-    native_enum_false_exceptions: frozenset[SymbolId] = frozenset()
-    native_enum_no_constraint_exceptions: frozenset[SymbolId] = frozenset()
-    generic_schema_bases: frozenset[SymbolId] = frozenset()
-    forbidden_runtime_calls: tuple[str, ...] = ()
-    exception_base_symbols: frozenset[SymbolId] = frozenset()
-    abstract_exception_symbols: frozenset[SymbolId] = frozenset()
-    error_code_enum_symbols: frozenset[SymbolId] = frozenset()
-    reserved_error_code_symbols: frozenset[SymbolId] = frozenset()
-    dto_name_suffixes: tuple[str, ...] = ("Data", "Result", "Row")
-    test_root_paths: tuple[ProjectPath, ...] = (ProjectPath("tests"),)
-    raw_test_http_calls: tuple[SymbolId, ...] = ()
-    raw_test_http_client_constructors: tuple[SymbolId, ...] = ()
-    test_http_fixture_roles: frozenset[Role] = frozenset()
-
-    def __post_init__(self) -> None:
-        if self.shared_enum_modules != tuple(sorted(set(self.shared_enum_modules))):
-            raise ValueError("shared enum modules must be unique and sorted")
-        if self.dto_name_suffixes != tuple(sorted(set(self.dto_name_suffixes))):
-            raise ValueError("DTO name suffixes must be unique and sorted")
-        if any(not suffix.strip() for suffix in self.dto_name_suffixes):
-            raise ValueError("DTO name suffix cannot be empty")
-        if self.forbidden_runtime_calls != tuple(sorted(set(self.forbidden_runtime_calls))):
-            raise ValueError("forbidden runtime calls must be unique and sorted")
-        if self.test_root_paths != tuple(sorted(set(self.test_root_paths))):
-            raise ValueError("test root paths must be unique and sorted")
-        if self.raw_test_http_calls != tuple(sorted(set(self.raw_test_http_calls))):
-            raise ValueError("raw test HTTP calls must be unique and sorted")
-        if self.raw_test_http_client_constructors != tuple(
-            sorted(set(self.raw_test_http_client_constructors))
-        ):
-            raise ValueError("raw test HTTP client constructors must be unique and sorted")
-
-
-@dataclass(frozen=True)
 class SecurityPolicy:
     allowed_roles: FrozenMap[Effect, frozenset[Role]] = field(
         default_factory=lambda: FrozenMap[Effect, frozenset[Role]]()
@@ -232,6 +186,7 @@ class EffectivePolicy:
     transaction_owner_roles: frozenset[Role]
     transaction_participant_roles: frozenset[Role] = frozenset()
     transaction_session_providers: frozenset[SymbolId] = frozenset()
+    transaction_boundary_decorators: frozenset[SymbolId] = frozenset()
     transaction_provider_item_types: FrozenMap[SymbolId, SymbolId] = field(
         default_factory=lambda: FrozenMap[SymbolId, SymbolId]()
     )
@@ -312,6 +267,9 @@ class EffectivePolicy:
             ),
             "transaction_session_providers": sorted(
                 symbol.value for symbol in self.transaction_session_providers
+            ),
+            "transaction_boundary_decorators": sorted(
+                symbol.value for symbol in self.transaction_boundary_decorators
             ),
             "transaction_provider_item_types": [
                 (provider.value, item_type.value)
@@ -469,6 +427,10 @@ class EffectivePolicy:
                 "reserved_error_code_symbols": sorted(
                     symbol.value for symbol in self.code.reserved_error_code_symbols
                 ),
+                "dto_base_symbols": sorted(symbol.value for symbol in self.code.dto_base_symbols),
+                "response_mapper_name": self.code.response_mapper_name,
+                "exception_code_argument_names": list(self.code.exception_code_argument_names),
+                "exception_code_field_names": list(self.code.exception_code_field_names),
                 "dto_name_suffixes": list(self.code.dto_name_suffixes),
                 "test_root_paths": [path.value for path in self.code.test_root_paths],
                 "raw_test_http_calls": [symbol.value for symbol in self.code.raw_test_http_calls],
@@ -477,6 +439,9 @@ class EffectivePolicy:
                 ],
                 "test_http_fixture_roles": sorted(
                     role.value for role in self.code.test_http_fixture_roles
+                ),
+                "test_http_fixture_symbols": sorted(
+                    symbol.value for symbol in self.code.test_http_fixture_symbols
                 ),
             },
             "security": {

@@ -1,4 +1,31 @@
-# pytaut 0.3.0 validation report
+# pytaut validation report
+
+## 0.5.0 release candidate — 2026-09-02
+
+`bash scripts/test.sh` passed on Python 3.14 with repository conventions, Ruff, mypy strict,
+Pyright strict, the repository's own strict Taut policy, 1,203 tests, 90.20% branch coverage,
+sdist/wheel builds, and an isolated installed-wheel smoke test. The built artifacts reported
+`pytaut 0.5.0`; config validation and the installed policy check both exited 0.
+
+The current source was also force-reinstalled into a fresh Python 3.13.9 environment and exercised
+read-only against NEXUS and both Thready Python components:
+
+- NEXUS used a temporary v4-to-v5 migrated external configuration, the observed project convention
+  `response_mapper_name = "from_result"`, and the new pytest provider. It analyzed 950/950 sources
+  with no failed/partial source, unavailable capability, engine issue, indeterminate evaluation,
+  skipped evaluation, or coverage gap. It is not compliant: 2 assurance issues and 2,039 active
+  diagnostics remain. Those are repository policy/configuration results, not analyzer trust
+  failures. In particular, the previously unresolved forwarded endpoint-doc helper chain is now
+  resolved statically.
+- Thready backend and AI `init --format json` remained read-only and exited 2 as designed while
+  questions were unanswered. They discovered 557 and 306 Python files respectively, both observed
+  the single `from_internal` mapper convention, and both proposed the reviewed 700-line fallback
+  with stricter role budgets rather than silently raising the fallback to fit outliers.
+
+NEXUS retained its pre-existing modified `pyproject.toml` and `uv.lock`; Thready remained clean.
+All validation configurations and reports were stored outside those repositories.
+
+## 0.3.0 release
 
 Run `bash scripts/test.sh` from the repository root to reproduce release checks: conventions,
 Ruff, mypy, Pyright, the self-policy check, the full pytest suite with branch coverage, sdist/wheel

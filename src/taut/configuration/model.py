@@ -20,7 +20,7 @@ class ProjectConfiguration:
     manifest: ProjectManifest
     catalog: EffectCatalog
     policy: EffectivePolicy
-    schema_version: int = 4
+    schema_version: int = 5
     packs: tuple[str, ...] = ("taut.backend",)
     providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
     strict: bool = True
@@ -35,8 +35,8 @@ class ProjectConfiguration:
             raise ValueError("project include patterns cannot be empty")
         if not self.source_roots:
             raise ValueError("project source roots cannot be empty")
-        if self.schema_version != 4:
-            raise ValueError("project configuration schema must be 4")
+        if self.schema_version != 5:
+            raise ValueError("project configuration schema must be 5")
         if not self.packs or len(self.packs) != len(set(self.packs)):
             raise ValueError("project rule packs must be non-empty and unique")
         if len(self.providers) != len(set(self.providers)):

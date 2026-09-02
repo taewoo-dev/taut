@@ -22,6 +22,7 @@ from taut.domain.facts import CallFact, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.policy.indexes import PolicyIndexes
+from taut.policy.symbol_contracts import SymbolContractIndex
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,10 @@ class PolicyContext:
     @cached_property
     def indexes(self) -> PolicyIndexes:
         return PolicyIndexes.build(self.model, self.classification, self.policy)
+
+    @cached_property
+    def symbol_contracts(self) -> SymbolContractIndex:
+        return SymbolContractIndex.build(self.model, self.classification, self.policy)
 
     @cached_property
     def effect_resolutions(self) -> Mapping[FactId, EffectResolution]:

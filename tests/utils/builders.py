@@ -63,6 +63,7 @@ RULE_IDS = tuple(
         "TIME001",
         "ARCH000",
         "TX001",
+        "TX003",
         "SESSION001",
         "SESSION002",
         "SESSION003",

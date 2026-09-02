@@ -30,7 +30,7 @@ def _project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / ".policy").mkdir()
     (root / ".policy" / "policy.toml").write_text(
         f"""
-schema_version = 4
+schema_version = 5
 packs = ["taut.backend"]
 providers = ["taut.python-core"]
 [project]

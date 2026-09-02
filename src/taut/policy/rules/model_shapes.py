@@ -7,6 +7,7 @@ from taut.analysis.framework.pydantic import (
     PYDANTIC_FIELDS,
     PYDANTIC_MODELS,
 )
+from taut.analysis.framework.pydantic_facts import PydanticConfigFact, PydanticModelFact
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import (
@@ -19,6 +20,7 @@ from taut.domain.facts import (
 from taut.domain.findings import EvidenceItem, Finding
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import SourceRange
+from taut.domain.symbol_contracts import ContractKind
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
 from taut.policy.rules.helpers import (
@@ -109,7 +111,11 @@ class ImmutableDtoRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("DTO001 requires a module target")
-        if _role(target, context) not in context.policy.code.dto_roles:
+        module = context.model.module(target.module_id)
+        candidates = tuple(
+            item for item in module.classes if context.symbol_contracts.has(item, ContractKind.DTO)
+        )
+        if not candidates:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = rule_uncertainty(
             DTO_RULE_ID,
@@ -121,21 +127,58 @@ class ImmutableDtoRule:
         )
         if uncertainty is not None:
             return uncertainty
-        module = context.model.module(target.module_id)
+        pydantic_models = {
+            context.model.canonical_symbol(item.symbol)
+            for item in context.model.capability_values(PYDANTIC_MODELS)
+            if isinstance(item, PydanticModelFact)
+        }
+        pydantic_configs = {
+            context.model.canonical_symbol(item.model): item
+            for item in context.model.capability_values(PYDANTIC_CONFIGS)
+            if isinstance(item, PydanticConfigFact)
+        }
+        classes = {
+            context.model.canonical_symbol(item.symbol_id): item
+            for module_id in context.model.modules()
+            for item in context.model.module(module_id).classes
+        }
+
+        def pydantic_frozen(
+            class_fact: ClassFact, visiting: frozenset[SymbolId] = frozenset()
+        ) -> bool:
+            canonical = context.model.canonical_symbol(class_fact.symbol_id)
+            if canonical in visiting:
+                return False
+            config = pydantic_configs.get(context.model.canonical_symbol(class_fact.symbol_id))
+            if config is not None:
+                frozen = dict(config.options).get("frozen")
+                if frozen is not None and frozen.literal_value == "True":
+                    return True
+            return any(
+                context.model.canonical_symbol(symbol) in pydantic_models
+                and (parent := classes.get(context.model.canonical_symbol(symbol))) is not None
+                and pydantic_frozen(parent, visiting | {canonical})
+                for base in class_fact.bases
+                for symbol in base.symbols
+            )
+
         findings: list[Finding] = []
-        for class_fact in module.classes:
+        for class_fact in candidates:
             dataclass = _decorator(module.decorators, class_fact, SymbolId("dataclasses.dataclass"))
-            if dataclass is None:
+            is_pydantic = context.model.canonical_symbol(class_fact.symbol_id) in pydantic_models
+            if dataclass is None and not is_pydantic:
                 continue
-            frozen = _decorator_argument(dataclass, "frozen")
-            if frozen is None or frozen.literal_value != "True":
+            frozen = _decorator_argument(dataclass, "frozen") if dataclass is not None else None
+            if (dataclass is not None and (frozen is None or frozen.literal_value != "True")) or (
+                is_pydantic and not pydantic_frozen(class_fact)
+            ):
                 findings.append(
                     _finding(
                         DTO_RULE_ID,
                         target.module_id,
                         class_fact.symbol_id,
-                        dataclass.id,
-                        dataclass.location,
+                        dataclass.id if dataclass is not None else class_fact.id,
+                        dataclass.location if dataclass is not None else class_fact.location,
                         "dto.not_frozen",
                         "frozen",
                     )
@@ -174,14 +217,17 @@ class DtoNameRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.module_id is None:
             raise ValueError("DTO002 requires a module target")
-        if _role(target, context) not in context.policy.code.dto_roles:
+        module = context.model.module(target.module_id)
+        candidates = tuple(
+            item for item in module.classes if context.symbol_contracts.has(item, ContractKind.DTO)
+        )
+        if not candidates:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         uncertainty = rule_uncertainty(
             DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
         )
         if uncertainty is not None:
             return uncertainty
-        module = context.model.module(target.module_id)
         findings = tuple(
             _finding(
                 DTO_NAME_RULE_ID,
@@ -192,10 +238,8 @@ class DtoNameRule:
                 "dto.name_suffix",
                 class_fact.name,
             )
-            for class_fact in module.classes
-            if _decorator(module.decorators, class_fact, SymbolId("dataclasses.dataclass"))
-            is not None
-            and not class_fact.name.endswith(context.policy.code.dto_name_suffixes)
+            for class_fact in candidates
+            if not class_fact.name.endswith(context.policy.code.dto_name_suffixes)
         )
         if findings:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.FAIL, findings)

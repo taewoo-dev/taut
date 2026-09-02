@@ -16,7 +16,7 @@ from taut.analysis.module_identity import absolute_import_base, resolve_internal
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
 from taut.domain.ids import ModuleId
 from taut.loading.errors import PolicyConfigError
-from taut.onboarding_detection import detect_features, detect_providers
+from taut.onboarding_detection import detect_features, detect_providers, observed_response_mappers
 from taut.onboarding_policy import (
     InitPolicyAnswers,
     answer_policy,
@@ -37,8 +37,9 @@ from taut.onboarding_scope import (
     observe_source_scope,
     selected_source_roots,
 )
+from taut.onboarding_size import InitSizePolicy, render_size_lines, size_policy
 
-INIT_CONTRACT_VERSION = 4
+INIT_CONTRACT_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,8 @@ class InitProposal:
     source_scope: InitSourceScope
     source_roots: tuple[str, ...]
     role_observations: tuple[InitRoleObservation, ...]
+    observed_response_mappers: tuple[str, ...]
+    size: InitSizePolicy
     questions: tuple[InitQuestion, ...]
     toml: str
 
@@ -68,6 +71,8 @@ class InitProposal:
                     "selected_source_roots": self.source_roots,
                 },
                 "roles": [item.json_payload() for item in self.role_observations],
+                "response_mappers": self.observed_response_mappers,
+                "size": self.size.json_payload(),
             },
             "proposal": {"toml": self.toml},
             "questions": [
@@ -112,7 +117,9 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
     role_overrides = answer_roles(answers, paths)
     accepted = _answer_architecture_acceptance(answers)
     role_observations = observe_roles(root, paths, role_aliases, role_overrides)
+    response_mappers = observed_response_mappers(root, paths)
     roles = group_roles(role_observations)
+    size = size_policy(root, role_observations, answers)
     expectations = {
         name: feature_answers.get(name, "required" if evidence[name] else "absent")
         for name in BUILTIN_ASSURANCE_FEATURES
@@ -129,6 +136,8 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         expectations=expectations,
         feature_evidence=evidence,
         policy=policy_answers,
+        observed_response_mappers=response_mappers,
+        size=size,
     )
     status = "ready" if not questions else "needs_input"
     return InitProposal(
@@ -140,9 +149,19 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         source_scope=source_scope,
         source_roots=source_roots,
         role_observations=role_observations,
+        observed_response_mappers=response_mappers,
+        size=size,
         questions=questions,
         toml=_render_configuration(
-            root, paths, expectations, roles, source_roots, zones, policy_answers, providers
+            root,
+            paths,
+            expectations,
+            roles,
+            source_roots,
+            zones,
+            policy_answers,
+            size,
+            providers,
         ),
     )
 
@@ -228,7 +247,7 @@ def write_init_configuration(project_root: Path, config_path: Path, proposal: In
 
 def configuration_schema_payload() -> dict[str, object]:
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "strict": {
             "type": "boolean",
             "default": True,
@@ -237,7 +256,20 @@ def configuration_schema_payload() -> dict[str, object]:
         "transaction": {
             "owner_roles": "roles allowed to create or finish transactions",
             "session_providers": "fully qualified context-manager call symbols",
+            "boundary_decorators": "fully qualified transaction decorator symbols",
             "provider_item_types": "optional provider-symbol to yielded-type mapping",
+        },
+        "code_conventions": {
+            "response_mapper_name": "single project-standard Response mapper method",
+            "dto_base_symbols": "fully qualified immutable DTO base classes",
+            "exception_code_argument_names": "accepted constructor keyword names",
+            "exception_code_field_names": "accepted class field names",
+            "test_http_fixture_symbols": "approved pytest fixture symbols",
+        },
+        "size": {
+            "default_max_lines": "positive project-wide fallback",
+            "role_max_lines": "positive per-role limits no larger than the fallback",
+            "init_answer": "accept observed recommendation or provide explicit values",
         },
         "assurance": {
             "features": {
@@ -294,6 +326,7 @@ def _validate_answer_keys(answers: dict[str, object] | None) -> None:
             "zones",
             "exclusions",
             "policy",
+            "size",
         }
     )
     if unknown:
@@ -370,15 +403,17 @@ def _render_configuration(
     source_roots: tuple[str, ...],
     zones: dict[str, tuple[str, ...]],
     policy_answers: InitPolicyAnswers,
+    size: InitSizePolicy,
     providers: tuple[str, ...],
 ) -> str:
     allow = _observed_allow_graph(root, paths, roles, source_roots)
     lines = [
         "[tool.taut]",
-        "schema_version = 4",
+        "schema_version = 5",
         'packs = ["taut.backend"]',
         f"providers = {_toml_array(providers)}",
         "strict = true",
+        f"max_lines = {size.default_max_lines}",
         'include = ["*.py", "**/*.py"]',
         f"exclude = {_toml_array(_exclude_patterns(policy_answers))}",
         f"source_roots = {_toml_array(source_roots)}",
@@ -395,6 +430,7 @@ def _render_configuration(
         for name, items in sorted(zones.items()):
             lines.append(f"{name} = {_toml_array(items)}")
     lines.extend(render_policy_lines(policy_answers))
+    lines.extend(render_size_lines(size))
     lines.extend(("", "[tool.taut.assurance]", "max_approvals = 0", "max_inline_ignores = 0"))
     lines.extend(("", "[tool.taut.assurance.features]"))
     lines.extend(f'{name} = "{expectations[name]}"' for name in BUILTIN_ASSURANCE_FEATURES)

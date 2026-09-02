@@ -22,8 +22,7 @@ def detect_features(root: Path, paths: tuple[str, ...]) -> dict[str, list[str]]:
         mark("schema", "pydantic" in content or "BaseModel" in content)
         mark(
             "dto",
-            "@dataclass" in content
-            and any(suffix in content for suffix in ("Data", "Result", "Row")),
+            _declares_dto(content) or bool({"dto", "dtos"}.intersection(lowered_parts)),
         )
         mark("snapshot", _declares_snapshot(path, content))
         mark("exception_registry", "Exception" in content or "ErrorCode" in content)
@@ -65,12 +64,34 @@ def detect_providers(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
     for provider, modules in (
         ("taut.fastapi", ("fastapi", "starlette")),
         ("taut.pydantic", ("pydantic",)),
+        ("taut.pytest", ("pytest",)),
         ("taut.sqlalchemy", ("sqlalchemy",)),
         ("taut.tortoise", ("tortoise",)),
     ):
         if imported_roots.intersection(modules):
             providers.append(provider)
     return tuple(providers)
+
+
+def observed_response_mappers(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
+    names: set[str] = set()
+    for path in paths:
+        try:
+            tree = ast.parse((root / path).read_text())
+        except (OSError, UnicodeError, SyntaxError):
+            continue
+        for item in tree.body:
+            if not isinstance(item, ast.ClassDef) or not item.name.endswith(
+                ("Response", "ResponseModel")
+            ):
+                continue
+            names.update(
+                member.name
+                for member in item.body
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and member.name in {"from_internal", "from_result"}
+            )
+    return tuple(sorted(names))
 
 
 def _declares_snapshot(path: str, content: str) -> bool:
@@ -84,3 +105,32 @@ def _declares_snapshot(path: str, content: str) -> bool:
     return any(
         isinstance(node, ast.ClassDef) and "Snapshot" in node.name for node in ast.walk(tree)
     )
+
+
+def _declares_dto(content: str) -> bool:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return False
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or not node.name.endswith(("Data", "Result", "Row")):
+            continue
+        decorators = {
+            _expression_name(item.func if isinstance(item, ast.Call) else item)
+            for item in node.decorator_list
+        }
+        bases = {_expression_name(item) for item in node.bases}
+        if decorators.intersection({"dataclass", "dataclasses.dataclass"}) or any(
+            base.endswith(("BaseModel", "BaseDTO")) for base in bases
+        ):
+            return True
+    return False
+
+
+def _expression_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _expression_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return ""

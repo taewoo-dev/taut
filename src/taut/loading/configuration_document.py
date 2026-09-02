@@ -153,7 +153,7 @@ def _tool_section(raw: dict[str, object]) -> dict[str, object] | None:
 def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     _reject_unknown(section, _TOOL_KEYS, "tool.taut")
     root: dict[str, object] = {
-        "schema_version": section.get("schema_version", 4),
+        "schema_version": section.get("schema_version", 5),
         "packs": section.get("packs", ["taut.backend"]),
         "providers": section.get("providers", list(BUILTIN_BACKEND_PROVIDER_IDS)),
     }
