@@ -8,20 +8,37 @@ import sys
 import tempfile
 import tomllib
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
 
+from taut.analysis.module_identity import absolute_import_base, resolve_internal_import
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
+from taut.domain.ids import ModuleId
 from taut.loading.errors import PolicyConfigError
+from taut.onboarding_detection import detect_features, detect_providers
+from taut.onboarding_policy import (
+    InitPolicyAnswers,
+    answer_policy,
+    effective_zones,
+    render_policy_lines,
+)
+from taut.onboarding_questions import InitQuestion, build_init_questions
+from taut.onboarding_roles import (
+    InitRoleObservation,
+    answer_role_aliases,
+    answer_roles,
+    group_roles,
+    observe_roles,
+)
+from taut.onboarding_scope import (
+    InitSourceScope,
+    module_details,
+    observe_source_scope,
+    selected_source_roots,
+)
 
-
-@dataclass(frozen=True)
-class InitQuestion:
-    id: str
-    prompt: str
-    choices: tuple[str, ...]
-    recommended: str
-    evidence: tuple[str, ...]
+INIT_CONTRACT_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -30,17 +47,27 @@ class InitProposal:
     status: str
     python_files: tuple[str, ...]
     detected_features: tuple[str, ...]
+    providers: tuple[str, ...]
+    source_scope: InitSourceScope
+    source_roots: tuple[str, ...]
+    role_observations: tuple[InitRoleObservation, ...]
     questions: tuple[InitQuestion, ...]
     toml: str
 
     def json_payload(self) -> dict[str, object]:
         return {
-            "schema_version": 1,
+            "schema_version": INIT_CONTRACT_VERSION,
             "status": self.status,
             "project_digest": self.project_digest,
             "discovered": {
                 "python_files": self.python_files,
                 "features": self.detected_features,
+                "providers": self.providers,
+                "source_scope": {
+                    **self.source_scope.json_payload(),
+                    "selected_source_roots": self.source_roots,
+                },
+                "roles": [item.json_payload() for item in self.role_observations],
             },
             "proposal": {"toml": self.toml},
             "questions": [
@@ -64,51 +91,59 @@ class InitProposal:
 
 def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -> InitProposal:
     root = project_root.resolve()
-    paths = _python_files(root)
-    digest = _project_digest(root, paths)
-    evidence = _detect_features(root, paths)
-    detected = tuple(name for name in BUILTIN_ASSURANCE_FEATURES if evidence[name])
-    feature_answers = _answer_features(answers)
-    accepted = bool(answers and answers.get("accept_observed_architecture") is True)
+    discovered_paths = _python_files(root)
+    source_scope = observe_source_scope(root, discovered_paths)
+    digest = _project_digest(root, discovered_paths, source_scope.metadata_files)
+    _validate_answer_keys(answers)
+    _validate_answer_version(answers)
     answer_digest = answers.get("project_digest") if answers else None
     if answers and answer_digest != digest:
         raise PolicyConfigError(
             "init answers are stale: project_digest differs; run 'taut init . --format json' again"
         )
+    policy_answers = answer_policy(answers)
+    paths = _analysis_paths(discovered_paths, policy_answers)
+    evidence = detect_features(root, paths)
+    detected = tuple(name for name in BUILTIN_ASSURANCE_FEATURES if evidence[name])
+    providers = detect_providers(root, paths)
+    source_roots, source_scope_resolved = selected_source_roots(root, paths, source_scope, answers)
+    feature_answers = _answer_features(answers)
+    role_aliases = answer_role_aliases(answers)
+    role_overrides = answer_roles(answers, paths)
+    accepted = _answer_architecture_acceptance(answers)
+    role_observations = observe_roles(root, paths, role_aliases, role_overrides)
+    roles = group_roles(role_observations)
     expectations = {
         name: feature_answers.get(name, "required" if evidence[name] else "absent")
         for name in BUILTIN_ASSURANCE_FEATURES
     }
-    questions: list[InitQuestion] = []
-    if not accepted:
-        questions.append(
-            InitQuestion(
-                "architecture.accept_observed",
-                "현재 import 관계에서 계산한 최소 allow 그래프를 초기 정책으로 사용할까요?",
-                ("accept", "review"),
-                "review",
-                paths,
-            )
-        )
-    for name in BUILTIN_ASSURANCE_FEATURES:
-        if name not in feature_answers:
-            questions.append(
-                InitQuestion(
-                    f"feature.{name}",
-                    f"{name} 정책 영역의 기대 상태를 확인하세요.",
-                    ("required", "absent"),
-                    expectations[name],
-                    tuple(evidence[name]),
-                )
-            )
+    zones = effective_zones(paths, policy_answers)
+    questions = build_init_questions(
+        paths=paths,
+        source_scope=source_scope,
+        source_scope_resolved=source_scope_resolved,
+        architecture_accepted=accepted,
+        role_observations=role_observations,
+        role_overrides=role_overrides,
+        feature_answers=feature_answers,
+        expectations=expectations,
+        feature_evidence=evidence,
+        policy=policy_answers,
+    )
     status = "ready" if not questions else "needs_input"
     return InitProposal(
         project_digest=digest,
         status=status,
-        python_files=paths,
+        python_files=discovered_paths,
         detected_features=detected,
-        questions=tuple(questions),
-        toml=_render_configuration(root, paths, expectations),
+        providers=providers,
+        source_scope=source_scope,
+        source_roots=source_roots,
+        role_observations=role_observations,
+        questions=questions,
+        toml=_render_configuration(
+            root, paths, expectations, roles, source_roots, zones, policy_answers, providers
+        ),
     )
 
 
@@ -199,6 +234,11 @@ def configuration_schema_payload() -> dict[str, object]:
             "default": True,
             "description": "Enforce findings and project assurance completeness.",
         },
+        "transaction": {
+            "owner_roles": "roles allowed to create or finish transactions",
+            "session_providers": "fully qualified context-manager call symbols",
+            "provider_item_types": "optional provider-symbol to yielded-type mapping",
+        },
         "assurance": {
             "features": {
                 "required_keys": BUILTIN_ASSURANCE_FEATURES,
@@ -238,6 +278,47 @@ def _answer_features(answers: dict[str, object] | None) -> dict[str, str]:
     return result
 
 
+def _validate_answer_keys(answers: dict[str, object] | None) -> None:
+    if answers is None:
+        return
+    unknown = set(answers).difference(
+        {
+            "project_digest",
+            "schema_version",
+            "accept_observed_architecture",
+            "accept_observed_source_scope",
+            "source_roots",
+            "features",
+            "roles",
+            "role_aliases",
+            "zones",
+            "exclusions",
+            "policy",
+        }
+    )
+    if unknown:
+        raise PolicyConfigError(f"unknown init answer keys: {', '.join(sorted(unknown))}")
+
+
+def _validate_answer_version(answers: dict[str, object] | None) -> None:
+    if answers is None:
+        return
+    version = answers.get("schema_version")
+    if version != INIT_CONTRACT_VERSION:
+        raise PolicyConfigError(
+            f"init answers.schema_version must be {INIT_CONTRACT_VERSION}; regenerate answers"
+        )
+
+
+def _answer_architecture_acceptance(answers: dict[str, object] | None) -> bool:
+    if answers is None or "accept_observed_architecture" not in answers:
+        return False
+    value = answers["accept_observed_architecture"]
+    if not isinstance(value, bool):
+        raise PolicyConfigError("init answers.accept_observed_architecture must be a boolean")
+    return value
+
+
 def _python_files(root: Path) -> tuple[str, ...]:
     ignored = {
         ".git",
@@ -262,9 +343,18 @@ def _python_files(root: Path) -> tuple[str, ...]:
     )
 
 
-def _project_digest(root: Path, paths: tuple[str, ...]) -> str:
+def _analysis_paths(paths: tuple[str, ...], policy_answers: InitPolicyAnswers) -> tuple[str, ...]:
+    excluded = tuple(
+        pattern for exclusion in policy_answers.exclusions for pattern in exclusion.patterns
+    )
+    return tuple(
+        path for path in paths if not any(fnmatchcase(path, pattern) for pattern in excluded)
+    )
+
+
+def _project_digest(root: Path, paths: tuple[str, ...], metadata_paths: tuple[str, ...]) -> str:
     digest = hashlib.sha256()
-    for path in paths:
+    for path in tuple(sorted(set(paths).union(metadata_paths))):
         digest.update(path.encode())
         digest.update(b"\0")
         digest.update((root / path).read_bytes())
@@ -272,56 +362,26 @@ def _project_digest(root: Path, paths: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
-def _detect_features(root: Path, paths: tuple[str, ...]) -> dict[str, list[str]]:
-    values: dict[str, list[str]] = {name: [] for name in BUILTIN_ASSURANCE_FEATURES}
-    for path in paths:
-        content = (root / path).read_text(errors="replace")
-        lowered_parts = {part.lower() for part in Path(path).parts}
-
-        def mark(name: str, condition: bool, evidence_path: str = path) -> None:
-            if condition:
-                values[name].append(evidence_path)
-
-        mark("api", "fastapi" in content or "APIRouter" in content)
-        mark("schema", "pydantic" in content or "BaseModel" in content)
-        mark(
-            "dto",
-            "@dataclass" in content
-            and any(suffix in content for suffix in ("Data", "Result", "Row")),
-        )
-        mark("snapshot", "Snapshot" in content)
-        mark("exception_registry", "Exception" in content or "ErrorCode" in content)
-        mark("enum", "Enum" in content or "StrEnum" in content)
-        mark("database", "sqlalchemy" in content)
-        mark("transaction", "AsyncSession" in content or ".commit(" in content)
-        mark(
-            "external_calls",
-            any(
-                token in content for token in ("httpx", "requests", "openai", "anthropic", "boto3")
-            ),
-        )
-        mark("security", "os.getenv" in content or "os.environ" in content)
-        mark("tests", "tests" in lowered_parts or Path(path).name.startswith("test_"))
-        mark("migrations", "migrations" in lowered_parts or "alembic" in lowered_parts)
-        mark("scripts", "scripts" in lowered_parts)
-    return values
-
-
 def _render_configuration(
     root: Path,
     paths: tuple[str, ...],
     expectations: dict[str, str],
+    roles: dict[str, tuple[str, ...]],
+    source_roots: tuple[str, ...],
+    zones: dict[str, tuple[str, ...]],
+    policy_answers: InitPolicyAnswers,
+    providers: tuple[str, ...],
 ) -> str:
-    roles = _roles_for_paths(paths)
-    allow = _observed_allow_graph(root, paths, roles)
+    allow = _observed_allow_graph(root, paths, roles, source_roots)
     lines = [
         "[tool.taut]",
         "schema_version = 4",
         'packs = ["taut.backend"]',
-        'providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]',
+        f"providers = {_toml_array(providers)}",
         "strict = true",
         'include = ["*.py", "**/*.py"]',
-        'source_roots = ["."]',
+        f"exclude = {_toml_array(_exclude_patterns(policy_answers))}",
+        f"source_roots = {_toml_array(source_roots)}",
         "",
         "[tool.taut.roles]",
     ]
@@ -330,69 +390,38 @@ def _render_configuration(
     lines.extend(("", "[tool.taut.allow]"))
     for role, targets in sorted(allow.items()):
         lines.append(f"{role} = {_toml_array(tuple(sorted(targets)))}")
-    zones = {
-        "test": tuple(path for path in paths if "tests" in Path(path).parts),
-        "migration": tuple(
-            path for path in paths if {"migrations", "alembic"}.intersection(Path(path).parts)
-        ),
-        "script": tuple(path for path in paths if "scripts" in Path(path).parts),
-    }
-    nonempty_zones = {name: items for name, items in zones.items() if items}
-    if nonempty_zones:
+    if zones:
         lines.extend(("", "[tool.taut.zones]"))
-        for name, items in nonempty_zones.items():
+        for name, items in sorted(zones.items()):
             lines.append(f"{name} = {_toml_array(items)}")
+    lines.extend(render_policy_lines(policy_answers))
     lines.extend(("", "[tool.taut.assurance]", "max_approvals = 0", "max_inline_ignores = 0"))
     lines.extend(("", "[tool.taut.assurance.features]"))
     lines.extend(f'{name} = "{expectations[name]}"' for name in BUILTIN_ASSURANCE_FEATURES)
     return "\n".join(lines) + "\n"
 
 
-def _roles_for_paths(paths: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
-    grouped: dict[str, list[str]] = {}
-    for path in paths:
-        parts = tuple(part.lower() for part in Path(path).parts)
-        stem = Path(path).stem.lower()
-        role = "application"
-        candidates = (
-            ("test", "tests" in parts or stem.startswith("test_")),
-            ("migration", "migrations" in parts or "alembic" in parts),
-            ("script", "scripts" in parts),
-            ("router", "routers" in parts or stem in {"api", "router", "routes"}),
-            ("dto", "dto" in stem),
-            ("snapshot", "snapshot" in stem),
-            ("exception", "exception" in stem or stem == "errors"),
-            ("enum", "enum" in stem),
-            ("schema", "schema" in stem),
-            ("model", "model" in stem),
-            ("adapter", any(token in stem for token in ("adapter", "external", "client", "store"))),
-            ("service", "service" in stem or "services" in parts),
-            ("configuration", stem in {"config", "settings"}),
-            ("bootstrap", stem in {"main", "bootstrap", "container"}),
-        )
-        for candidate, matched in candidates:
-            if matched:
-                role = candidate
-                break
-        grouped.setdefault(role, []).append(path)
-    return {name: tuple(sorted(items)) for name, items in grouped.items()}
-
-
 def _observed_allow_graph(
     root: Path,
     paths: tuple[str, ...],
     roles: dict[str, tuple[str, ...]],
+    source_roots: tuple[str, ...],
 ) -> dict[str, set[str]]:
-    role_by_module: dict[str, str] = {}
+    role_by_module: dict[ModuleId, str] = {}
     for role, role_paths in roles.items():
         for path in role_paths:
-            module = path.removesuffix(".py").replace("/", ".")
-            if module.endswith(".__init__"):
-                module = module.removesuffix(".__init__")
+            try:
+                module = module_details(path, source_roots)[0]
+            except ValueError:
+                continue
             role_by_module[module] = role
+    modules_by_name = {module.value: module for module in role_by_module}
     result = {role: {role} for role in roles}
     for path in paths:
-        source_module = path.removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+        try:
+            source_module, is_package = module_details(path, source_roots)
+        except ValueError:
+            continue
         source_role = role_by_module.get(source_module)
         if source_role is None:
             continue
@@ -400,22 +429,34 @@ def _observed_allow_graph(
             tree = ast.parse((root / path).read_text())
         except (OSError, UnicodeError, SyntaxError):
             continue
-        imported: set[str] = set()
+        imported: set[ModuleId] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                imported.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.add(node.module)
-        for target_module, target_role in role_by_module.items():
-            if any(
-                name == target_module
-                or name.startswith(f"{target_module}.")
-                or target_module.startswith(f"{name}.")
-                for name in imported
-            ):
+                for alias in node.names:
+                    target = resolve_internal_import(alias.name, alias.name, modules_by_name)
+                    if target is not None:
+                        imported.add(target)
+            elif isinstance(node, ast.ImportFrom):
+                base = absolute_import_base(source_module, is_package, node.module, node.level)
+                for alias in node.names:
+                    imported_name = f"{base}.{alias.name}" if base and alias.name != "*" else base
+                    target = resolve_internal_import(imported_name, base, modules_by_name)
+                    if target is not None:
+                        imported.add(target)
+        for target_module in imported:
+            target_role = role_by_module[target_module]
+            if target_role != source_role:
                 result[source_role].add(target_role)
     return result
 
 
 def _toml_array(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
+
+
+def _exclude_patterns(policy_answers: InitPolicyAnswers) -> tuple[str, ...]:
+    defaults = (".venv/**", "**/__pycache__/**", "build/**", "dist/**")
+    additions = tuple(
+        pattern for exclusion in policy_answers.exclusions for pattern in exclusion.patterns
+    )
+    return tuple(dict.fromkeys((*defaults, *additions)))

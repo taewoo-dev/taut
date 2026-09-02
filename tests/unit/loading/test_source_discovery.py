@@ -105,4 +105,34 @@ def test_source_discovery_reports_duplicate_module_across_roots(tmp_path: Path) 
 
     result = discover_sources(tmp_path, config)
 
-    assert any(issue.code == "SOURCE_MODULE_CONFLICT" for issue in result.issues)
+    issue = next(issue for issue in result.issues if issue.code == "SOURCE_MODULE_CONFLICT")
+    assert "one/app/service.py (root one)" in issue.message
+    assert "two/app/service.py (root two)" in issue.message
+
+
+def test_source_discovery_uses_the_most_specific_overlapping_source_root(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src" / "app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "service.py").write_text("value = 1")
+    (tmp_path / "conftest.py").write_text("value = 2")
+    base = default_project_configuration()
+    config = ProjectConfiguration(
+        ("*.py", "**/*.py"),
+        (),
+        (ProjectPath("."), ProjectPath("src")),
+        base.manifest,
+        base.catalog,
+        base.policy,
+    )
+
+    result = discover_sources(tmp_path, config)
+
+    assert result.issues == ()
+    assert {source.path.value: source.module_id.value for source in result.sources} == {
+        "conftest.py": "conftest",
+        "src/app/__init__.py": "app",
+        "src/app/service.py": "app.service",
+    }

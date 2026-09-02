@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from taut.analysis.module_identity import resolve_internal_import
 from taut.domain.facts import (
     CycleEdge,
     ExecutionPhase,
@@ -31,7 +32,7 @@ def build_project_index(modules: Iterable[ModuleFacts]) -> ProjectIndex:
 
     for facts in module_list:
         for import_fact in facts.imports:
-            target = _resolve_internal_import(
+            target = resolve_internal_import(
                 import_fact.imported_name,
                 import_fact.imported_module_name,
                 modules_by_name,
@@ -223,22 +224,6 @@ def _build_canonical_symbols(
         if target is not None and alias != target:
             aliases.append((alias, target))
     return FrozenMap(aliases)
-
-
-def _resolve_internal_import(
-    imported_name: str,
-    imported_module_name: str,
-    modules_by_name: dict[str, ModuleId],
-) -> ModuleId | None:
-    candidates = (imported_name, imported_module_name)
-    for candidate in candidates:
-        current = candidate
-        while current:
-            module_id = modules_by_name.get(current)
-            if module_id is not None:
-                return module_id
-            current = current.rpartition(".")[0]
-    return None
 
 
 def _find_cycles(

@@ -4,13 +4,13 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.3.0 makes strict mode a complete project-assurance contract. It verifies that Python
-sources are analyzed or excluded with a reason, every module has an architecture role, configured
-selectors are live, and every built-in backend feature is explicitly required or absent. It
-supports Python 3.12 or newer on platforms supported by Python:
+Version 0.4.0 adds reviewable, package-aware onboarding and built-in Tortoise ORM semantics while
+preserving strict project assurance. It verifies source scope, role evidence, activation details,
+and every required or absent backend capability before writing policy. It supports Python 3.12 or
+newer on platforms supported by Python:
 
 ```bash
-uv add --dev pytaut==0.3.0
+uv add --dev pytaut==0.4.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -30,23 +30,51 @@ uv run taut init . --format json > taut-init.json || test "$?" -eq 2
 
 Taut does not modify the project in this step. The shell redirection (`>`) creates
 `taut-init.json`. Exit code `2` is expected while questions remain; the JSON proposal is still
-valid. It contains detected Python files and features, observed roles/imports, questions, proposed
-TOML, and a `project_digest`.
+valid. Its v4 JSON contains detected Python files and features, package-aware source-root evidence,
+per-file role candidates, confidence and conflicts, questions, proposed TOML, and a
+`project_digest`.
 
-The digest covers discovered Python file paths and contents—not README files, frontend files,
-dependency manifests, or every project setting. Adding, removing, renaming, or editing Python
-files invalidates earlier answers.
+The digest covers discovered Python file paths and contents plus the `pyproject.toml` manifests
+used to discover a project or workspace. It does not cover README files, frontend files, lockfiles,
+or unrelated settings. Python or relevant packaging-metadata changes invalidate earlier answers.
 
-### 2. Answer only the supported decisions
+### 2. Answer the supported decisions
 
-Create `taut-init-answers.json` from the proposal. In version 0.3.0, the supported decisions are
-the returned Python digest, acceptance of the observed import architecture, and all 13 feature
-expectations:
+Create `taut-init-answers.json` from the proposal. Copy its schema version and digest, then review
+source scope, import architecture, all 13 feature expectations, exact roles, zones, reasoned
+exclusions, and the repository-specific symbols that activate required policies:
 
 ```json
 {
+  "schema_version": 4,
   "project_digest": "copy from taut-init.json",
   "accept_observed_architecture": true,
+  "accept_observed_source_scope": true,
+  "roles": {
+    "app/services/payment_client.py": "adapter"
+  },
+  "role_aliases": {
+    "usecases": "service"
+  },
+  "zones": {
+    "test": ["tests/**"]
+  },
+  "exclusions": [
+    {
+      "patterns": ["generated/**"],
+      "reason": "generated from the versioned API contract"
+    }
+  ],
+  "policy": {
+    "transaction": {
+      "owner_roles": ["service"],
+      "session_providers": ["app.db.transaction"]
+    },
+    "external": {
+      "logged_calls": ["company_sdk.Client.send"],
+      "wrappers": ["app.adapters.logged_call"]
+    }
+  },
   "features": {
     "api": "required",
     "schema": "required",
@@ -65,12 +93,25 @@ expectations:
 }
 ```
 
+Answers without the current `schema_version` are rejected with an instruction to regenerate them;
+this prevents an older AI prompt or cached answers file from silently using a changed contract.
+
+Accept `recommended_source_roots` only after reviewing their evidence. To replace the recommendation
+instead, omit `accept_observed_source_scope` and provide an explicit, project-relative list such as
+`"source_roots": [".", "packages/orders/src"]`. Every discovered Python file must remain covered.
+Taut recognizes uv workspace members and standard Hatch, setuptools, Poetry, PDM, and `src` layout
+metadata; it does not contain repository-specific package names.
+
 Use `required` only when that capability belongs in this repository, and `absent` only when it
 must not exist. Do not use `absent` to hide configuration work.
 
-The answers file cannot currently edit role patterns, zones, exclusions, exact DTO/exception
-symbols, transaction providers, or external-call wrappers. Those are reviewed after the initial
-write.
+`roles` keys must exactly match discovered Python paths. Use them when path, filename, and semantic
+evidence disagree. `role_aliases` maps one exact custom directory name to a role; it cannot redefine
+a built-in alias such as `services`. Taut never guesses singular forms by stripping `s`.
+
+The `policy` object accepts validated `code_conventions`, `transaction`, `external`, and `enum`
+settings. If schema, exception registry, enum, transaction, or external calls are `required`, Taut
+refuses to write until their activation values are present. It never invents project-owned symbols.
 
 ### 3. Write the starting configuration
 
@@ -78,13 +119,15 @@ write.
 uv run taut init . --answers taut-init-answers.json --write
 ```
 
-Writing is refused when answers are incomplete or the Python digest is stale. Taut writes through
-a temporary file and atomic replacement. If `[tool.taut]` or `.policy/policy.toml` already exists,
-`init` stops even in preview mode and directs you to `taut audit` or `taut config migrate`.
+Writing is refused when answers are incomplete, source or role evidence still conflicts, or the
+project digest is stale. Taut writes through a temporary file and atomic replacement. If `[tool.taut]` or
+`.policy/policy.toml` already exists, `init` stops even in preview mode and directs you to
+`taut audit` or `taut config migrate`.
 
 ### 4. Complete repository-specific settings
 
-Review the generated `pyproject.toml`. In particular, connect real code to:
+Review the generated `pyproject.toml`. In particular, verify that the supplied decisions connect
+real code to:
 
 - every Python source through `include`/`source_roots`, or a reasoned exclusion;
 - one architecture role per analyzed module and the intended `allow` graph;
@@ -124,7 +167,13 @@ default and now includes assurance completeness. File length remains a repositor
 [tool.taut]
 schema_version = 4
 packs = ["taut.backend"]
-providers = ["taut.python-core", "taut.fastapi", "taut.pydantic", "taut.sqlalchemy"]
+providers = [
+    "taut.python-core",
+    "taut.fastapi",
+    "taut.pydantic",
+    "taut.sqlalchemy",
+    "taut.tortoise",
+]
 strict = true
 source_roots = ["."]
 
@@ -307,10 +356,10 @@ An ignore without a rule ID, or with an unknown rule ID, is a configuration erro
 does not suppress a real violation is reported as `IGNORE001`. File-wide ignores, violation
 baselines, and expiration management are intentionally unsupported.
 
-Raw SQL is not generally allowed. Application code should use SQLAlchemy expressions. A necessary
-raw query must pass through a registered shared wrapper configured with `raw_query_roles` and
-`raw_query_wrappers`. Fixed Model `server_default` expressions and partial Index predicates are
-allowed only within `schema_sql_roles` and `schema_sql_argument_names`.
+Raw SQL is not generally allowed. Application code should use SQLAlchemy or Tortoise ORM
+expressions. A necessary raw query must pass through a registered shared wrapper configured with
+`raw_query_roles` and `raw_query_wrappers`. Fixed Model `server_default` expressions and partial
+Index predicates are allowed only within `schema_sql_roles` and `schema_sql_argument_names`.
 
 Registered raw-query calls must provide `name`, `statement`, and `parameters` as explicit keyword
 arguments. `name` and `statement` must be string literals, preventing SQL construction through
@@ -361,9 +410,47 @@ reported as unavailable with an actionable reason. Successful capabilities retai
 provenance in the snapshot and JSON analysis coverage, so integrations can reproduce a decision.
 
 When `taut.backend` is used without an explicit `providers` setting, configuration loads the
-built-in providers in stable order: `taut.python-core`, `taut.fastapi`, `taut.pydantic`, and
-`taut.sqlalchemy`. An explicit `providers` list is authoritative (for example, listing only
-`taut.python-core` intentionally omits framework providers); provider IDs must be unique.
+built-in providers in stable order: `taut.python-core`, `taut.fastapi`, `taut.pydantic`,
+`taut.sqlalchemy`, and `taut.tortoise`. An explicit `providers` list is authoritative (for example,
+listing only `taut.python-core` intentionally omits framework providers); provider IDs must be
+unique.
+
+### Tortoise ORM
+
+The built-in `taut.tortoise` provider recognizes `Model` inheritance, `fields.*Field`
+declarations, relationship fields, model/query-set reads and writes, transaction contexts, and
+raw SQL through `Model.raw`, `RawSQL`, or `BaseDBAsyncClient.execute_*`. These facts participate in
+database assurance, layer boundaries, query write restrictions, transaction checks, and `SQL001`.
+
+When application code uses Tortoise's context manager directly, configure it as the transaction
+provider:
+
+```toml
+[tool.taut.transaction]
+owner_roles = ["service"]
+session_providers = ["tortoise.transactions.in_transaction"]
+```
+
+For a project-owned wrapper, also declare the type yielded by that wrapper so calls on the
+connection resolve semantically:
+
+```toml
+[tool.taut.transaction]
+owner_roles = ["service"]
+session_providers = ["app.db.transaction"]
+
+[tool.taut.transaction.provider_item_types]
+"app.db.transaction" = "tortoise.backends.base.client.TransactionalDBClient"
+```
+
+`provider_item_types` keys must also appear in `session_providers`. SQLAlchemy wrappers remain
+backward compatible and default to `sqlalchemy.ext.asyncio.AsyncSession` when no item type is
+specified.
+
+`ORM001`, `ORM002`, and `DB001` keep their SQLAlchemy-specific meanings. Tortoise does not expose
+equivalent per-relationship lazy-loading or per-column timezone options, so Taut does not pretend
+those SQLAlchemy checks apply. Tortoise's framework-specific model configuration should be added
+as separate rules when there is a precise, enforceable contract.
 
 An unregistered call that might have an external effect cannot be proven unsafe, so it is reported
 as a `CAT001` warning. After classifying the call, add it to the project effect catalog for precise

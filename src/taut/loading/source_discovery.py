@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
 
 from taut.analysis.contracts import SourceInput
+from taut.analysis.module_identity import module_identity, most_specific_source_root
 from taut.configuration.model import ProjectConfiguration
 from taut.domain.facts import SourceKind
 from taut.domain.ids import ModuleId
@@ -40,12 +40,13 @@ def discover_sources(
     sources: list[SourceInput] = []
     entries: list[DiscoveryEntry] = []
     issues: list[EngineIssue] = []
-    seen_paths: set[str] = set()
-    seen_modules: set[ModuleId] = set()
+    seen_paths: dict[str, ProjectPath] = {}
+    seen_modules: dict[ModuleId, tuple[ProjectPath, str]] = {}
     project_root = project_root.resolve()
     resolved_project_root = project_root
     candidates = _included_python_paths(project_root, config.include)
 
+    valid_roots: list[tuple[ProjectPath, Path]] = []
     for source_root in config.source_roots:
         absolute_root = (project_root / source_root.value).resolve()
         if not absolute_root.is_relative_to(resolved_project_root):
@@ -54,57 +55,82 @@ def discover_sources(
         if not absolute_root.is_dir():
             issues.append(_discovery_issue("SOURCE_ROOT_MISSING", source_root.value))
             continue
-        for absolute_path in candidates:
-            if not absolute_path.is_relative_to(absolute_root):
-                continue
-            try:
-                project_path = ProjectPath(absolute_path.relative_to(project_root).as_posix())
-            except ValueError:
-                issues.append(_discovery_issue("SOURCE_PATH_INVALID", str(absolute_path)))
-                continue
-            if absolute_path.is_symlink() and not absolute_path.resolve().is_relative_to(
-                project_root.resolve()
-            ):
-                issues.append(_discovery_issue("SOURCE_SYMLINK_OUTSIDE", project_path.value))
-                entries.append(DiscoveryEntry(project_path, False, "프로젝트 밖 symlink"))
-                continue
-            if _matches(project_path.value, config.exclude):
-                entries.append(DiscoveryEntry(project_path, False, "exclude 패턴과 일치"))
-                continue
-            folded = project_path.value.casefold()
-            if folded in seen_paths:
-                issues.append(_discovery_issue("SOURCE_PATH_CONFLICT", project_path.value))
-                continue
-            try:
-                relative_source = absolute_path.relative_to(absolute_root)
-                module_id, is_package = _module_identity(relative_source)
-                content = absolute_path.read_text()
-            except (OSError, UnicodeError, ValueError) as error:
-                issues.append(
-                    _discovery_issue(
-                        "SOURCE_READ_FAILURE",
-                        project_path.value,
-                        error.__class__.__name__,
-                    )
-                )
-                continue
-            if module_id in seen_modules:
-                issues.append(_discovery_issue("SOURCE_MODULE_CONFLICT", module_id.value))
-                continue
-            seen_paths.add(folded)
-            seen_modules.add(module_id)
-            sources.append(
-                SourceInput(
-                    path=project_path,
-                    module_id=module_id,
-                    kind=SourceKind.FIRST_PARTY,
-                    is_policy_target=True,
-                    is_package=is_package,
-                    content=content,
-                    content_hash=hashlib.sha256(content.encode()).hexdigest(),
+        valid_roots.append((source_root, absolute_root))
+
+    for absolute_path in candidates:
+        matching_roots = [
+            (source_root, absolute_root)
+            for source_root, absolute_root in valid_roots
+            if absolute_path.is_relative_to(absolute_root)
+        ]
+        if not matching_roots:
+            continue
+        selected_root = most_specific_source_root(
+            absolute_path, tuple(item[1] for item in matching_roots)
+        )
+        if selected_root is None:
+            continue
+        try:
+            project_path = ProjectPath(absolute_path.relative_to(project_root).as_posix())
+        except ValueError:
+            issues.append(_discovery_issue("SOURCE_PATH_INVALID", str(absolute_path)))
+            continue
+        if absolute_path.is_symlink() and not absolute_path.resolve().is_relative_to(
+            project_root.resolve()
+        ):
+            issues.append(_discovery_issue("SOURCE_SYMLINK_OUTSIDE", project_path.value))
+            entries.append(DiscoveryEntry(project_path, False, "프로젝트 밖 symlink"))
+            continue
+        if _matches(project_path.value, config.exclude):
+            entries.append(DiscoveryEntry(project_path, False, "exclude 패턴과 일치"))
+            continue
+        folded = project_path.value.casefold()
+        previous_path = seen_paths.get(folded)
+        if previous_path is not None:
+            subject = f"{previous_path.value} and {project_path.value}"
+            issues.append(_discovery_issue("SOURCE_PATH_CONFLICT", subject))
+            continue
+        try:
+            relative_source = absolute_path.relative_to(selected_root)
+            module_id, is_package = module_identity(relative_source)
+            content = absolute_path.read_text()
+        except (OSError, UnicodeError, ValueError) as error:
+            issues.append(
+                _discovery_issue(
+                    "SOURCE_READ_FAILURE",
+                    project_path.value,
+                    error.__class__.__name__,
                 )
             )
-            entries.append(DiscoveryEntry(project_path, True, "검사 대상"))
+            continue
+        selected_label = next(
+            source_root.value
+            for source_root, absolute_root in matching_roots
+            if absolute_root == selected_root
+        )
+        previous_module = seen_modules.get(module_id)
+        if previous_module is not None:
+            previous_path, previous_root = previous_module
+            subject = (
+                f"module {module_id.value}: {previous_path.value} (root {previous_root}) and "
+                f"{project_path.value} (root {selected_label})"
+            )
+            issues.append(_discovery_issue("SOURCE_MODULE_CONFLICT", subject))
+            continue
+        seen_paths[folded] = project_path
+        seen_modules[module_id] = (project_path, selected_label)
+        sources.append(
+            SourceInput(
+                path=project_path,
+                module_id=module_id,
+                kind=SourceKind.FIRST_PARTY,
+                is_policy_target=True,
+                is_package=is_package,
+                content=content,
+                content_hash=hashlib.sha256(content.encode()).hexdigest(),
+            )
+        )
+        entries.append(DiscoveryEntry(project_path, True, "검사 대상"))
     if not sources:
         issues.append(_discovery_issue("NO_SOURCES", "일치하는 Python 파일이 없음"))
     return SourceDiscoveryResult(
@@ -126,28 +152,6 @@ def _included_python_paths(project_root: Path, patterns: tuple[str, ...]) -> tup
         if path.name.endswith(".py") and path.is_file()
     }
     return tuple(sorted(candidates))
-
-
-def _module_identity(relative_path: Path) -> tuple[ModuleId, bool]:
-    parts = list(relative_path.parts)
-    is_package = parts[-1] == "__init__.py"
-    if is_package:
-        parts = parts[:-1]
-    else:
-        parts[-1] = relative_path.stem
-    if not parts:
-        raise ValueError("source root __init__.py has no logical module name")
-    return ModuleId(".".join(_module_part(part) for part in parts)), is_package
-
-
-def _module_part(value: str) -> str:
-    if value.isidentifier():
-        return value
-    readable = re.sub(r"\W", "_", value)
-    if not readable or not readable.isidentifier():
-        readable = "source"
-    digest = hashlib.sha256(value.encode()).hexdigest()[:8]
-    return f"{readable}_{digest}"
 
 
 def _discovery_issue(code: str, subject: str, cause: str | None = None) -> EngineIssue:

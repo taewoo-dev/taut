@@ -1,7 +1,7 @@
 # Start using pytaut in a project
 
 This guide covers the complete path from a repository without Taut to strict CI. It describes
-pytaut 0.3.0 and configuration schema v4.
+pytaut 0.4.0 and configuration schema v4.
 
 ## Choose the correct entry path
 
@@ -20,7 +20,7 @@ or replaces an existing policy.
 ## 1. Install a fixed version
 
 ```bash
-uv add --dev pytaut==0.3.0
+uv add --dev pytaut==0.4.0
 uv run taut --version
 ```
 
@@ -39,29 +39,74 @@ The responsibilities are deliberately separate:
 - Exit code `2` means unresolved onboarding questions; it is expected for the first proposal.
 - No Taut configuration is written without `--write`.
 
-The proposal includes a status, Python paths, detected features, role/import observations,
-recommended answers, proposed TOML, and a project digest. Treat recommendations as evidence to
-review, not decisions to accept blindly.
+The v4 proposal includes a status, Python paths, detected features, package-aware source-root
+evidence, per-file role candidates, confidence and conflicts, recommended answers, proposed TOML,
+and a project digest.
+Treat recommendations as evidence to review, not decisions to accept blindly.
+
+Role confidence has four values: `high` for exact directory or semantic evidence, `medium` for a
+filename suffix, `low` for the visible `application` fallback, and `explicit` for an answers-file
+override. Test, migration, and script paths take precedence over production-role hints. Different
+role candidates on one file set `requires_review=true` and prevent a write until resolved.
 
 ### Digest scope
 
-The digest contains each discovered Python file path and its bytes. These changes make answers
-stale:
+The digest contains each discovered Python file path and its bytes, plus every `pyproject.toml`
+used to identify the root project and declared workspace members. These changes make answers stale:
 
 - adding or deleting a Python file;
 - editing Python source;
 - renaming or moving a Python file.
+- changing relevant project, workspace, or build-package metadata.
 
-README, frontend, lockfile, and other non-Python changes do not currently affect the digest.
+README, frontend, lockfile, and unrelated configuration changes do not affect the digest.
 
 ## 3. Create the answers file
 
-The 0.3.0 answers contract supports only:
+The answers contract supports source-scope and architecture acceptance, all feature decisions,
+exact roles, custom directory aliases, zones, reasoned exclusions, and exact activation settings:
 
 ```json
 {
+  "schema_version": 4,
   "project_digest": "value returned by init",
   "accept_observed_architecture": true,
+  "accept_observed_source_scope": true,
+  "roles": {
+    "app/services/payment_client.py": "adapter"
+  },
+  "role_aliases": {
+    "usecases": "service"
+  },
+  "zones": {
+    "test": ["tests/**"],
+    "migration": ["migrations/**"]
+  },
+  "exclusions": [
+    {
+      "patterns": ["generated/**"],
+      "reason": "generated from the versioned API contract"
+    }
+  ],
+  "policy": {
+    "code_conventions": {
+      "request_config_symbols": ["app.schemas.REQUEST_CONFIG"],
+      "exception_base_symbols": ["app.exceptions.DomainError"],
+      "error_code_enum_symbols": ["app.enums.ErrorCode"]
+    },
+    "transaction": {
+      "owner_roles": ["service"],
+      "session_providers": ["app.db.transaction"]
+    },
+    "external": {
+      "modules": ["company_sdk"],
+      "logged_calls": ["company_sdk.Client.send"],
+      "wrappers": ["app.adapters.logged_call"]
+    },
+    "enum": {
+      "shared_modules": ["app.enums"]
+    }
+  },
   "features": {
     "api": "required",
     "schema": "required",
@@ -80,12 +125,29 @@ The 0.3.0 answers contract supports only:
 }
 ```
 
+The answers `schema_version` must equal the proposal version. Missing or older versions are rejected
+with regeneration guidance instead of being interpreted using the current contract.
+
+`discovered.source_scope` explains each recommended root and whether it came from a uv workspace,
+Hatch wheel packages, setuptools, Poetry, PDM, a conventional `src` directory, or the coverage
+fallback. Use `accept_observed_source_scope` only when that evidence is correct. Otherwise provide
+`"source_roots": [".", "path/to/src"]`; paths must be existing project-relative directories and
+must collectively cover every discovered Python file. Conflicting or missing declared package
+paths require this explicit override.
+
 All 13 feature keys are required. `required` says the capability belongs in the repository and
 must have real code evidence plus active policy configuration. `absent` says matching evidence is
 an error.
 
-The answers contract does not support detailed role edits, exclusions, zones, or exact symbols.
-An AI or developer performs those edits in TOML after the write.
+`roles` keys are exact discovered Python paths, not globs. Use them to resolve conflicting
+directory, filename, or framework evidence. `role_aliases` keys are exact custom directory names;
+values are role names. Built-in singular/plural aliases cannot be redefined, and Taut does not use
+linguistic singularization.
+
+Every exclusion needs a durable reason. Exact activation values are required for a required schema,
+exception registry, enum, transaction, or external-call feature. Taut validates these values and
+renders them into TOML, but does not invent repository-owned symbols. Advanced rule-specific
+extensions and approvals remain deliberate post-init edits.
 
 ## 4. Write once, safely
 
@@ -93,9 +155,10 @@ An AI or developer performs those edits in TOML after the write.
 uv run taut init . --answers taut-init-answers.json --write
 ```
 
-Taut refuses to write when questions are unresolved, the digest changed, the target configuration
-already exists, or the project file is invalid. A successful write uses a temporary sibling file,
-flushes it, and atomically replaces the target.
+Taut refuses to write when questions, source-scope conflicts, or role conflicts are unresolved, the digest changed, an
+answer path is not in the discovered Python set, the target configuration already exists, or the
+project file is invalid. A successful write uses a temporary sibling file, flushes it, and
+atomically replaces the target.
 
 ## 5. Review the generated TOML
 
@@ -173,6 +236,26 @@ shared_modules = ["app.enums"]
 
 Use symbols that exist in the repository. Stale selectors and assertions are assurance failures.
 
+For Tortoise ORM, use `tortoise.transactions.in_transaction` directly or identify the connection
+type yielded by a project wrapper:
+
+```toml
+[tool.taut.transaction]
+owner_roles = ["service"]
+session_providers = ["app.db.transaction"]
+
+[tool.taut.transaction.provider_item_types]
+"app.db.transaction" = "tortoise.backends.base.client.TransactionalDBClient"
+```
+
+Keep `taut.tortoise` in the provider list. Taut then classifies Tortoise models, fields,
+relationships, reads, writes, transactions, and raw SQL. The item-type mapping is unnecessary when
+`session_providers` contains `tortoise.transactions.in_transaction` itself.
+
+The generic database, boundary, transaction, and raw-SQL policies apply to Tortoise. The
+SQLAlchemy-specific meanings of `ORM001`, `ORM002`, and `DB001` are not reinterpreted as Tortoise
+rules because the frameworks expose different configuration contracts.
+
 ### Exception budgets
 
 Start with no policy exceptions:
@@ -204,6 +287,7 @@ Common assurance codes have direct actions:
 | `FEATURE_REQUIRED_MISSING` | A required capability has no code evidence | Correct the expectation or implement the capability |
 | `FEATURE_ABSENT_DETECTED` | Code contradicts an absent declaration | Mark it required and configure it, or use an exact reasoned assertion when truly not applicable |
 | `FEATURE_POLICY_INACTIVE` | Evidence exists but its role/symbol/zone policy is not active | Connect the corresponding policy settings |
+| `FRAMEWORK_PROVIDER_MISSING` | Imported framework has no semantic provider | Add the corresponding built-in provider instead of accepting syntax-only coverage |
 | `EXCLUSION_UNUSED` / `ASSERTION_UNUSED` | An exception became stale | Remove or correct it |
 | `APPROVAL_BUDGET_EXCEEDED` / `IGNORE_BUDGET_EXCEEDED` | Used exceptions exceed the declared budget | Remove exceptions or deliberately review the exact budget |
 
@@ -261,8 +345,9 @@ Install the repository-pinned pytaut version and onboard this Python project saf
 
 1. If no Taut configuration exists, run `taut init . --format json`. Treat exit 2 as expected
    while questions remain. Do not claim that the proposal is a finished policy.
-2. Review evidence and create answers containing only project_digest,
-   accept_observed_architecture, and all 13 required/absent feature decisions.
+2. Review feature and role evidence. Create answers containing project_digest,
+   accept_observed_architecture, all 13 required/absent feature decisions, exact-path roles for
+   conflicts, and role_aliases only for real custom directory conventions.
 3. Run init with --answers and --write. Never overwrite an existing Taut configuration.
 4. Review and correct source scope, reasoned exclusions, roles, allow edges, zones, exact symbols,
    transaction providers, external-call wrappers, and exception budgets in pyproject.toml.

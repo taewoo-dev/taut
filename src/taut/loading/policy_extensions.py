@@ -121,13 +121,13 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
         external_modules=modules(
             "external_modules", ("anthropic", "boto3", "httpx", "openai", "requests")
         ),
-        database_modules=modules("database_modules", ("sqlalchemy",)),
+        database_modules=modules("database_modules", ("sqlalchemy", "tortoise")),
         transport_modules=modules("transport_modules", ("fastapi", "starlette")),
         contract_forbidden_modules=modules(
             "contract_forbidden_modules",
-            ("anthropic", "fastapi", "httpx", "openai", "sqlalchemy"),
+            ("anthropic", "fastapi", "httpx", "openai", "sqlalchemy", "tortoise"),
         ),
-        adapter_forbidden_modules=modules("adapter_forbidden_modules", ("sqlalchemy",)),
+        adapter_forbidden_modules=modules("adapter_forbidden_modules", ("sqlalchemy", "tortoise")),
         adapter_forbidden_calls=symbols(
             "adapter_forbidden_calls",
             (
@@ -136,6 +136,16 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
                 "sqlalchemy.ext.asyncio.AsyncSession.execute",
                 "sqlalchemy.ext.asyncio.AsyncSession.flush",
                 "sqlalchemy.ext.asyncio.AsyncSession.rollback",
+                "tortoise.backends.base.client.BaseDBAsyncClient.execute_insert",
+                "tortoise.backends.base.client.BaseDBAsyncClient.execute_many",
+                "tortoise.backends.base.client.BaseDBAsyncClient.execute_query",
+                "tortoise.backends.base.client.BaseDBAsyncClient.execute_script",
+                "tortoise.backends.base.client.TransactionalDBClient.commit",
+                "tortoise.backends.base.client.TransactionalDBClient.execute_insert",
+                "tortoise.backends.base.client.TransactionalDBClient.execute_many",
+                "tortoise.backends.base.client.TransactionalDBClient.execute_query",
+                "tortoise.backends.base.client.TransactionalDBClient.execute_script",
+                "tortoise.backends.base.client.TransactionalDBClient.rollback",
             ),
         ),
         database_statement_calls=symbols(
@@ -146,6 +156,17 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
                 "sqlalchemy.scoped_query",
                 "sqlalchemy.select",
                 "sqlalchemy.update",
+                "tortoise.models.Model.bulk_create",
+                "tortoise.models.Model.bulk_update",
+                "tortoise.models.Model.create",
+                "tortoise.models.Model.delete",
+                "tortoise.models.Model.filter",
+                "tortoise.models.Model.get",
+                "tortoise.models.Model.get_or_create",
+                "tortoise.models.Model.update_or_create",
+                "tortoise.queryset.QuerySet.delete",
+                "tortoise.queryset.QuerySet.filter",
+                "tortoise.queryset.QuerySet.update",
             ),
         ),
         transport_exception_calls=symbols(
@@ -166,10 +187,20 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
         settings_constructors=symbols("settings_constructors"),
         session_type_symbols=symbols(
             "session_type_symbols",
-            ("sqlalchemy.ext.asyncio.AsyncSession", "sqlalchemy.orm.Session"),
+            (
+                "sqlalchemy.ext.asyncio.AsyncSession",
+                "sqlalchemy.orm.Session",
+                "tortoise.backends.base.client.TransactionalDBClient",
+            ),
         ),
         raw_sql_calls=symbols(
-            "raw_sql_calls", ("sqlalchemy.sql.expression.text", "sqlalchemy.text")
+            "raw_sql_calls",
+            (
+                "sqlalchemy.sql.expression.text",
+                "sqlalchemy.text",
+                "tortoise.expressions.RawSQL",
+                "tortoise.models.Model.raw",
+            ),
         ),
         raw_query_wrappers=frozenset(symbols("raw_query_wrappers")),
         schema_sql_roles=roles("schema_sql_roles", ("model",)),
@@ -180,12 +211,38 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
             "schema_sql_parent_calls", ("sqlalchemy.Index", "sqlalchemy.sql.schema.Index")
         ),
         raw_sql_execution_methods=names(
-            "raw_sql_execution_methods", ("exec_driver_sql", "execute")
+            "raw_sql_execution_methods",
+            (
+                "exec_driver_sql",
+                "execute",
+                "execute_insert",
+                "execute_many",
+                "execute_query",
+                "execute_query_dict",
+                "execute_script",
+                "raw",
+            ),
         ),
         database_owner_names=names("database_owner_names", ("conn", "connection", "db", "session")),
         database_primitive_methods=names(
             "database_primitive_methods",
-            ("add", "add_all", "delete", "execute", "flush", "get", "merge"),
+            (
+                "add",
+                "add_all",
+                "bulk_create",
+                "bulk_update",
+                "create",
+                "delete",
+                "execute",
+                "filter",
+                "flush",
+                "get",
+                "get_or_create",
+                "merge",
+                "save",
+                "update",
+                "update_or_create",
+            ),
         ),
         query_write_method_prefixes=names(
             "query_write_method_prefixes",

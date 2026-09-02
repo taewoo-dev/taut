@@ -5,4 +5,5 @@ BUILTIN_BACKEND_PROVIDER_IDS = (
     "taut.fastapi",
     "taut.pydantic",
     "taut.sqlalchemy",
+    "taut.tortoise",
 )

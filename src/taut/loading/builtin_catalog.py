@@ -16,6 +16,14 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
         _direct("datetime.date.today", Effect.TIME_NOW),
         _direct("sqlalchemy.ext.asyncio.AsyncSession.commit", Effect.TX_COMMIT),
         _direct("sqlalchemy.ext.asyncio.AsyncSession.rollback", Effect.TX_ROLLBACK),
+        _direct(
+            "tortoise.backends.base.client.TransactionalDBClient.commit",
+            Effect.TX_COMMIT,
+        ),
+        _direct(
+            "tortoise.backends.base.client.TransactionalDBClient.rollback",
+            Effect.TX_ROLLBACK,
+        ),
         _direct("time.sleep", Effect.IO_BLOCKING),
         _direct("os.getenv", Effect.SECURITY_ENVIRONMENT),
         _direct("os.environ.get", Effect.SECURITY_ENVIRONMENT),

@@ -1,0 +1,291 @@
+"""Validated repository-specific policy decisions supplied during onboarding."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
+
+from taut.configuration.manifest import Role, Zone
+from taut.domain.ids import ModuleId, SymbolId
+from taut.loading.errors import PolicyConfigError
+from taut.loading.policy_extensions import KNOWN_ZONES
+
+_CODE_SYMBOL_KEYS = frozenset(
+    {
+        "request_config_symbols",
+        "response_config_symbols",
+        "exception_base_symbols",
+        "abstract_exception_symbols",
+        "error_code_enum_symbols",
+        "reserved_error_code_symbols",
+    }
+)
+
+
+@dataclass(frozen=True, order=True)
+class InitExclusion:
+    patterns: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class InitPolicyAnswers:
+    zones: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    exclusions: tuple[InitExclusion, ...] = ()
+    code_conventions: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    transaction_roles: tuple[str, ...] = ()
+    transaction_participants: tuple[str, ...] = ()
+    session_providers: tuple[str, ...] = ()
+    provider_item_types: tuple[tuple[str, str], ...] = ()
+    external_modules: tuple[str, ...] = ()
+    logged_calls: tuple[str, ...] = ()
+    external_wrappers: tuple[str, ...] = ()
+    shared_enum_modules: tuple[str, ...] = ()
+
+    def code_values(self, key: str) -> tuple[str, ...]:
+        return dict(self.code_conventions).get(key, ())
+
+
+def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
+    if answers is None:
+        return InitPolicyAnswers()
+    zones = _zones(answers.get("zones"))
+    exclusions = _exclusions(answers.get("exclusions"))
+    raw_policy = answers.get("policy", {})
+    policy = _table(raw_policy, "policy")
+    _reject_unknown(policy, {"code_conventions", "transaction", "external", "enum"}, "policy")
+
+    code = _table(policy.get("code_conventions", {}), "policy.code_conventions")
+    _reject_unknown(code, _CODE_SYMBOL_KEYS, "policy.code_conventions")
+    code_values = tuple(
+        sorted(
+            (key, _symbols(value, f"policy.code_conventions.{key}")) for key, value in code.items()
+        )
+    )
+
+    transaction = _table(policy.get("transaction", {}), "policy.transaction")
+    _reject_unknown(
+        transaction,
+        {"owner_roles", "participant_roles", "session_providers", "provider_item_types"},
+        "policy.transaction",
+    )
+    owners = _roles(transaction.get("owner_roles", []), "policy.transaction.owner_roles")
+    participants = _roles(
+        transaction.get("participant_roles", []), "policy.transaction.participant_roles"
+    )
+    providers = _symbols(
+        transaction.get("session_providers", []), "policy.transaction.session_providers"
+    )
+    provider_types = _symbol_mapping(
+        transaction.get("provider_item_types", {}), "policy.transaction.provider_item_types"
+    )
+    if set(dict(provider_types)).difference(providers):
+        raise PolicyConfigError(
+            "init policy.transaction.provider_item_types keys must also be session_providers"
+        )
+
+    external = _table(policy.get("external", {}), "policy.external")
+    _reject_unknown(external, {"modules", "logged_calls", "wrappers"}, "policy.external")
+    modules = _modules(external.get("modules", []), "policy.external.modules")
+    logged = _symbols(external.get("logged_calls", []), "policy.external.logged_calls")
+    wrappers = _symbols(external.get("wrappers", []), "policy.external.wrappers")
+
+    enum = _table(policy.get("enum", {}), "policy.enum")
+    _reject_unknown(enum, {"shared_modules"}, "policy.enum")
+    shared_modules = _modules(enum.get("shared_modules", []), "policy.enum.shared_modules")
+    return InitPolicyAnswers(
+        zones=zones,
+        exclusions=exclusions,
+        code_conventions=code_values,
+        transaction_roles=owners,
+        transaction_participants=participants,
+        session_providers=providers,
+        provider_item_types=provider_types,
+        external_modules=modules,
+        logged_calls=logged,
+        external_wrappers=wrappers,
+        shared_enum_modules=shared_modules,
+    )
+
+
+def missing_policy_decisions(
+    expectations: dict[str, str], policy: InitPolicyAnswers
+) -> tuple[tuple[str, str], ...]:
+    missing: list[tuple[str, str]] = []
+    if expectations["schema"] == "required" and not (
+        policy.code_values("request_config_symbols")
+        or policy.code_values("response_config_symbols")
+    ):
+        missing.append(("schema", "request_config_symbols or response_config_symbols"))
+    if expectations["exception_registry"] == "required" and not (
+        policy.code_values("exception_base_symbols")
+        and policy.code_values("error_code_enum_symbols")
+    ):
+        missing.append(("exception_registry", "exception_base_symbols and error_code_enum_symbols"))
+    if expectations["enum"] == "required" and not policy.shared_enum_modules:
+        missing.append(("enum", "shared_modules"))
+    if expectations["transaction"] == "required" and not (
+        policy.transaction_roles and policy.session_providers
+    ):
+        missing.append(("transaction", "owner_roles and session_providers"))
+    if expectations["external_calls"] == "required" and not (
+        policy.logged_calls and policy.external_wrappers
+    ):
+        missing.append(("external_calls", "logged_calls and wrappers"))
+    return tuple(missing)
+
+
+def effective_zones(
+    paths: tuple[str, ...], policy: InitPolicyAnswers
+) -> dict[str, tuple[str, ...]]:
+    if policy.zones:
+        return dict(policy.zones)
+    observed = {
+        "test": tuple(path for path in paths if "tests" in Path(path).parts),
+        "migration": tuple(
+            path for path in paths if {"migrations", "alembic"}.intersection(Path(path).parts)
+        ),
+        "script": tuple(path for path in paths if "scripts" in Path(path).parts),
+    }
+    return {name: items for name, items in observed.items() if items}
+
+
+def render_policy_lines(policy: InitPolicyAnswers) -> tuple[str, ...]:
+    lines: list[str] = []
+    for exclusion in policy.exclusions:
+        lines.extend(
+            (
+                "",
+                "[[tool.taut.exclusions]]",
+                f"patterns = {_toml_array(exclusion.patterns)}",
+                f"reason = {json.dumps(exclusion.reason)}",
+            )
+        )
+    if policy.code_conventions:
+        lines.extend(("", "[tool.taut.code_conventions]"))
+        for name, values in policy.code_conventions:
+            lines.append(f"{name} = {_toml_array(values)}")
+    if policy.transaction_roles or policy.session_providers:
+        lines.extend(("", "[tool.taut.transaction]"))
+        lines.append(f"owner_roles = {_toml_array(policy.transaction_roles)}")
+        if policy.transaction_participants:
+            lines.append(f"participant_roles = {_toml_array(policy.transaction_participants)}")
+        lines.append(f"session_providers = {_toml_array(policy.session_providers)}")
+        if policy.provider_item_types:
+            lines.extend(("", "[tool.taut.transaction.provider_item_types]"))
+            for provider, item_type in policy.provider_item_types:
+                lines.append(f"{json.dumps(provider)} = {json.dumps(item_type)}")
+    if policy.external_modules or policy.logged_calls or policy.external_wrappers:
+        lines.extend(("", "[tool.taut.external]"))
+        if policy.external_modules:
+            lines.append(f"modules = {_toml_array(policy.external_modules)}")
+        lines.append(f"logged_calls = {_toml_array(policy.logged_calls)}")
+        lines.append(f"wrappers = {_toml_array(policy.external_wrappers)}")
+    if policy.shared_enum_modules:
+        lines.extend(("", "[tool.taut.enum]"))
+        lines.append(f"shared_modules = {_toml_array(policy.shared_enum_modules)}")
+    return tuple(lines)
+
+
+def _toml_array(values: tuple[str, ...]) -> str:
+    return "[" + ", ".join(json.dumps(value) for value in values) + "]"
+
+
+def _zones(raw: object) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if raw is None:
+        return ()
+    table = _table(raw, "zones")
+    unknown = set(table).difference(KNOWN_ZONES)
+    if unknown:
+        raise PolicyConfigError(f"unknown init zones: {', '.join(sorted(unknown))}")
+    values = tuple(
+        sorted((name, _strings(patterns, f"zones.{name}")) for name, patterns in table.items())
+    )
+    if any(not patterns for _, patterns in values):
+        raise PolicyConfigError("init zones require at least one pattern")
+    for name, _ in values:
+        Zone(name)
+    return values
+
+
+def _exclusions(raw: object) -> tuple[InitExclusion, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise PolicyConfigError("init answers.exclusions must be an array")
+    values: list[InitExclusion] = []
+    for index, item in enumerate(cast(list[object], raw)):
+        table = _table(item, f"exclusions[{index}]")
+        _reject_unknown(table, {"patterns", "reason"}, f"exclusions[{index}]")
+        patterns = _strings(table.get("patterns"), f"exclusions[{index}].patterns")
+        reason = table.get("reason")
+        if not patterns or not isinstance(reason, str) or not reason.strip():
+            raise PolicyConfigError("init exclusions require non-empty patterns and reason")
+        values.append(InitExclusion(patterns, reason.strip()))
+    if len(values) != len(set(values)):
+        raise PolicyConfigError("duplicate init exclusion")
+    return tuple(sorted(values))
+
+
+def _roles(raw: object, label: str) -> tuple[str, ...]:
+    values = _strings(raw, label)
+    for value in values:
+        Role(value)
+    return values
+
+
+def _symbols(raw: object, label: str) -> tuple[str, ...]:
+    values = _strings(raw, label)
+    for value in values:
+        SymbolId(value)
+    return values
+
+
+def _modules(raw: object, label: str) -> tuple[str, ...]:
+    values = _strings(raw, label)
+    for value in values:
+        ModuleId(value)
+    return values
+
+
+def _symbol_mapping(raw: object, label: str) -> tuple[tuple[str, str], ...]:
+    table = _table(raw, label)
+    values: list[tuple[str, str]] = []
+    for key, value in table.items():
+        if not isinstance(value, str) or not value.strip():
+            raise PolicyConfigError(f"{label} values must be non-empty symbol strings")
+        SymbolId(key)
+        SymbolId(value)
+        values.append((key, value))
+    return tuple(sorted(values))
+
+
+def _strings(raw: object, label: str) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        raise PolicyConfigError(f"{label} must be an array of non-empty strings")
+    values = cast(list[object], raw)
+    if not all(isinstance(value, str) and value.strip() for value in values):
+        raise PolicyConfigError(f"{label} must be an array of non-empty strings")
+    result = tuple(sorted(set(cast(list[str], values))))
+    if len(result) != len(values):
+        raise PolicyConfigError(f"{label} must contain unique strings")
+    return result
+
+
+def _table(raw: object, label: str) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        raise PolicyConfigError(f"init answers.{label} must be an object")
+    mapping = cast(dict[object, object], raw)
+    if not all(isinstance(key, str) for key in mapping):
+        raise PolicyConfigError(f"init answers.{label} must be an object")
+    return {cast(str, key): value for key, value in mapping.items()}
+
+
+def _reject_unknown(
+    values: dict[str, object], known: set[str] | frozenset[str], label: str
+) -> None:
+    unknown = set(values).difference(known)
+    if unknown:
+        raise PolicyConfigError(f"unknown init {label} keys: {', '.join(sorted(unknown))}")

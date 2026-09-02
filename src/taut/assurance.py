@@ -8,8 +8,16 @@ from taut.analysis.framework.pydantic import PYDANTIC_MODELS
 from taut.analysis.framework.sqlalchemy import (
     SQLALCHEMY_MODELS,
     SQLALCHEMY_QUERIES,
+    SQLALCHEMY_RAW_SQL,
     SQLALCHEMY_SESSIONS,
     SQLALCHEMY_TRANSACTIONS,
+)
+from taut.analysis.framework.tortoise import (
+    TORTOISE_CONNECTIONS,
+    TORTOISE_MODELS,
+    TORTOISE_QUERIES,
+    TORTOISE_RAW_SQL,
+    TORTOISE_TRANSACTIONS,
 )
 from taut.configuration.assurance import FeatureExpectation
 from taut.configuration.manifest import ClassificationIndex
@@ -119,6 +127,33 @@ def audit_project_assurance(
                     "분석된 모듈에 architecture role이 없습니다.",
                     path,
                     "tool.taut.roles와 tool.taut.allow에 이 모듈의 역할을 선언하세요.",
+                )
+            )
+
+    framework_providers = {
+        "fastapi": "taut.fastapi",
+        "pydantic": "taut.pydantic",
+        "sqlalchemy": "taut.sqlalchemy",
+        "tortoise": "taut.tortoise",
+    }
+    configured_providers = set(config.providers)
+    imported_frameworks = {
+        framework
+        for module in snapshot.modules.values()
+        for imported in module.imports
+        for framework in framework_providers
+        if imported.imported_module_name == framework
+        or imported.imported_module_name.startswith(f"{framework}.")
+    }
+    for framework in sorted(imported_frameworks):
+        provider = framework_providers[framework]
+        if provider not in configured_providers:
+            issues.append(
+                _issue(
+                    "FRAMEWORK_PROVIDER_MISSING",
+                    "사용 중인 프레임워크의 semantic provider가 설정되지 않았습니다.",
+                    framework,
+                    f"tool.taut.providers에 {provider}를 추가하세요.",
                 )
             )
 
@@ -237,17 +272,27 @@ def _feature_evidence(
         if module_id is not None and module_id in snapshot.modules:
             path = snapshot.modules[module_id].module.path.value
             add("schema", "symbol", str(symbol_id or module_id), path)
-    for capability in (SQLALCHEMY_MODELS, SQLALCHEMY_QUERIES, SQLALCHEMY_SESSIONS):
+    for capability in (
+        SQLALCHEMY_MODELS,
+        SQLALCHEMY_QUERIES,
+        SQLALCHEMY_RAW_SQL,
+        SQLALCHEMY_SESSIONS,
+        TORTOISE_MODELS,
+        TORTOISE_QUERIES,
+        TORTOISE_CONNECTIONS,
+        TORTOISE_RAW_SQL,
+    ):
         for fact in snapshot.capabilities.get(capability, ()):
             module_id = getattr(fact, "module_id", None)
             if module_id is not None and module_id in snapshot.modules:
                 path = snapshot.modules[module_id].module.path.value
                 add("database", "path", path, path)
-    for fact in snapshot.capabilities.get(SQLALCHEMY_TRANSACTIONS, ()):
-        module_id = getattr(fact, "module_id", None)
-        if module_id is not None and module_id in snapshot.modules:
-            path = snapshot.modules[module_id].module.path.value
-            add("transaction", "path", path, path)
+    for capability in (SQLALCHEMY_TRANSACTIONS, TORTOISE_TRANSACTIONS):
+        for fact in snapshot.capabilities.get(capability, ()):
+            module_id = getattr(fact, "module_id", None)
+            if module_id is not None and module_id in snapshot.modules:
+                path = snapshot.modules[module_id].module.path.value
+                add("transaction", "path", path, path)
 
     code = config.policy.code
     for module_id, module in snapshot.modules.items():

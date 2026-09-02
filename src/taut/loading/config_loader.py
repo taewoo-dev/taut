@@ -350,7 +350,7 @@ def _load_policy(
     transaction = _table(root.get("transaction", {}), "transaction")
     _reject_unknown(
         transaction,
-        frozenset({"owner_roles", "participant_roles", "session_providers"}),
+        frozenset({"owner_roles", "participant_roles", "session_providers", "provider_item_types"}),
         "transaction",
     )
     owners = frozenset(
@@ -372,6 +372,22 @@ def _load_policy(
     )
     if session_providers and not owners:
         raise PolicyConfigError("transaction.session_providers requires owner_roles")
+    provider_item_types = FrozenMap(
+        (
+            SymbolId(provider),
+            SymbolId(_string(item_type, f"transaction.provider_item_types.{provider}")),
+        )
+        for provider, item_type in _table(
+            transaction.get("provider_item_types", {}),
+            "transaction.provider_item_types",
+        ).items()
+    )
+    unknown_provider_types = set(provider_item_types).difference(session_providers)
+    if unknown_provider_types:
+        names = ", ".join(sorted(symbol.value for symbol in unknown_provider_types))
+        raise PolicyConfigError(
+            f"transaction.provider_item_types keys must also be session_providers: {names}"
+        )
 
     boundaries = _load_import_boundaries(root)
     size = _table(root.get("size", {}), "size")
@@ -388,6 +404,7 @@ def _load_policy(
         transaction_owner_roles=owners,
         transaction_participant_roles=participants,
         transaction_session_providers=session_providers,
+        transaction_provider_item_types=provider_item_types,
         rule_zones=rule_zones,
         approvals=approvals,
         import_boundaries=boundaries,
