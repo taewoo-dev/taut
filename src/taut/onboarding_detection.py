@@ -3,82 +3,157 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
+from taut.onboarding_contributors import onboarding_framework_specs
+from taut.project_observation import observe_path
+
+_EXTERNAL_MODULES = frozenset({"anthropic", "boto3", "httpx", "openai", "requests"})
+_PYDANTIC_BASES = frozenset(
+    {"pydantic.BaseModel", "pydantic.main.BaseModel", "pydantic.v1.BaseModel"}
+)
 
 
-def detect_features(root: Path, paths: tuple[str, ...]) -> dict[str, list[str]]:
-    values: dict[str, list[str]] = {name: [] for name in BUILTIN_ASSURANCE_FEATURES}
+@dataclass(frozen=True)
+class PythonSourceObservation:
+    path: str
+    tree: ast.Module | None
+    aliases: tuple[tuple[str, str], ...]
+    imported_roots: frozenset[str]
+
+    def resolve(self, node: ast.expr) -> str:
+        return _resolved_expression_name(node, dict(self.aliases)) or ""
+
+
+def observe_python_sources(
+    root: Path, paths: tuple[str, ...]
+) -> tuple[PythonSourceObservation, ...]:
+    result: list[PythonSourceObservation] = []
     for path in paths:
-        content = (root / path).read_text(errors="replace")
+        try:
+            tree = ast.parse((root / path).read_text(errors="replace"))
+        except (OSError, UnicodeError, SyntaxError):
+            result.append(PythonSourceObservation(path, None, (), frozenset()))
+            continue
+        aliases: dict[str, str] = {}
+        roots: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for item in node.names:
+                    roots.add(item.name.partition(".")[0])
+                    aliases[item.asname or item.name.partition(".")[0]] = item.name
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                roots.add(node.module.partition(".")[0])
+                for item in node.names:
+                    aliases[item.asname or item.name] = f"{node.module}.{item.name}"
+        result.append(
+            PythonSourceObservation(path, tree, tuple(sorted(aliases.items())), frozenset(roots))
+        )
+    return tuple(result)
+
+
+def detect_features(
+    root: Path,
+    paths: tuple[str, ...],
+    observations: tuple[PythonSourceObservation, ...] | None = None,
+) -> dict[str, list[str]]:
+    values: dict[str, list[str]] = {name: [] for name in BUILTIN_ASSURANCE_FEATURES}
+    observed = observations or observe_python_sources(root, paths)
+    for source in observed:
+        path = source.path
+        tree = source.tree
+        path_observation = observe_path(path)
         lowered_parts = {part.lower() for part in Path(path).parts}
 
         def mark(name: str, condition: bool, evidence_path: str = path) -> None:
             if condition:
                 values[name].append(evidence_path)
 
-        mark("api", "fastapi" in content or "APIRouter" in content)
-        mark("schema", "pydantic" in content or "BaseModel" in content)
+        classes = (
+            tuple(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)) if tree else ()
+        )
+        calls = tuple(node for node in ast.walk(tree) if isinstance(node, ast.Call)) if tree else ()
+        resolved_bases = {source.resolve(base) for item in classes for base in item.bases}
+        resolved_calls = {source.resolve(call.func) for call in calls}
+        mark(
+            "api",
+            any(
+                symbol in {"fastapi.APIRouter", "fastapi.routing.APIRouter"}
+                for symbol in resolved_calls
+            ),
+        )
+        mark("schema", bool(resolved_bases.intersection(_PYDANTIC_BASES)))
         mark(
             "dto",
-            _declares_dto(content) or bool({"dto", "dtos"}.intersection(lowered_parts)),
+            _declares_dto(tree, source) or bool({"dto", "dtos"}.intersection(lowered_parts)),
         )
-        mark("snapshot", _declares_snapshot(path, content))
-        mark("exception_registry", "Exception" in content or "ErrorCode" in content)
-        mark("enum", "Enum" in content or "StrEnum" in content)
-        mark("database", "sqlalchemy" in content or "tortoise" in content)
+        mark("snapshot", _declares_snapshot(path, classes))
+        mark(
+            "exception_registry",
+            any(
+                item.name == "ErrorCode"
+                or any(source.resolve(base).endswith(("Exception", "Error")) for base in item.bases)
+                for item in classes
+            ),
+        )
+        mark(
+            "enum",
+            any(
+                source.resolve(base).endswith((".Enum", ".StrEnum"))
+                for item in classes
+                for base in item.bases
+            ),
+        )
+        mark("database", bool(source.imported_roots.intersection({"sqlalchemy", "tortoise"})))
         mark(
             "transaction",
-            "AsyncSession" in content
-            or "in_transaction" in content
-            or "@atomic" in content
-            or ".commit(" in content,
+            any(
+                symbol.rsplit(".", 1)[-1]
+                in {"atomic", "begin", "commit", "in_transaction", "rollback"}
+                for symbol in resolved_calls
+            ),
         )
         mark(
             "external_calls",
-            any(
-                token in content for token in ("httpx", "requests", "openai", "anthropic", "boto3")
-            ),
+            any(symbol.partition(".")[0] in _EXTERNAL_MODULES for symbol in resolved_calls),
         )
-        mark("security", "os.getenv" in content or "os.environ" in content)
-        mark("tests", "tests" in lowered_parts or Path(path).name.startswith("test_"))
-        mark("migrations", "migrations" in lowered_parts or "alembic" in lowered_parts)
-        mark("scripts", "scripts" in lowered_parts)
+        mark(
+            "security",
+            any(symbol in {"os.getenv", "os.environ.get"} for symbol in resolved_calls)
+            or bool(tree and any(_is_os_environ_access(node, source) for node in ast.walk(tree))),
+        )
+        mark("tests", path_observation.zone == "test")
+        mark("migrations", path_observation.zone == "migration")
+        mark("scripts", path_observation.zone == "script")
     return values
 
 
-def detect_providers(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
+def detect_providers(
+    root: Path,
+    paths: tuple[str, ...],
+    observations: tuple[PythonSourceObservation, ...] | None = None,
+) -> tuple[str, ...]:
     imported_roots: set[str] = set()
-    for path in paths:
-        try:
-            tree = ast.parse((root / path).read_text(errors="replace"))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported_roots.update(alias.name.partition(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported_roots.add(node.module.partition(".")[0])
+    for item in observations or observe_python_sources(root, paths):
+        imported_roots.update(item.imported_roots)
     providers = ["taut.python-core"]
-    for provider, modules in (
-        ("taut.fastapi", ("fastapi", "starlette")),
-        ("taut.pydantic", ("pydantic",)),
-        ("taut.pytest", ("pytest",)),
-        ("taut.sqlalchemy", ("sqlalchemy",)),
-        ("taut.tortoise", ("tortoise",)),
-    ):
-        if imported_roots.intersection(modules):
-            providers.append(provider)
+    for spec in onboarding_framework_specs():
+        if imported_roots.intersection(spec.import_roots):
+            providers.append(spec.provider_id)
     return tuple(providers)
 
 
-def observed_response_mappers(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
+def observed_response_mappers(
+    root: Path,
+    paths: tuple[str, ...],
+    observations: tuple[PythonSourceObservation, ...] | None = None,
+) -> tuple[str, ...]:
     names: set[str] = set()
-    for path in paths:
-        try:
-            tree = ast.parse((root / path).read_text())
-        except (OSError, UnicodeError, SyntaxError):
+    for source in observations or observe_python_sources(root, paths):
+        tree = source.tree
+        if tree is None:
             continue
         for item in tree.body:
             if not isinstance(item, ast.ClassDef) or not item.name.endswith(
@@ -94,43 +169,39 @@ def observed_response_mappers(root: Path, paths: tuple[str, ...]) -> tuple[str, 
     return tuple(sorted(names))
 
 
-def _declares_snapshot(path: str, content: str) -> bool:
+def _declares_snapshot(path: str, classes: tuple[ast.ClassDef, ...]) -> bool:
     source_path = Path(path)
     if source_path.stem == "snapshot" or source_path.stem.endswith("_snapshot"):
         return True
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return False
-    return any(
-        isinstance(node, ast.ClassDef) and "Snapshot" in node.name for node in ast.walk(tree)
-    )
+    return any("Snapshot" in node.name for node in classes)
 
 
-def _declares_dto(content: str) -> bool:
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
+def _declares_dto(tree: ast.Module | None, source: PythonSourceObservation) -> bool:
+    if tree is None:
         return False
     for node in tree.body:
         if not isinstance(node, ast.ClassDef) or not node.name.endswith(("Data", "Result", "Row")):
             continue
         decorators = {
-            _expression_name(item.func if isinstance(item, ast.Call) else item)
+            source.resolve(item.func if isinstance(item, ast.Call) else item)
             for item in node.decorator_list
         }
-        bases = {_expression_name(item) for item in node.bases}
-        if decorators.intersection({"dataclass", "dataclasses.dataclass"}) or any(
-            base.endswith(("BaseModel", "BaseDTO")) for base in bases
+        bases = {source.resolve(item) for item in node.bases}
+        if decorators.intersection({"dataclasses.dataclass"}) or any(
+            base in _PYDANTIC_BASES or base.endswith("BaseDTO") for base in bases
         ):
             return True
     return False
 
 
-def _expression_name(node: ast.expr) -> str:
+def _resolved_expression_name(node: ast.expr, aliases: dict[str, str]) -> str | None:
     if isinstance(node, ast.Name):
-        return node.id
+        return aliases.get(node.id, node.id)
     if isinstance(node, ast.Attribute):
-        prefix = _expression_name(node.value)
-        return f"{prefix}.{node.attr}" if prefix else node.attr
-    return ""
+        prefix = _resolved_expression_name(node.value, aliases)
+        return f"{prefix}.{node.attr}" if prefix else None
+    return None
+
+
+def _is_os_environ_access(node: ast.AST, source: PythonSourceObservation) -> bool:
+    return isinstance(node, ast.Subscript) and source.resolve(node.value) == "os.environ"

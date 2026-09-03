@@ -3,9 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-import os
 import sys
-import tempfile
 import tomllib
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
@@ -16,20 +14,30 @@ from taut.analysis.module_identity import absolute_import_base, resolve_internal
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
 from taut.domain.ids import ModuleId
 from taut.loading.errors import PolicyConfigError
-from taut.onboarding_detection import detect_features, detect_providers, observed_response_mappers
+from taut.onboarding_architecture import architecture_policy, is_risky_edge
+from taut.onboarding_detection import (
+    detect_features,
+    detect_providers,
+    observe_python_sources,
+    observed_response_mappers,
+)
 from taut.onboarding_policy import (
     InitPolicyAnswers,
     answer_policy,
     effective_zones,
     render_policy_lines,
 )
+from taut.onboarding_preflight import preflight_questions
 from taut.onboarding_questions import InitQuestion, build_init_questions
 from taut.onboarding_roles import (
+    InitRoleMatcher,
     InitRoleObservation,
     answer_role_aliases,
+    answer_role_selectors,
     answer_roles,
     group_roles,
     observe_roles,
+    synthesize_role_matchers,
 )
 from taut.onboarding_scope import (
     InitSourceScope,
@@ -38,8 +46,10 @@ from taut.onboarding_scope import (
     selected_source_roots,
 )
 from taut.onboarding_size import InitSizePolicy, render_size_lines, size_policy
+from taut.onboarding_write import write_reviewed_configuration
+from taut.project_observation import python_files
 
-INIT_CONTRACT_VERSION = 5
+INIT_CONTRACT_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,7 @@ class InitProposal:
     role_observations: tuple[InitRoleObservation, ...]
     observed_response_mappers: tuple[str, ...]
     size: InitSizePolicy
+    architecture_edges: tuple[tuple[str, str, bool], ...]
     questions: tuple[InitQuestion, ...]
     toml: str
 
@@ -73,6 +84,10 @@ class InitProposal:
                 "roles": [item.json_payload() for item in self.role_observations],
                 "response_mappers": self.observed_response_mappers,
                 "size": self.size.json_payload(),
+                "architecture_edges": [
+                    {"source": source, "target": target, "risky": risky}
+                    for source, target, risky in self.architecture_edges
+                ],
             },
             "proposal": {"toml": self.toml},
             "questions": [
@@ -108,17 +123,26 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         )
     policy_answers = answer_policy(answers)
     paths = _analysis_paths(discovered_paths, policy_answers)
-    evidence = detect_features(root, paths)
+    semantic_observations = observe_python_sources(root, paths)
+    evidence = detect_features(root, paths, semantic_observations)
     detected = tuple(name for name in BUILTIN_ASSURANCE_FEATURES if evidence[name])
-    providers = detect_providers(root, paths)
+    providers = detect_providers(root, paths, semantic_observations)
     source_roots, source_scope_resolved = selected_source_roots(root, paths, source_scope, answers)
     feature_answers = _answer_features(answers)
     role_aliases = answer_role_aliases(answers)
     role_overrides = answer_roles(answers, paths)
-    accepted = _answer_architecture_acceptance(answers)
-    role_observations = observe_roles(root, paths, role_aliases, role_overrides)
-    response_mappers = observed_response_mappers(root, paths)
+    role_selectors = answer_role_selectors(answers, paths)
+    role_observations = observe_roles(root, paths, role_aliases, role_overrides, role_selectors)
+    response_mappers = observed_response_mappers(root, paths, semantic_observations)
     roles = group_roles(role_observations)
+    role_matchers = synthesize_role_matchers(role_observations, role_selectors)
+    observed_allow = _observed_allow_graph(root, paths, roles, source_roots)
+    (
+        allow,
+        safe_architecture_accepted,
+        unresolved_edges,
+        architecture_reviews,
+    ) = architecture_policy(answers, observed_allow)
     size = size_policy(root, role_observations, answers)
     expectations = {
         name: feature_answers.get(name, "required" if evidence[name] else "absent")
@@ -129,7 +153,8 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         paths=paths,
         source_scope=source_scope,
         source_scope_resolved=source_scope_resolved,
-        architecture_accepted=accepted,
+        architecture_accepted=safe_architecture_accepted,
+        unresolved_architecture_edges=unresolved_edges,
         role_observations=role_observations,
         role_overrides=role_overrides,
         feature_answers=feature_answers,
@@ -139,6 +164,19 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         observed_response_mappers=response_mappers,
         size=size,
     )
+    toml = _render_configuration(
+        expectations,
+        role_matchers,
+        allow,
+        architecture_reviews,
+        source_roots,
+        zones,
+        policy_answers,
+        size,
+        providers,
+    )
+    if not questions:
+        questions = preflight_questions(root, toml)
     status = "ready" if not questions else "needs_input"
     return InitProposal(
         project_digest=digest,
@@ -151,18 +189,14 @@ def build_init_proposal(project_root: Path, answers: dict[str, object] | None) -
         role_observations=role_observations,
         observed_response_mappers=response_mappers,
         size=size,
-        questions=questions,
-        toml=_render_configuration(
-            root,
-            paths,
-            expectations,
-            roles,
-            source_roots,
-            zones,
-            policy_answers,
-            size,
-            providers,
+        architecture_edges=tuple(
+            (source, target, is_risky_edge(source, target, observed_allow))
+            for source, targets in sorted(observed_allow.items())
+            for target in sorted(targets)
+            if source != target
         ),
+        questions=questions,
+        toml=toml,
     )
 
 
@@ -209,45 +243,21 @@ def ensure_init_target_is_new(project_root: Path, config_path: Path) -> None:
 
 
 def write_init_configuration(project_root: Path, config_path: Path, proposal: InitProposal) -> None:
-    if proposal.status != "ready":
-        raise PolicyConfigError("init has unresolved questions; provide --answers before --write")
-    root = project_root.resolve()
-    target = config_path if config_path.is_absolute() else root / config_path
-    existing = target.read_text() if target.exists() else ""
-    if target.name == "pyproject.toml":
-        if existing:
-            try:
-                raw = tomllib.loads(existing)
-            except tomllib.TOMLDecodeError as error:
-                raise PolicyConfigError(f"cannot read pyproject.toml: {error}") from error
-            tool = raw.get("tool", {})
-            if isinstance(tool, dict) and "taut" in tool:
-                raise PolicyConfigError(
-                    "[tool.taut] already exists; use 'taut audit .' or 'taut config migrate .'"
-                )
-        addition = proposal.toml
-        content = existing.rstrip() + ("\n\n" if existing.strip() else "") + addition
-    else:
-        if target.exists():
-            raise PolicyConfigError(f"configuration already exists: {target}")
-        content = proposal.toml.replace("tool.taut.", "").replace("[tool.taut]", "")
-        content = content.lstrip()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
-    try:
-        with os.fdopen(descriptor, "w") as temporary:
-            temporary.write(content.rstrip() + "\n")
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temporary_name, target)
-    finally:
-        if os.path.exists(temporary_name):
-            os.unlink(temporary_name)
+    write_reviewed_configuration(project_root, config_path, proposal.status, proposal.toml)
 
 
 def configuration_schema_payload() -> dict[str, object]:
     return {
         "schema_version": 5,
+        "extend": {
+            "type": "path",
+            "description": "Explicit base [tool.taut] file; child tables merge and arrays replace.",
+        },
+        "workspace": {
+            "schema_version": 1,
+            "members": "non-empty unique project-relative member directories",
+            "analysis": "each member uses an isolated configuration and analysis graph",
+        },
         "strict": {
             "type": "boolean",
             "default": True,
@@ -317,15 +327,17 @@ def _validate_answer_keys(answers: dict[str, object] | None) -> None:
         {
             "project_digest",
             "schema_version",
-            "accept_observed_architecture",
+            "architecture",
             "accept_observed_source_scope",
             "source_roots",
             "features",
             "roles",
             "role_aliases",
+            "role_selectors",
             "zones",
             "exclusions",
             "policy",
+            "assurance",
             "size",
         }
     )
@@ -343,37 +355,8 @@ def _validate_answer_version(answers: dict[str, object] | None) -> None:
         )
 
 
-def _answer_architecture_acceptance(answers: dict[str, object] | None) -> bool:
-    if answers is None or "accept_observed_architecture" not in answers:
-        return False
-    value = answers["accept_observed_architecture"]
-    if not isinstance(value, bool):
-        raise PolicyConfigError("init answers.accept_observed_architecture must be a boolean")
-    return value
-
-
 def _python_files(root: Path) -> tuple[str, ...]:
-    ignored = {
-        ".git",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".research",
-        ".ruff_cache",
-        ".taut_cache",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-        "node_modules",
-        "venv",
-    }
-    return tuple(
-        sorted(
-            path.relative_to(root).as_posix()
-            for path in root.rglob("*.py")
-            if path.is_file() and not any(part in ignored for part in path.parts)
-        )
-    )
+    return python_files(root)
 
 
 def _analysis_paths(paths: tuple[str, ...], policy_answers: InitPolicyAnswers) -> tuple[str, ...]:
@@ -396,17 +379,16 @@ def _project_digest(root: Path, paths: tuple[str, ...], metadata_paths: tuple[st
 
 
 def _render_configuration(
-    root: Path,
-    paths: tuple[str, ...],
     expectations: dict[str, str],
-    roles: dict[str, tuple[str, ...]],
+    role_matchers: tuple[InitRoleMatcher, ...],
+    allow: dict[str, set[str]],
+    architecture_reviews: tuple[tuple[str, str, str, str], ...],
     source_roots: tuple[str, ...],
     zones: dict[str, tuple[str, ...]],
     policy_answers: InitPolicyAnswers,
     size: InitSizePolicy,
     providers: tuple[str, ...],
 ) -> str:
-    allow = _observed_allow_graph(root, paths, roles, source_roots)
     lines = [
         "[tool.taut]",
         "schema_version = 5",
@@ -415,14 +397,22 @@ def _render_configuration(
         "strict = true",
         f"max_lines = {size.default_max_lines}",
         'include = ["*.py", "**/*.py"]',
-        f"exclude = {_toml_array(_exclude_patterns(policy_answers))}",
         f"source_roots = {_toml_array(source_roots)}",
         "",
-        "[tool.taut.roles]",
     ]
-    for role, role_paths in sorted(roles.items()):
-        lines.append(f"{role} = {_toml_array(role_paths)}")
-    lines.extend(("", "[tool.taut.allow]"))
+    for matcher in role_matchers:
+        for reason in matcher.reasons:
+            lines.extend(("", f"# reviewed role selector reason: {json.dumps(reason)}"))
+        lines.extend(("", f"[tool.taut.roles.{matcher.role}]"))
+        lines.append(f"include = {_toml_array(matcher.include)}")
+        if matcher.exclude:
+            lines.append(f"exclude = {_toml_array(matcher.exclude)}")
+    lines.append("")
+    lines.extend(
+        f"# reviewed risky edge: {source} -> {target} = {decision}; reason: {json.dumps(reason)}"
+        for source, target, decision, reason in architecture_reviews
+    )
+    lines.append("[tool.taut.allow]")
     for role, targets in sorted(allow.items()):
         lines.append(f"{role} = {_toml_array(tuple(sorted(targets)))}")
     if zones:
@@ -434,6 +424,18 @@ def _render_configuration(
     lines.extend(("", "[tool.taut.assurance]", "max_approvals = 0", "max_inline_ignores = 0"))
     lines.extend(("", "[tool.taut.assurance.features]"))
     lines.extend(f'{name} = "{expectations[name]}"' for name in BUILTIN_ASSURANCE_FEATURES)
+    for assertion in policy_answers.assertions:
+        lines.extend(
+            (
+                "",
+                "[[tool.taut.assurance.assertions]]",
+                f"domain = {json.dumps(assertion.domain)}",
+                f"kind = {json.dumps(assertion.kind)}",
+                f"target = {json.dumps(assertion.target)}",
+                f"state = {json.dumps(assertion.state)}",
+                f"reason = {json.dumps(assertion.reason)}",
+            )
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -488,11 +490,3 @@ def _observed_allow_graph(
 
 def _toml_array(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
-
-
-def _exclude_patterns(policy_answers: InitPolicyAnswers) -> tuple[str, ...]:
-    defaults = (".venv/**", "**/__pycache__/**", "build/**", "dist/**")
-    additions = tuple(
-        pattern for exclusion in policy_answers.exclusions for pattern in exclusion.patterns
-    )
-    return tuple(dict.fromkeys((*defaults, *additions)))

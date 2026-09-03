@@ -6,6 +6,7 @@ from taut.configuration.effective_policy import EffectivePolicy, SecurityPolicy
 from taut.configuration.manifest import ProjectManifest, Role, Zone
 from taut.configuration.model import ProjectConfiguration
 from taut.configuration.rule_standard import BUILTIN_RULE_LEVELS
+from taut.configuration.source_scope import DEFAULT_EXCLUDE_PATTERNS
 from taut.domain.evaluations import RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath
@@ -45,7 +46,7 @@ def default_project_configuration(
     )
     return ProjectConfiguration(
         include=("*.py", "**/*.py"),
-        exclude=(".venv/**", "**/__pycache__/**", "build/**", "dist/**"),
+        exclude=DEFAULT_EXCLUDE_PATTERNS,
         source_roots=(ProjectPath("."),),
         manifest=ProjectManifest((), (), Zone("prod"), location),
         catalog=EffectCatalog(

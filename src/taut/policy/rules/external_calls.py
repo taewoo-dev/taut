@@ -103,9 +103,11 @@ class ExternalCallLoggingRule:
             return RuleEvaluation(LOG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         findings: list[Finding] = []
         for call in relevant:
-            wrapped = any(
+            wrapped = context.symbol_in(
+                call.enclosing_symbol, boundaries.external_call_wrappers
+            ) or any(
                 context_ref.state is ResolutionState.RESOLVED
-                and context_ref.symbol in boundaries.external_call_wrappers
+                and context.symbol_in(context_ref.symbol, boundaries.external_call_wrappers)
                 for context_ref in call.enclosing_contexts
             )
             if wrapped:

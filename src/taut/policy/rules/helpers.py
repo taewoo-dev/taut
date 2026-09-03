@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from taut.configuration.catalog import Effect
 from taut.domain.evaluations import EvaluationReason, RuleTargetRef, RuleVerdict
 from taut.domain.facts import CompletenessState, ResolutionState
@@ -40,6 +42,7 @@ def uncertain_provider_evaluation(
     capability_names: tuple[str, ...],
     module_id: ModuleId,
     require_capabilities: bool = False,
+    relevant_fact: Callable[[object], bool] | None = None,
 ) -> RuleEvaluation | None:
     model = context.model
     for capability in capability_names:
@@ -56,6 +59,8 @@ def uncertain_provider_evaluation(
             )
         for fact in model.capability_values(capability):
             if getattr(fact, "module_id", None) != module_id:
+                continue
+            if relevant_fact is not None and not relevant_fact(fact):
                 continue
             confidence = getattr(fact, "confidence", ResolutionState.RESOLVED)
             if confidence is not ResolutionState.RESOLVED:
@@ -79,10 +84,17 @@ def rule_uncertainty(
     module_id: ModuleId,
     capabilities: tuple[str, ...] = (),
     require_capabilities: bool = False,
+    relevant_fact: Callable[[object], bool] | None = None,
 ) -> RuleEvaluation | None:
     return incomplete_module_evaluation(rule_id, target, context, module_id) or (
         uncertain_provider_evaluation(
-            rule_id, target, context, capabilities, module_id, require_capabilities
+            rule_id,
+            target,
+            context,
+            capabilities,
+            module_id,
+            require_capabilities,
+            relevant_fact,
         )
         if capabilities
         else None
@@ -95,11 +107,18 @@ def target_uncertainty(
     context: PolicyContext,
     capabilities: tuple[str, ...] = (),
     require_capabilities: bool = False,
+    relevant_fact: Callable[[object], bool] | None = None,
 ) -> RuleEvaluation | None:
     if target.module_id is None:
         return None
     return rule_uncertainty(
-        rule_id, target, context, target.module_id, capabilities, require_capabilities
+        rule_id,
+        target,
+        context,
+        target.module_id,
+        capabilities,
+        require_capabilities,
+        relevant_fact,
     )
 
 

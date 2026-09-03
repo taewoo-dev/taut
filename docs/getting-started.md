@@ -1,7 +1,28 @@
 # Start using pytaut in a project
 
 This guide covers the complete path from a repository without Taut to strict CI. It describes
-pytaut 0.5.0 and configuration schema v5.
+pytaut 0.6.0, init answers/proposal contract v6, and configuration schema v5.
+
+## Choose project or workspace scope
+
+If each Python application has its own `pyproject.toml`, dependencies, and import boundary,
+initialize and configure each application separately. Then add a root execution manifest:
+
+```toml
+[tool.taut.workspace]
+schema_version = 1
+members = ["backend", "ai"]
+```
+
+Root `taut audit .` and `taut check .` run isolated member analyses and aggregate their exit codes;
+they never create one cross-application import graph. Shared policy is opt-in through
+`[tool.taut] extend = "../taut-base.toml"`: child tables override inherited values and child arrays
+replace inherited arrays.
+
+For an unconfigured repository, root `taut init .` detects multiple nested Python projects and
+prints member-specific init commands. It writes a workspace manifest only after every member has
+its own `[tool.taut]`. An explicit package workspace such as uv remains governed by its declared
+root metadata instead of this independent-project heuristic.
 
 ## Choose the correct entry path
 
@@ -13,6 +34,7 @@ Use `taut init` only when the repository has no `[tool.taut]` section and no
 | No Taut configuration | `taut init . --format json` |
 | Existing schema-v5 configuration | `taut audit .` |
 | Existing schema v1-v4 | `taut config migrate . --output migrated-policy.toml` |
+| Multiple independent Python projects | Initialize each member, then `taut init . --write` |
 
 `init` refuses an existing configuration during preview as well as during write. It never merges
 or replaces an existing policy.
@@ -20,7 +42,7 @@ or replaces an existing policy.
 ## 1. Install a fixed version
 
 ```bash
-uv add --dev pytaut==0.5.0
+uv add --dev pytaut==0.6.0
 uv run taut --version
 ```
 
@@ -39,7 +61,7 @@ The responsibilities are deliberately separate:
 - Exit code `2` means unresolved onboarding questions; it is expected for the first proposal.
 - No Taut configuration is written without `--write`.
 
-The v5 proposal includes a status, Python paths, detected features, package-aware source-root
+The v6 proposal includes a status, Python paths, detected features, package-aware source-root
 evidence, per-file role candidates, confidence and conflicts, recommended answers, proposed TOML,
 observed Response mapper names, an initial size-budget distribution, and a project digest.
 Treat recommendations as evidence to review, not decisions to accept blindly.
@@ -47,7 +69,8 @@ Treat recommendations as evidence to review, not decisions to accept blindly.
 Role confidence has four values: `high` for exact directory or semantic evidence, `medium` for a
 filename suffix, `low` for the visible `application` fallback, and `explicit` for an answers-file
 override. Test, migration, and script paths take precedence over production-role hints. Different
-role candidates on one file set `requires_review=true` and prevent a write until resolved.
+role candidates and every low-confidence fallback set `requires_review=true` and prevent a write
+until resolved. Low-confidence files are grouped by directory to keep large repositories usable.
 
 ### Digest scope
 
@@ -68,9 +91,19 @@ exact roles, custom directory aliases, zones, reasoned exclusions, and exact act
 
 ```json
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "project_digest": "value returned by init",
-  "accept_observed_architecture": true,
+  "architecture": {
+    "accept_safe_observed_edges": true,
+    "risky_edges": [
+      {
+        "source": "service",
+        "target": "router",
+        "decision": "deny",
+        "reason": "services cannot import transport code"
+      }
+    ]
+  },
   "accept_observed_source_scope": true,
   "size": {
     "accept_observed": true
@@ -81,6 +114,14 @@ exact roles, custom directory aliases, zones, reasoned exclusions, and exact act
   "role_aliases": {
     "usecases": "service"
   },
+  "role_selectors": [
+    {
+      "role": "service",
+      "include": ["app/usecases/*.py", "app/usecases/**/*.py"],
+      "exclude": [],
+      "reason": "usecases are the service boundary in this project"
+    }
+  ],
   "zones": {
     "test": ["tests/**"],
     "migration": ["migrations/**"]
@@ -142,13 +183,22 @@ All 13 feature keys are required. `required` says the capability belongs in the 
 must have real code evidence plus active policy configuration. `absent` says matching evidence is
 an error.
 
-`roles` keys are exact discovered Python paths, not globs. Use them to resolve conflicting
-directory, filename, or framework evidence. `role_aliases` keys are exact custom directory names;
-values are role names. Built-in singular/plural aliases cannot be redefined, and Taut does not use
-linguistic singularization.
+`roles` keys are exact discovered Python paths. Use them for isolated conflicts and exceptions.
+Use `role_selectors` for a reviewed directory convention: every selector needs include patterns and
+a durable reason; optional excludes preserve exact exceptions. Empty, stale, or overlapping
+selectors are rejected. `role_aliases` keys are exact custom directory names. Built-in
+singular/plural aliases cannot be redefined, and Taut does not use linguistic singularization.
+Generated TOML preserves reviewed selector reasons as comments.
+
+`architecture.accept_safe_observed_edges` accepts only ordinary observed dependencies. Each risky
+edge listed in `discovered.architecture_edges` must be decided separately with `allow` or `deny`
+and a reason. Delivery/bootstrap/test edges, cycles, and ambiguous `application` edges are risky.
+The generated TOML keeps these reviewed decisions and reasons beside the allow graph.
 
 Every exclusion needs a durable reason. Exact activation values are required for a required schema,
 exception registry, enum, transaction, or external-call feature. Taut validates these values and
+supports exact, reasoned `assurance.assertions` only for genuine not-applicable evidence; stale
+assertions fail audit.
 renders them into TOML, but does not invent repository-owned symbols. Advanced rule-specific
 extensions and approvals remain deliberate post-init edits.
 
@@ -168,10 +218,12 @@ names. Mixed conventions or a non-default convention require one explicit
 uv run taut init . --answers taut-init-answers.json --write
 ```
 
-Taut refuses to write when questions, source-scope conflicts, or role conflicts are unresolved, the digest changed, an
-answer path is not in the discovered Python set, the target configuration already exists, or the
-project file is invalid. A successful write uses a temporary sibling file, flushes it, and
-atomically replaces the target.
+Taut refuses to write when questions, source-scope conflicts, or role conflicts are unresolved, the
+digest changed, an answer path is not in the discovered Python set, the target configuration
+already exists, or the project file is invalid. Before writing, it loads the generated policy and
+runs assurance in memory; unclassified sources, stale selectors, missing providers, false feature
+decisions, and inactive required policies become blocking questions. A successful write uses a
+temporary sibling file, flushes it, and atomically replaces the target.
 
 ## 5. Review the generated TOML
 
@@ -190,6 +242,11 @@ source_roots = ["."]
 patterns = ["generated/*.py"]
 reason = "generated from the committed API schema"
 ```
+
+Common VCS, virtual-environment, cache, build, and dependency directories are always excluded by
+Taut. `[[tool.taut.exclusions]]` both removes a project-specific path from discovery and records why;
+do not duplicate those patterns in `tool.taut.exclude`. Existing raw `exclude` values are merged
+with the built-in baseline for compatibility, and strict audit still rejects unreasoned omissions.
 
 An ordinary `exclude` controls discovery but does not explain an assurance omission. Use a
 reasoned exclusion when a Python file intentionally remains outside analysis.
@@ -253,6 +310,10 @@ wrappers = ["app.observability.external_call"]
 [tool.taut.enum]
 shared_modules = ["app.enums"]
 ```
+
+`external.wrappers` accepts either a callable that directly contains the external call or a context
+manager surrounding it. This supports centralized client methods and explicit observability scopes;
+it does not trust their callers or unrelated calls transitively.
 
 Use symbols that exist in the repository. Required policy symbols must resolve exactly; missing
 symbols and local class/value/callable kind mismatches are assurance failures.
@@ -375,9 +436,10 @@ Install the repository-pinned pytaut version and onboard this Python project saf
 
 1. If no Taut configuration exists, run `taut init . --format json`. Treat exit 2 as expected
    while questions remain. Do not claim that the proposal is a finished policy.
-2. Review feature and role evidence. Create answers containing project_digest,
-   accept_observed_architecture, all 13 required/absent feature decisions, exact-path roles for
-   conflicts, an explicit size decision, and role_aliases only for real custom directory conventions.
+2. Review feature and role evidence. Create v6 answers containing project_digest,
+   architecture.accept_safe_observed_edges, a reasoned decision for every risky edge, all 13
+   required/absent feature decisions, exact roles or reasoned role_selectors for every low/conflict
+   file, an explicit size decision, and role_aliases only for real custom directory conventions.
 3. Run init with --answers and --write. Never overwrite an existing Taut configuration.
 4. Review and correct source scope, reasoned exclusions, roles, allow edges, zones, exact symbols,
    transaction providers, external-call wrappers, and exception budgets in pyproject.toml.

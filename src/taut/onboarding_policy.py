@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import cast
 
+from taut.configuration.assurance import AssuranceAssertion
 from taut.configuration.manifest import Role, Zone
 from taut.domain.ids import ModuleId, SymbolId
 from taut.loading.errors import PolicyConfigError
 from taut.loading.policy_extensions import KNOWN_ZONES
+from taut.project_observation import observe_path
 
 _CODE_SYMBOL_KEYS = frozenset(
     {
@@ -50,6 +51,7 @@ class InitPolicyAnswers:
     logged_calls: tuple[str, ...] = ()
     external_wrappers: tuple[str, ...] = ()
     shared_enum_modules: tuple[str, ...] = ()
+    assertions: tuple[AssuranceAssertion, ...] = ()
 
     def code_values(self, key: str) -> tuple[str, ...]:
         return dict(self.code_conventions).get(key, ())
@@ -123,6 +125,9 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
     enum = _table(policy.get("enum", {}), "policy.enum")
     _reject_unknown(enum, {"shared_modules"}, "policy.enum")
     shared_modules = _modules(enum.get("shared_modules", []), "policy.enum.shared_modules")
+    assurance = _table(answers.get("assurance", {}), "assurance")
+    _reject_unknown(assurance, {"assertions"}, "assurance")
+    assertions = _assertions(assurance.get("assertions", []))
     return InitPolicyAnswers(
         zones=zones,
         exclusions=exclusions,
@@ -138,6 +143,7 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
         logged_calls=logged,
         external_wrappers=wrappers,
         shared_enum_modules=shared_modules,
+        assertions=assertions,
     )
 
 
@@ -174,11 +180,8 @@ def effective_zones(
     if policy.zones:
         return dict(policy.zones)
     observed = {
-        "test": tuple(path for path in paths if "tests" in Path(path).parts),
-        "migration": tuple(
-            path for path in paths if {"migrations", "alembic"}.intersection(Path(path).parts)
-        ),
-        "script": tuple(path for path in paths if "scripts" in Path(path).parts),
+        name: tuple(path for path in paths if observe_path(path).zone == name)
+        for name in ("test", "migration", "script")
     }
     return {name: items for name, items in observed.items() if items}
 
@@ -225,6 +228,18 @@ def render_policy_lines(policy: InitPolicyAnswers) -> tuple[str, ...]:
 
 def _toml_array(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
+
+
+def validated_patterns(raw: object, field: str, *, allow_empty: bool = False) -> tuple[str, ...]:
+    if not isinstance(raw, list) or (not raw and not allow_empty):
+        raise PolicyConfigError(f"init answers.{field} must be a non-empty string array")
+    raw_values = cast(list[object], raw)
+    if not all(isinstance(item, str) and item.strip() for item in raw_values):
+        raise PolicyConfigError(f"init answers.{field} must be a string array")
+    values = tuple(cast(list[str], raw))
+    if len(values) != len(set(values)):
+        raise PolicyConfigError(f"duplicate init patterns in {field}")
+    return values
 
 
 def _zones(raw: object) -> tuple[tuple[str, tuple[str, ...]], ...]:
@@ -294,6 +309,40 @@ def _symbol_mapping(raw: object, label: str) -> tuple[tuple[str, str], ...]:
         SymbolId(value)
         values.append((key, value))
     return tuple(sorted(values))
+
+
+def _assertions(raw: object) -> tuple[AssuranceAssertion, ...]:
+    if not isinstance(raw, list):
+        raise PolicyConfigError("init answers.assurance.assertions must be an array")
+    values: list[AssuranceAssertion] = []
+    for index, value in enumerate(cast(list[object], raw)):
+        table = _table(value, f"assurance.assertions[{index}]")
+        _reject_unknown(
+            table,
+            {"domain", "kind", "target", "state", "reason"},
+            f"assurance.assertions[{index}]",
+        )
+        try:
+            values.append(
+                AssuranceAssertion(
+                    domain=_required_string(table.get("domain"), "assertion domain"),
+                    kind=_required_string(table.get("kind"), "assertion kind"),
+                    target=_required_string(table.get("target"), "assertion target"),
+                    state=_required_string(table.get("state"), "assertion state"),
+                    reason=_required_string(table.get("reason"), "assertion reason"),
+                )
+            )
+        except ValueError as error:
+            raise PolicyConfigError(f"invalid init assurance assertion: {error}") from error
+    if len(values) != len(set(values)):
+        raise PolicyConfigError("duplicate init assurance assertion")
+    return tuple(sorted(values))
+
+
+def _required_string(raw: object, label: str) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise PolicyConfigError(f"init {label} must be a non-empty string")
+    return raw.strip()
 
 
 def _strings(raw: object, label: str) -> tuple[str, ...]:
