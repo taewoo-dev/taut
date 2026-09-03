@@ -437,25 +437,13 @@ GROUP_B_EXPECTED = {
     for rule in GROUP_B_RULES
 }
 PROVIDER_BACKED_GROUP_A_RULES = {
-    "API001",
     "API002",
-    "API003",
-    "DTO001",
-    "DTO002",
     "SCHEMA001",
-    "SCHEMA002",
-    "SCHEMA003",
 }
-STATE_SENSITIVE_GROUP_A_RULES = {"API001", "API002", "API003", "SCHEMA001", "SCHEMA002"}
+STATE_SENSITIVE_GROUP_A_RULES = {"SCHEMA001"}
 PROVIDER_REQUIRED_CAPABILITIES = (
-    ("API001", "taut.fastapi.endpoints@1"),
     ("API002", "taut.pydantic.fields@1"),
-    ("API003", "taut.fastapi.routers@1"),
-    ("DTO001", "taut.pydantic.models@1"),
-    ("DTO002", "taut.pydantic.models@1"),
     ("SCHEMA001", "taut.pydantic.configs@1"),
-    ("SCHEMA002", "taut.pydantic.models@1"),
-    ("SCHEMA003", "taut.pydantic.operations@1"),
 )
 EXPECTED_GROUP_A_RESOLVED = {
     "API001": "pass",

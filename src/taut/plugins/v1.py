@@ -94,6 +94,10 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
 from taut.domain.location import ProjectPath, SourceRange
 from taut.domain.snapshot import AnalysisSnapshot
+from taut.onboarding_contributors import (
+    OnboardingContributorV1,
+    OnboardingFrameworkSpec,
+)
 from taut.policy.context import PolicyContext
 from taut.policy.packs import (
     BUILTIN_BACKEND_PROVIDER_IDS,
@@ -156,6 +160,8 @@ __all__ = [
     "FrozenMap",
     "IncrementalFactProviderV1",
     "ModuleId",
+    "OnboardingContributorV1",
+    "OnboardingFrameworkSpec",
     "PolicyContext",
     "ProjectConfiguration",
     "ProjectPath",

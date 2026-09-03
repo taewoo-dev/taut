@@ -4,17 +4,51 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.5.0 strengthens framework-neutral contracts: onboarding now confirms size budgets and
-the project-wide Response mapper, required policy symbols must be live and of the right kind,
-Pydantic DTOs can prove immutability, pytest fixtures retain provenance, and Tortoise QuerySets
-propagate through first-party helpers. It supports Python 3.12 or newer:
+Version 0.6.0 makes onboarding proof-oriented: one source inventory and exclusive path-zone model
+drive init and audit, low-confidence roles require reviewed selectors, risky architecture edges
+need individual decisions, and generated policy is audited before it can be written. Provider
+uncertainty is limited to facts a rule actually consumes. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.5.0
+uv add --dev pytaut==0.6.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
 branch.
+
+## Multiple independent Python projects
+
+Keep one Taut policy and one analysis graph per independently packaged Python application. A
+repository with `backend/pyproject.toml` and `ai/pyproject.toml` should declare a root workspace
+instead of combining both applications under one `source_roots` list:
+
+```toml
+[tool.taut.workspace]
+schema_version = 1
+members = ["backend", "ai"]
+```
+
+Run `taut config validate .`, `taut audit .`, and `taut check .` once at the root. Taut executes
+every member using its own configuration, import roots, cache, and analysis graph, then aggregates
+the results. Exit code `2` takes precedence over `1`, which takes precedence over `0`. JSON output
+contains one complete report per member. Run `taut check backend` to select one member directly.
+
+When a root without Python project metadata contains multiple nested Python projects, `taut init .`
+does not guess a combined architecture. It lists the members and asks you to initialize each first.
+After every member has `[tool.taut]`, rerun `taut init . --write` to write the root workspace
+declaration atomically.
+
+Shared defaults require explicit inheritance; configurations never cascade implicitly:
+
+```toml
+[tool.taut]
+extend = "../taut-base.toml"
+```
+
+The extended file must contain `[tool.taut]`. Nested tables are merged, child values override base
+values, and arrays are replaced. Missing files and inheritance cycles are configuration errors.
+Workspace roots cannot also contain project-policy keys, so member graphs cannot be merged by
+accident.
 
 ## Start a new project
 
@@ -30,7 +64,7 @@ uv run taut init . --format json > taut-init.json || test "$?" -eq 2
 
 Taut does not modify the project in this step. The shell redirection (`>`) creates
 `taut-init.json`. Exit code `2` is expected while questions remain; the JSON proposal is still
-valid. Its v5 JSON contains detected Python files and features, package-aware source-root evidence,
+valid. Its v6 JSON contains detected Python files and features, package-aware source-root evidence,
 per-file role candidates, confidence and conflicts, questions, proposed TOML, and a
 `project_digest`.
 
@@ -46,9 +80,19 @@ exclusions, and the repository-specific symbols that activate required policies:
 
 ```json
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "project_digest": "copy from taut-init.json",
-  "accept_observed_architecture": true,
+  "architecture": {
+    "accept_safe_observed_edges": true,
+    "risky_edges": [
+      {
+        "source": "service",
+        "target": "router",
+        "decision": "deny",
+        "reason": "services must not depend on delivery adapters"
+      }
+    ]
+  },
   "accept_observed_source_scope": true,
   "size": {
     "accept_observed": true
@@ -59,6 +103,14 @@ exclusions, and the repository-specific symbols that activate required policies:
   "role_aliases": {
     "usecases": "service"
   },
+  "role_selectors": [
+    {
+      "role": "application",
+      "include": ["app/use_cases/*.py", "app/use_cases/**/*.py"],
+      "exclude": ["app/use_cases/legacy.py"],
+      "reason": "application orchestration package"
+    }
+  ],
   "zones": {
     "test": ["tests/**"]
   },
@@ -108,9 +160,17 @@ metadata; it does not contain repository-specific package names.
 Use `required` only when that capability belongs in this repository, and `absent` only when it
 must not exist. Do not use `absent` to hide configuration work.
 
-`roles` keys must exactly match discovered Python paths. Use them when path, filename, and semantic
-evidence disagree. `role_aliases` maps one exact custom directory name to a role; it cannot redefine
-a built-in alias such as `services`. Taut never guesses singular forms by stripping `s`.
+`roles` keys must exactly match discovered Python paths. Use them for isolated exceptions.
+`role_selectors` are reasoned include/exclude globs for a verified directory convention; selectors
+that match nothing or assign two roles are rejected. `role_aliases` maps one exact custom directory
+name to a role and cannot redefine a built-in alias. Taut never guesses singular forms by stripping
+`s`. Generated TOML preserves reviewed selector reasons as comments.
+
+Accepting safe observed edges does not approve risky edges. Imports into delivery, bootstrap,
+test/migration/script roles, cycles, and ambiguous `application` edges each require an `allow` or
+`deny` decision with a non-empty reason.
+Init preserves each reviewed risky-edge decision and reason as a comment beside the generated
+allow graph so the rationale survives the answers step.
 
 The `policy` object accepts validated `code_conventions`, `transaction`, `external`, and `enum`
 settings. If schema, exception registry, enum, transaction, or external calls are `required`, Taut
@@ -127,8 +187,10 @@ to preserve an oversized outlier indefinitely.
 uv run taut init . --answers taut-init-answers.json --write
 ```
 
-Writing is refused when answers are incomplete, source or role evidence still conflicts, or the
-project digest is stale. Taut writes through a temporary file and atomic replacement. If `[tool.taut]` or
+Writing is refused when answers are incomplete, source or role evidence still conflicts, the
+project digest is stale, or an in-memory preflight audit finds an unclassified source, stale
+selector, missing provider, false feature decision, or inactive policy. Taut writes through a
+temporary file and atomic replacement. If `[tool.taut]` or
 `.policy/policy.toml` already exists, `init` stops even in preview mode and directs you to
 `taut audit` or `taut config migrate`.
 
@@ -188,9 +250,11 @@ providers = [
 strict = true
 source_roots = ["."]
 
-[tool.taut.roles]
-router = ["app/router/*.py", "app/router/**/*.py"]
-service = ["app/service/*.py", "app/service/**/*.py"]
+[tool.taut.roles.router]
+include = ["app/router/*.py", "app/router/**/*.py"]
+
+[tool.taut.roles.service]
+include = ["app/service/*.py", "app/service/**/*.py"]
 
 [tool.taut.allow]
 router = ["router", "service"]
@@ -252,6 +316,12 @@ patterns = ["generated/*.py"]
 reason = "generated from the versioned API schema"
 ```
 
+Taut always excludes common repository noise such as VCS metadata, virtual environments, tool
+caches, build outputs, and `node_modules`. A reasoned exclusion above is also an actual discovery
+exclusion, so project-specific paths do not need to be repeated in `tool.taut.exclude`. The legacy
+`exclude` list remains supported as an additive list, but strict audit still requires a reason for
+omitted Python sources.
+
 Validate the effective configuration before the first full check:
 
 ```bash
@@ -270,6 +340,10 @@ wrappers = ["app.adapters.external_call"]
 [tool.taut.enum]
 shared_modules = ["app.core.enums"]
 ```
+
+An external wrapper may be the configured callable that directly owns the external call (for
+example a centralized HTTP client `_request` method) or a configured context manager enclosing it.
+Calls outside those exact boundaries still fail `LOG001`.
 
 Rules can be scoped by zone, entrypoint roles can receive distinct effect allowances, and an
 intentional exception can be approved for one exact symbol with a required reason:

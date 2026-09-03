@@ -1,15 +1,16 @@
-"""Reviewable role observations and role-related init answers."""
-
 from __future__ import annotations
 
 import ast
 import re
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
 
 from taut.configuration.manifest import Role
 from taut.loading.errors import PolicyConfigError
+from taut.onboarding_policy import validated_patterns
+from taut.project_observation import observe_path
 
 _ROLE_ALIAS_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 _CONFIDENCE_SCORE = {"low": 1, "medium": 2, "high": 3, "explicit": 4}
@@ -142,6 +143,27 @@ class InitRoleObservation:
         }
 
 
+@dataclass(frozen=True, order=True)
+class InitRoleSelector:
+    role: str
+    include: tuple[str, ...]
+    exclude: tuple[str, ...]
+    reason: str
+
+    def matches(self, path: str) -> bool:
+        return any(fnmatchcase(path, pattern) for pattern in self.include) and not any(
+            fnmatchcase(path, pattern) for pattern in self.exclude
+        )
+
+
+@dataclass(frozen=True, order=True)
+class InitRoleMatcher:
+    role: str
+    include: tuple[str, ...]
+    exclude: tuple[str, ...]
+    reasons: tuple[str, ...] = ()
+
+
 def answer_role_aliases(answers: dict[str, object] | None) -> dict[str, str]:
     if answers is None:
         return {}
@@ -179,13 +201,67 @@ def answer_roles(answers: dict[str, object] | None, paths: tuple[str, ...]) -> d
     return result
 
 
+def answer_role_selectors(
+    answers: dict[str, object] | None, paths: tuple[str, ...]
+) -> tuple[InitRoleSelector, ...]:
+    if answers is None:
+        return ()
+    raw = answers.get("role_selectors", [])
+    if not isinstance(raw, list):
+        raise PolicyConfigError("init answers.role_selectors must be an array")
+    selectors: list[InitRoleSelector] = []
+    for index, value in enumerate(cast(list[object], raw)):
+        if not isinstance(value, dict):
+            raise PolicyConfigError(f"init role_selectors[{index}] must be an object")
+        raw_item = cast(dict[object, object], value)
+        if not all(isinstance(key, str) for key in raw_item):
+            raise PolicyConfigError(f"init role_selectors[{index}] must be an object")
+        item = cast(dict[str, object], value)
+        unknown = set(item).difference({"role", "include", "exclude", "reason"})
+        if unknown:
+            raise PolicyConfigError(
+                f"unknown init role selector keys: {', '.join(sorted(unknown))}"
+            )
+        role = _validated_role(item.get("role"), f"role_selectors[{index}].role")
+        include = validated_patterns(item.get("include"), f"role_selectors[{index}].include")
+        exclude = validated_patterns(
+            item.get("exclude", []), f"role_selectors[{index}].exclude", allow_empty=True
+        )
+        reason = item.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise PolicyConfigError("init role selector requires a non-empty reason")
+        selector = InitRoleSelector(role, include, exclude, reason.strip())
+        if not any(selector.matches(path) for path in paths):
+            raise PolicyConfigError(
+                f"init role selector matches no discovered Python file: {include!r}"
+            )
+        selectors.append(selector)
+    for path in paths:
+        matches = {selector.role for selector in selectors if selector.matches(path)}
+        if len(matches) > 1:
+            raise PolicyConfigError(
+                f"init role selectors assign multiple roles to {path}: {', '.join(sorted(matches))}"
+            )
+    return tuple(sorted(set(selectors)))
+
+
 def observe_roles(
     root: Path,
     paths: tuple[str, ...],
     aliases: dict[str, str],
     overrides: dict[str, str],
+    selectors: tuple[InitRoleSelector, ...] = (),
 ) -> tuple[InitRoleObservation, ...]:
-    return tuple(_observe_role(root, path, aliases, overrides.get(path)) for path in paths)
+    return tuple(
+        _observe_role(
+            root,
+            path,
+            aliases,
+            overrides.get(path),
+            next((item for item in selectors if item.matches(path)), None),
+        )
+        for path in paths
+    )
 
 
 def group_roles(
@@ -195,6 +271,49 @@ def group_roles(
     for item in observations:
         grouped.setdefault(item.recommended, []).append(item.path)
     return {role: tuple(sorted(paths)) for role, paths in sorted(grouped.items())}
+
+
+def synthesize_role_matchers(
+    observations: tuple[InitRoleObservation, ...],
+    selectors: tuple[InitRoleSelector, ...],
+) -> tuple[InitRoleMatcher, ...]:
+    includes: dict[str, set[str]] = {}
+    excludes: dict[str, set[str]] = {}
+    reasons: dict[str, set[str]] = {}
+    for selector in selectors:
+        includes.setdefault(selector.role, set()).update(selector.include)
+        excludes.setdefault(selector.role, set()).update(selector.exclude)
+        reasons.setdefault(selector.role, set()).add(selector.reason)
+    for observation in observations:
+        role_includes = includes.setdefault(observation.recommended, set())
+        if any(fnmatchcase(observation.path, pattern) for pattern in role_includes):
+            continue
+        structural = _structural_patterns(observation)
+        if structural:
+            role_includes.update(structural)
+        elif observation.confidence != "low":
+            role_includes.add(observation.path)
+    for observation in observations:
+        matching = {
+            role
+            for role, patterns in includes.items()
+            if any(fnmatchcase(observation.path, pattern) for pattern in patterns)
+        }
+        if observation.recommended not in matching and observation.confidence != "low":
+            includes.setdefault(observation.recommended, set()).add(observation.path)
+            matching.add(observation.recommended)
+        for role in matching.difference({observation.recommended}):
+            excludes.setdefault(role, set()).add(observation.path)
+    return tuple(
+        InitRoleMatcher(
+            role,
+            tuple(sorted(patterns)),
+            tuple(sorted(excludes.get(role, ()))),
+            tuple(sorted(reasons.get(role, ()))),
+        )
+        for role, patterns in sorted(includes.items())
+        if patterns
+    )
 
 
 def _validated_role(value: object, field: str) -> str:
@@ -211,23 +330,30 @@ def _observe_role(
     path: str,
     aliases: dict[str, str],
     override: str | None,
+    selector: InitRoleSelector | None = None,
 ) -> InitRoleObservation:
     if override is not None:
         explicit_evidence = (InitRoleEvidence(override, "answer", path, "explicit"),)
         return InitRoleObservation(
             path, override, (override,), "explicit", False, explicit_evidence
         )
+    if selector is not None:
+        evidence = (
+            InitRoleEvidence(selector.role, "answer_selector", selector.reason, "explicit"),
+        )
+        return InitRoleObservation(
+            path, selector.role, (selector.role,), "explicit", False, evidence
+        )
 
     source_path = Path(path)
     parts = tuple(part.lower() for part in source_path.parts)
     directories = parts[:-1]
     stem = source_path.stem.lower()
-    if "tests" in directories or stem.startswith("test_") or stem == "conftest":
-        return _single_role_observation(path, "test", "test_path", path)
-    if "migrations" in directories or "alembic" in directories:
-        return _single_role_observation(path, "migration", "migration_path", path)
-    if "scripts" in directories:
-        return _single_role_observation(path, "script", "script_path", path)
+    path_observation = observe_path(path)
+    if path_observation.zone != "prod":
+        return _single_role_observation(
+            path, path_observation.zone, path_observation.kind, path_observation.evidence
+        )
 
     signals: list[InitRoleEvidence] = []
     combined_aliases = {**_DIRECTORY_ROLE_ALIASES, **aliases}
@@ -254,7 +380,7 @@ def _observe_role(
     signals = _unique_role_evidence(signals)
     if not signals:
         fallback = InitRoleEvidence("application", "fallback", "no stronger role evidence", "low")
-        return InitRoleObservation(path, "application", ("application",), "low", False, (fallback,))
+        return InitRoleObservation(path, "application", ("application",), "low", True, (fallback,))
 
     scores: dict[str, tuple[int, int]] = {}
     for item in signals:
@@ -339,3 +465,29 @@ def _unique_role_evidence(values: list[InitRoleEvidence]) -> list[InitRoleEviden
             seen.add(key)
             result.append(item)
     return result
+
+
+def _structural_patterns(observation: InitRoleObservation) -> tuple[str, ...]:
+    source = Path(observation.path)
+    directories = tuple(part.lower() for part in source.parts[:-1])
+    roots: list[str] = []
+    for evidence in observation.evidence:
+        if evidence.role != observation.recommended:
+            continue
+        if evidence.kind in {"directory", "custom_directory_alias"}:
+            indexes = [index for index, part in enumerate(directories) if part == evidence.value]
+            if indexes:
+                roots.append(Path(*source.parts[: indexes[-1] + 1]).as_posix())
+        elif evidence.kind in {"test_path", "migration_path", "script_path"}:
+            markers = {
+                "test_path": {"tests"},
+                "migration_path": {"migrations", "alembic"},
+                "script_path": {"scripts"},
+            }[evidence.kind]
+            indexes = [index for index, part in enumerate(directories) if part in markers]
+            if indexes:
+                roots.append(Path(*source.parts[: indexes[0] + 1]).as_posix())
+    if not roots:
+        return ()
+    root = min(roots, key=lambda item: (len(Path(item).parts), item))
+    return (f"{root}/*.py", f"{root}/**/*.py")

@@ -46,7 +46,11 @@ def _entry_points(group: str) -> tuple[Any, ...]:
 def plugin_environment_digest() -> str:
     """Fingerprint installed extension entry points without importing their implementations."""
     values: list[dict[str, str]] = []
-    for group in ("taut.rule_packs.v1", "taut.fact_providers.v1"):
+    for group in (
+        "taut.rule_packs.v1",
+        "taut.fact_providers.v1",
+        "taut.onboarding_contributors.v1",
+    ):
         for point in _entry_points(group):
             distribution = getattr(point, "dist", None)
             metadata = getattr(distribution, "metadata", {})

@@ -22,6 +22,7 @@ from taut.configuration.manifest import (
 )
 from taut.configuration.model import ProjectConfiguration
 from taut.configuration.rule_standard import BUILTIN_RULE_LEVELS
+from taut.configuration.source_scope import DEFAULT_EXCLUDE_PATTERNS
 from taut.domain.evaluations import RuleLevel, RuleSetting
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
@@ -150,10 +151,7 @@ def _load_project_configuration(
         "project",
     )
     include = _strings(project.get("include", ["*.py", "**/*.py"]), "project.include")
-    exclude = _strings(
-        project.get("exclude", [".venv/**", "**/__pycache__/**", "build/**", "dist/**"]),
-        "project.exclude",
-    )
+    configured_excludes = _strings(project.get("exclude", []), "project.exclude")
     source_roots = tuple(
         ProjectPath(value)
         for value in _strings(project.get("source_roots", ["."]), "project.source_roots")
@@ -171,6 +169,12 @@ def _load_project_configuration(
         rule_levels=BUILTIN_RULE_LEVELS if rule_levels is None else rule_levels,
     )
     assurance = _load_assurance(root, strict=document.strict)
+    reasoned_excludes = tuple(
+        pattern for exclusion in assurance.exclusions for pattern in exclusion.patterns
+    )
+    exclude = tuple(
+        dict.fromkeys((*DEFAULT_EXCLUDE_PATTERNS, *configured_excludes, *reasoned_excludes))
+    )
     manifest = ProjectManifest(roles, zones, default_zone, location)
     _validate_manifest_policy(manifest, policy)
     return ProjectConfiguration(

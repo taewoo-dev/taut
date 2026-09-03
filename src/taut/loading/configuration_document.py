@@ -14,6 +14,7 @@ LEGACY_CONFIG_PATH = ConfigPath(".policy/policy.toml")
 
 _TOOL_KEYS = frozenset(
     {
+        "extend",
         "schema_version",
         "packs",
         "providers",
@@ -102,14 +103,15 @@ def read_configuration_document(
     requested_path: ConfigPath | None,
 ) -> ConfigurationDocument:
     if requested_path is not None:
-        raw = _read_toml(project_root, requested_path)
-        return _document_from_raw(raw, requested_path)
+        absolute = _absolute_config_path(project_root, requested_path)
+        raw = _read_toml_path(absolute, requested_path.value)
+        return _document_from_raw(_resolve_extends(raw, absolute, ()), requested_path)
 
     pyproject = project_root / PYPROJECT_CONFIG_PATH.value
     if pyproject.is_file():
         raw = _read_toml(project_root, PYPROJECT_CONFIG_PATH)
         if _tool_section(raw) is not None:
-            return _document_from_raw(raw, PYPROJECT_CONFIG_PATH)
+            return _document_from_raw(_resolve_extends(raw, pyproject, ()), PYPROJECT_CONFIG_PATH)
 
     legacy = project_root / LEGACY_CONFIG_PATH.value
     if legacy.is_file():
@@ -118,16 +120,72 @@ def read_configuration_document(
 
 
 def _read_toml(project_root: Path, config_path: ConfigPath) -> dict[str, object]:
-    absolute = (
-        Path(config_path.value) if config_path.is_absolute else project_root / config_path.value
-    )
+    absolute = _absolute_config_path(project_root, config_path)
+    return _read_toml_path(absolute, config_path.value)
+
+
+def _absolute_config_path(project_root: Path, config_path: ConfigPath) -> Path:
+    return Path(config_path.value) if config_path.is_absolute else project_root / config_path.value
+
+
+def _read_toml_path(absolute: Path, display: str) -> dict[str, object]:
     if not absolute.is_file():
-        raise PolicyConfigError(f"configuration file is missing: {config_path.value}")
+        raise PolicyConfigError(f"configuration file is missing: {display}")
     try:
         raw: object = tomllib.loads(absolute.read_text())
     except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
-        raise PolicyConfigError(f"cannot read {config_path.value}: {error}") from error
+        raise PolicyConfigError(f"cannot read {display}: {error}") from error
     return _table(raw, "config")
+
+
+def _resolve_extends(
+    raw: dict[str, object], config_file: Path, chain: tuple[Path, ...]
+) -> dict[str, object]:
+    """Resolve explicit configuration inheritance before schema normalization."""
+    canonical = config_file.resolve()
+    if canonical in chain:
+        cycle = " -> ".join(str(path) for path in (*chain, canonical))
+        raise PolicyConfigError(f"configuration extend cycle: {cycle}")
+    section = _tool_section(raw)
+    if section is None or "extend" not in section:
+        return raw
+    raw_extend = section.get("extend")
+    if not isinstance(raw_extend, str) or not raw_extend:
+        raise PolicyConfigError("tool.taut.extend must be a non-empty file path")
+    extension_path = Path(raw_extend)
+    base_path = (
+        extension_path if extension_path.is_absolute() else canonical.parent / extension_path
+    ).resolve()
+    base_raw = _read_toml_path(base_path, raw_extend)
+    base = _resolve_extends(base_raw, base_path, (*chain, canonical))
+    base_section = _tool_section(base)
+    if base_section is None:
+        raise PolicyConfigError(f"extended configuration has no [tool.taut]: {raw_extend}")
+    child_section = dict(section)
+    child_section.pop("extend")
+    merged_section = _deep_merge(base_section, child_section)
+    merged = dict(raw)
+    tool = dict(_table(merged.get("tool", {}), "tool"))
+    tool["taut"] = merged_section
+    merged["tool"] = tool
+    return merged
+
+
+def _deep_merge(base: dict[str, object], child: dict[str, object]) -> dict[str, object]:
+    merged = dict(base)
+    for key, value in child.items():
+        inherited = merged.get(key)
+        if isinstance(inherited, dict) and isinstance(value, dict):
+            inherited_value = cast(object, inherited)
+            child_value = cast(object, value)
+            merged[key] = _deep_merge(
+                _table(inherited_value, f"tool.taut.{key}"),
+                _table(child_value, f"tool.taut.{key}"),
+            )
+        else:
+            merged[key] = value
+    merged.pop("extend", None)
+    return merged
 
 
 def _document_from_raw(raw: dict[str, object], path: ConfigPath) -> ConfigurationDocument:

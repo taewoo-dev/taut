@@ -3,10 +3,12 @@ from __future__ import annotations
 import io
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 
+from taut.check_service import CheckRequest
 from taut.configuration.assurance import (
     BUILTIN_ASSURANCE_FEATURES,
     AssuranceAssertion,
@@ -24,6 +26,10 @@ from taut.onboarding import (
     read_init_answers,
     write_init_configuration,
 )
+from taut.onboarding_architecture import architecture_policy
+from taut.onboarding_contributors import OnboardingFrameworkSpec, onboarding_framework_specs
+from taut.onboarding_preflight import preflight_questions
+from taut.project_observation import observe_path, python_files
 
 
 def test_init_answers_and_safe_targets_cover_error_contracts(
@@ -52,9 +58,9 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 5,
+                "schema_version": 6,
                 "project_digest": proposal.project_digest,
-                "accept_observed_architecture": True,
+                "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
                 "size": {"accept_observed": True},
                 "features": {"unknown": "required"},
             },
@@ -63,9 +69,9 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 5,
+                "schema_version": 6,
                 "project_digest": proposal.project_digest,
-                "accept_observed_architecture": True,
+                "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
                 "size": {"accept_observed": True},
                 "features": [],
             },
@@ -74,10 +80,11 @@ def test_init_answers_and_safe_targets_cover_error_contracts(
     ready = build_init_proposal(
         tmp_path,
         {
-            "schema_version": 5,
+            "schema_version": 6,
             "project_digest": proposal.project_digest,
-            "accept_observed_architecture": True,
+            "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
             "size": {"accept_observed": True},
+            "roles": {"app.py": "application"},
             "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
         },
     )
@@ -139,7 +146,8 @@ def test_getting_started_document_covers_the_machine_onboarding_contract() -> No
     for document in (readme, guide):
         assert 'test "$?" -eq 2' in document
         assert "Python" in document and "digest" in document
-        assert "accept_observed_architecture" in document
+        assert "accept_safe_observed_edges" in document
+        assert "risky_edges" in document
         assert "accept_observed_source_scope" in document
         assert "source_roots" in document and "workspace" in document
         assert "does not" in document and "role" in document
@@ -179,7 +187,8 @@ def test_init_classifies_conventional_singular_and_plural_role_directories(
     roles = tomllib.loads(proposal.toml)["tool"]["taut"]["roles"]
 
     for role, directories in expected.items():
-        assert {f"src/app/{directory}/orders.py" for directory in directories}.issubset(roles[role])
+        includes = roles[role]["include"]
+        assert all(f"src/app/{directory}/*.py" in includes for directory in directories)
 
 
 def test_init_classifies_api_version_modules_and_ignores_snapshot_comments(
@@ -194,8 +203,8 @@ def test_init_classifies_api_version_modules_and_ignores_snapshot_comments(
     proposal = build_init_proposal(tmp_path, None)
     roles = tomllib.loads(proposal.toml)["tool"]["taut"]["roles"]
 
-    assert roles["router"] == ["src/app/api/v1/orders.py"]
-    assert roles["test"] == ["conftest.py"]
+    assert roles["router"]["include"] == ["src/app/api/v1/orders.py"]
+    assert roles["test"]["include"] == ["conftest.py"]
     assert "snapshot" not in proposal.detected_features
 
 
@@ -219,9 +228,9 @@ def test_init_exposes_conflicting_role_evidence_and_requires_exact_override(
     source.write_text("from tortoise.models import Model\nclass Order(Model): pass\n")
     initial = build_init_proposal(tmp_path, None)
     complete_answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -238,17 +247,21 @@ def test_init_exposes_conflicting_role_evidence_and_requires_exact_override(
     assert any(question.id == f"role.{observation.path}" for question in conflicted.questions)
     discovered = conflicted.json_payload()["discovered"]
     assert isinstance(discovered, dict)
-    assert conflicted.json_payload()["schema_version"] == 5
+    assert conflicted.json_payload()["schema_version"] == 6
     assert discovered["roles"] == [observation.json_payload()]
 
-    complete_answers["roles"] = {observation.path: "service"}
+    complete_answers["roles"] = {observation.path: "model"}
+    complete_answers["features"] = {
+        feature: "required" if feature == "database" else "absent"
+        for feature in BUILTIN_ASSURANCE_FEATURES
+    }
     resolved = build_init_proposal(tmp_path, complete_answers)
 
     assert resolved.status == "ready"
-    assert resolved.role_observations[0].recommended == "service"
+    assert resolved.role_observations[0].recommended == "model"
     assert resolved.role_observations[0].confidence == "explicit"
     roles = tomllib.loads(resolved.toml)["tool"]["taut"]["roles"]
-    assert roles["service"] == [observation.path]
+    assert roles["model"]["include"] == [observation.path]
 
 
 def test_init_role_aliases_are_exact_reviewable_directory_decisions(tmp_path: Path) -> None:
@@ -257,9 +270,9 @@ def test_init_role_aliases_are_exact_reviewable_directory_decisions(tmp_path: Pa
     source.write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -305,9 +318,9 @@ def test_init_requires_reviewed_size_budget_and_renders_explicit_override(tmp_pa
 
     assert any(item.id == "size.accept_observed" for item in initial.questions)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "accept_observed_source_scope": True,
         "size": {"default_max_lines": 600, "role_max_lines": {"service": 250}},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -344,12 +357,16 @@ def test_init_observes_uv_workspace_and_hatch_source_roots(tmp_path: Path) -> No
     assert any(question.id == "source_scope.accept_observed" for question in initial.questions)
 
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
-        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+        "roles": {"packages/orders/src/orders/__init__.py": "application"},
+        "features": {
+            feature: "required" if feature == "tests" else "absent"
+            for feature in BUILTIN_ASSURANCE_FEATURES
+        },
     }
     ready = build_init_proposal(tmp_path, answers)
 
@@ -367,10 +384,11 @@ def test_init_requires_explicit_source_roots_for_conflicting_workspace_metadata(
     (tmp_path / "app.py").write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     base_answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
+        "roles": {"app.py": "application"},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
 
@@ -400,12 +418,13 @@ def test_init_requires_review_for_source_root_init_without_module_identity(
 
     assert any("non-importable __init__.py" in item for item in initial.source_scope.conflicts)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
         "source_roots": ["src"],
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "exclusions": [{"patterns": ["src/__init__.py"], "reason": "not an importable package"}],
+        "roles": {"src/app/__init__.py": "application"},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
     resolved = build_init_proposal(tmp_path, answers)
@@ -424,9 +443,9 @@ def test_init_digest_includes_package_metadata(tmp_path: Path) -> None:
         build_init_proposal(
             tmp_path,
             {
-                "schema_version": 5,
+                "schema_version": 6,
                 "project_digest": initial.project_digest,
-                "accept_observed_architecture": True,
+                "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
                 "size": {"accept_observed": True},
                 "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
             },
@@ -435,15 +454,19 @@ def test_init_digest_includes_package_metadata(tmp_path: Path) -> None:
 
 def test_init_renders_reasoned_scope_and_exact_policy_answers(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text("value = 1\n")
+    spec = tmp_path / "spec" / "test_policy.py"
+    spec.parent.mkdir()
+    spec.write_text("def test_policy(): pass\n")
     generated = tmp_path / "generated" / "client.py"
     generated.parent.mkdir()
     generated.write_text("value = 2\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
+        "roles": {"app.py": "application", "spec/test_policy.py": "test"},
         "zones": {"test": ["spec/**"]},
         "exclusions": [
             {
@@ -469,21 +492,23 @@ def test_init_renders_reasoned_scope_and_exact_policy_answers(tmp_path: Path) ->
             },
             "enum": {"shared_modules": ["app"]},
         },
-        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+        "features": {
+            feature: "required" if feature == "tests" else "absent"
+            for feature in BUILTIN_ASSURANCE_FEATURES
+        },
     }
 
     proposal = build_init_proposal(tmp_path, answers)
     config = tomllib.loads(proposal.toml)["tool"]["taut"]
 
     assert proposal.status == "ready"
-    assert "generated/**" in config["exclude"]
+    assert "exclude" not in config
     assert config["zones"]["test"] == ["spec/**"]
     assert config["exclusions"][0]["reason"].startswith("generated from")
     assert config["transaction"]["provider_item_types"] == {"app.transaction": "app.Session"}
     assert config["external"]["modules"] == ["vendor_sdk"]
-    assert "generated/client.py" not in {
-        path for paths in config["roles"].values() for path in paths
-    }
+    role_patterns = {path for matcher in config["roles"].values() for path in matcher["include"]}
+    assert "generated/client.py" not in role_patterns
 
 
 def test_init_requires_current_answers_schema_version(tmp_path: Path) -> None:
@@ -494,7 +519,7 @@ def test_init_requires_current_answers_schema_version(tmp_path: Path) -> None:
         answers: dict[str, object] = {"project_digest": initial.project_digest}
         if version is not None:
             answers["schema_version"] = version
-        with pytest.raises(PolicyConfigError, match="schema_version must be 5"):
+        with pytest.raises(PolicyConfigError, match="schema_version must be 6"):
             build_init_proposal(tmp_path, answers)
 
 
@@ -539,9 +564,9 @@ def test_init_rejects_invalid_or_incomplete_source_scope_answers(
     (tmp_path / "root_script.py").write_text("value = 2\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
         **source_answer,
@@ -578,9 +603,9 @@ def test_init_allow_graph_uses_canonical_relative_import_resolution(tmp_path: Pa
     router.write_text("from ..services import orders\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "accept_observed_source_scope": True,
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
@@ -596,7 +621,10 @@ def test_init_allow_graph_uses_canonical_relative_import_resolution(tmp_path: Pa
     ("update", "message"),
     [
         ({"unexpected": True}, "unknown init answer keys"),
-        ({"accept_observed_architecture": "yes"}, "must be a boolean"),
+        (
+            {"architecture": {"accept_safe_observed_edges": "yes"}},
+            "must be a boolean",
+        ),
         ({"roles": {"missing.py": "service"}}, "does not match"),
         ({"role_aliases": {"bad/path": "service"}}, "invalid init role alias"),
         (
@@ -611,9 +639,9 @@ def test_init_rejects_ambiguous_or_stale_role_answers(
     (tmp_path / "app.py").write_text("value = 1\n")
     initial = build_init_proposal(tmp_path, None)
     answers: dict[str, object] = {
-        "schema_version": 5,
+        "schema_version": 6,
         "project_digest": initial.project_digest,
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -621,3 +649,182 @@ def test_init_rejects_ambiguous_or_stale_role_answers(
 
     with pytest.raises(PolicyConfigError, match=message):
         build_init_proposal(tmp_path, answers)
+
+
+def test_project_observation_has_one_zone_and_one_inventory_contract(tmp_path: Path) -> None:
+    included = tmp_path / "src" / "service.py"
+    included.parent.mkdir()
+    included.write_text("value = 1\n")
+    ignored = tmp_path / ".tox" / "generated.py"
+    ignored.parent.mkdir()
+    ignored.write_text("value = 2\n")
+
+    assert python_files(tmp_path) == ("src/service.py",)
+    assert observe_path("tests/integration/migrations/revision.py").zone == "test"
+    assert observe_path("scripts/tests/test_repair.py").zone == "test"
+    assert observe_path("migrations/scripts/revision.py").zone == "migration"
+    assert observe_path("scripts/repair.py").zone == "script"
+
+
+def test_init_groups_low_confidence_roles_and_accepts_reasoned_selector(tmp_path: Path) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "alpha.py").write_text("value = 1\n")
+    (package / "beta.py").write_text("value = 2\n")
+    initial = build_init_proposal(tmp_path, None)
+
+    grouped = [item for item in initial.questions if item.id == "role_group.app"]
+    assert len(grouped) == 1
+    answers: dict[str, object] = {
+        "schema_version": 6,
+        "project_digest": initial.project_digest,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
+        "size": {"accept_observed": True},
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+        "role_selectors": [
+            {
+                "role": "application",
+                "include": ["app/*.py"],
+                "reason": "top-level application orchestration modules",
+            }
+        ],
+    }
+
+    resolved = build_init_proposal(tmp_path, answers)
+    assert resolved.status == "ready"
+    role = tomllib.loads(resolved.toml)["tool"]["taut"]["roles"]["application"]
+    assert role["include"] == ["app/*.py"]
+    assert 'reason: "top-level application orchestration modules"' in resolved.toml
+
+
+def test_init_requires_individual_decisions_for_risky_architecture_edges(
+    tmp_path: Path,
+) -> None:
+    service = tmp_path / "app" / "services" / "order.py"
+    service.parent.mkdir(parents=True)
+    service.write_text("from app.routers import order\n")
+    router = tmp_path / "app" / "routers" / "order.py"
+    router.parent.mkdir(parents=True)
+    router.write_text("value = 1\n")
+    initial = build_init_proposal(tmp_path, None)
+    risky = next(edge for edge in initial.architecture_edges if edge[:2] == ("service", "router"))
+    assert risky[2] is True
+    answers: dict[str, object] = {
+        "schema_version": 6,
+        "project_digest": initial.project_digest,
+        "architecture": {
+            "accept_safe_observed_edges": True,
+            "risky_edges": [
+                {
+                    "source": "service",
+                    "target": "router",
+                    "decision": "deny",
+                    "reason": "services must not depend on delivery adapters",
+                }
+            ],
+        },
+        "size": {"accept_observed": True},
+        "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
+    }
+    resolved = build_init_proposal(tmp_path, answers)
+    assert "router" not in tomllib.loads(resolved.toml)["tool"]["taut"]["allow"]["service"]
+    assert 'reason: "services must not depend on delivery adapters"' in resolved.toml
+
+
+def test_external_provider_can_contribute_framework_onboarding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Contributor:
+        id = "example.onboarding"
+        version = "1"
+        frameworks = (OnboardingFrameworkSpec("example.provider", ("exampleorm",)),)
+
+    class Point:
+        name = "example.onboarding"
+        value = "example:Contributor"
+
+        @staticmethod
+        def load() -> type[Contributor]:
+            return Contributor
+
+    monkeypatch.setattr("taut.onboarding_contributors.entry_points", lambda: [Point()])
+    (tmp_path / "models.py").write_text("import exampleorm\n")
+
+    proposal = build_init_proposal(tmp_path, None)
+    assert "example.provider" in proposal.providers
+
+
+@pytest.mark.parametrize(
+    ("answers", "message"),
+    [
+        ({"architecture": []}, "must be an object"),
+        ({"architecture": {"unknown": True}}, "unknown init architecture"),
+        ({"architecture": {"risky_edges": {}}}, "must be an array"),
+        ({"architecture": {"risky_edges": ["edge"]}}, "must be an object"),
+        (
+            {"architecture": {"risky_edges": [{"source": "service"}]}},
+            "requires source, target, decision, and reason",
+        ),
+        (
+            {
+                "architecture": {
+                    "risky_edges": [
+                        {
+                            "source": "service",
+                            "target": "router",
+                            "decision": "sometimes",
+                            "reason": "reviewed",
+                        }
+                    ]
+                }
+            },
+            "must be allow or deny",
+        ),
+    ],
+)
+def test_init_architecture_answers_reject_ambiguous_contracts(
+    answers: dict[str, object], message: str
+) -> None:
+    graph = {"service": {"service", "router"}, "router": {"router"}}
+    with pytest.raises(PolicyConfigError, match=message):
+        architecture_policy(answers, graph)
+
+
+def test_onboarding_contributor_rejects_duplicate_framework_ownership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Contributor:
+        id = "example.conflict"
+        version = "1"
+        frameworks = (OnboardingFrameworkSpec("example.fastapi", ("fastapi",)),)
+
+    class Point:
+        name = "example.conflict"
+        value = "example:Contributor"
+
+        @staticmethod
+        def load() -> type[Contributor]:
+            return Contributor
+
+    monkeypatch.setattr("taut.onboarding_contributors.entry_points", lambda: [Point()])
+    with pytest.raises(PolicyConfigError, match="owned by both"):
+        onboarding_framework_specs()
+    with pytest.raises(ValueError, match="top-level"):
+        OnboardingFrameworkSpec("example.provider", ("nested.module",))
+
+
+def test_init_preflight_surfaces_engine_failure_as_a_blocking_question(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_check(request: CheckRequest) -> SimpleNamespace:
+        return SimpleNamespace(
+            report=None,
+            issues=(SimpleNamespace(message=f"cannot analyze {request.project_root}"),),
+        )
+
+    monkeypatch.setattr(
+        "taut.onboarding_preflight.run_check_request",
+        fail_check,
+    )
+    questions = preflight_questions(tmp_path, "[tool.taut]\n")
+    assert questions[0].id == "preflight.engine"

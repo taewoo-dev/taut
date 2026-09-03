@@ -1,6 +1,6 @@
 [project]
 name = "pytaut"
-version = "0.5.0"
+version = "0.6.0"
 description = "Deterministic architecture policy checks for Python backends"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -132,13 +132,20 @@ composition = [
   "src/taut/assurance_symbols.py",
   "src/taut/cli.py",
   "src/taut/cli_assurance.py",
+  "src/taut/cli_workspace.py",
   "src/taut/onboarding.py",
+  "src/taut/onboarding_architecture.py",
+  "src/taut/onboarding_contributors.py",
   "src/taut/onboarding_detection.py",
   "src/taut/onboarding_policy.py",
+  "src/taut/onboarding_preflight.py",
   "src/taut/onboarding_questions.py",
   "src/taut/onboarding_roles.py",
   "src/taut/onboarding_scope.py",
   "src/taut/onboarding_size.py",
+  "src/taut/onboarding_write.py",
+  "src/taut/project_observation.py",
+  "src/taut/workspace.py",
   "src/taut/daemon_*.py",
   "src/taut/plugins/*.py",
   "src/taut/semantic/*.py",

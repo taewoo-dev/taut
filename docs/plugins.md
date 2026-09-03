@@ -1,7 +1,8 @@
 # Plugin authoring
 
-pytaut discovers rule packs through the `taut.rule_packs.v1` entry-point group and fact
-providers through `taut.fact_providers.v1`. Plugin code should import authoring contracts only
+pytaut discovers rule packs through the `taut.rule_packs.v1` entry-point group, fact providers
+through `taut.fact_providers.v1`, and init framework hints through
+`taut.onboarding_contributors.v1`. Plugin code should import authoring contracts only
 from `taut.plugins.v1` (or the equivalent `taut.plugins` facade) and semantic contracts from
 `taut.semantic.v1`; concrete AST analyzer modules are not part of the plugin API.
 
@@ -122,3 +123,32 @@ Fact providers implement `FactProviderV1` or `IncrementalFactProviderV1`, declar
 `CapabilitySpec` values, and register a zero-argument factory under
 `taut.fact_providers.v1`. A rule lists those capability IDs in `RuleRequirements.capabilities`;
 missing or failed capabilities produce explicit coverage rather than an unchecked rule execution.
+
+## Contribute framework detection to init
+
+A fact-provider plugin can also teach `taut init` which imports activate it. This contract only
+maps imported top-level modules to a provider ID; it cannot silently add roles, allow edges, feature
+decisions, or exceptions.
+
+```python
+from dataclasses import dataclass
+
+from taut.plugins.v1 import OnboardingFrameworkSpec
+
+
+@dataclass(frozen=True)
+class ExampleOnboarding:
+    id: str = "example.orm.onboarding"
+    version: str = "1"
+    frameworks: tuple[OnboardingFrameworkSpec, ...] = (
+        OnboardingFrameworkSpec("example.orm", ("exampleorm",)),
+    )
+```
+
+```toml
+[project.entry-points."taut.onboarding_contributors.v1"]
+"example.orm.onboarding" = "example_taut.plugin:ExampleOnboarding"
+```
+
+Import roots must be unique across built-in and installed contributors. Duplicate ownership or an
+invalid contribution stops onboarding explicitly.

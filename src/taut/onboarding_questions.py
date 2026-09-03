@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
 from taut.onboarding_policy import InitPolicyAnswers, missing_policy_decisions
@@ -26,6 +27,7 @@ def build_init_questions(
     source_scope: InitSourceScope,
     source_scope_resolved: bool,
     architecture_accepted: bool,
+    unresolved_architecture_edges: tuple[tuple[str, str], ...],
     role_observations: tuple[InitRoleObservation, ...],
     role_overrides: dict[str, str],
     feature_answers: dict[str, str],
@@ -50,10 +52,20 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "architecture.accept_observed",
-                "현재 import 관계에서 계산한 최소 allow 그래프를 초기 정책으로 사용할까요?",
+                "위험하지 않은 현재 import 관계를 초기 allow 그래프로 사용할까요?",
                 ("accept", "review"),
                 "review",
                 paths,
+            )
+        )
+    for source, target in unresolved_architecture_edges:
+        questions.append(
+            InitQuestion(
+                f"architecture.edge.{source}->{target}",
+                f"위험한 import edge {source} -> {target}를 허용할지 결정하세요.",
+                ("allow_with_reason", "deny_with_reason"),
+                "deny_with_reason",
+                (f"{source}->{target}",),
             )
         )
     if not size.resolved:
@@ -66,9 +78,27 @@ def build_init_questions(
                 size.evidence(),
             )
         )
+    low_confidence: dict[str, list[InitRoleObservation]] = {}
     for observation in role_observations:
-        if observation.requires_review and observation.path not in role_overrides:
+        if not observation.requires_review or observation.path in role_overrides:
+            continue
+        if observation.confidence == "low":
+            parent = PurePosixPath(observation.path).parent.as_posix()
+            low_confidence.setdefault(parent, []).append(observation)
+        else:
             questions.append(_role_question(observation))
+    for parent, observations in sorted(low_confidence.items()):
+        selector = f"{parent}/**/*.py" if parent != "." else "*.py"
+        questions.append(
+            InitQuestion(
+                f"role_group.{parent}",
+                f"{parent} 아래 파일의 역할 근거가 부족합니다. "
+                "role_selectors 또는 exact roles로 분류하세요.",
+                ("provide_role_selector", "provide_exact_roles"),
+                "provide_role_selector" if len(observations) > 1 else "provide_exact_roles",
+                (selector, *(item.path for item in observations)),
+            )
+        )
     for name in BUILTIN_ASSURANCE_FEATURES:
         if name not in feature_answers:
             questions.append(

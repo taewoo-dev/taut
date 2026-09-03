@@ -4,7 +4,6 @@ import re
 
 from taut.analysis.framework.pydantic import (
     PYDANTIC_CONFIGS,
-    PYDANTIC_FIELDS,
     PYDANTIC_MODELS,
 )
 from taut.analysis.framework.pydantic_facts import PydanticConfigFact, PydanticModelFact
@@ -117,13 +116,40 @@ class ImmutableDtoRule:
         )
         if not candidates:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        classes = {
+            context.model.canonical_symbol(item.symbol_id): item
+            for module_id in context.model.modules()
+            for item in context.model.module(module_id).classes
+        }
+        relevant_symbols = {context.model.canonical_symbol(item.symbol_id) for item in candidates}
+        pending = list(relevant_symbols)
+        while pending:
+            class_fact = classes.get(pending.pop())
+            if class_fact is None:
+                continue
+            for base in class_fact.bases:
+                for symbol in base.symbols:
+                    canonical = context.model.canonical_symbol(symbol)
+                    if canonical in classes and canonical not in relevant_symbols:
+                        relevant_symbols.add(canonical)
+                        pending.append(canonical)
+        requires_pydantic = any(
+            _decorator(module.decorators, item, SymbolId("dataclasses.dataclass")) is None
+            for item in candidates
+        )
         uncertainty = rule_uncertainty(
             DTO_RULE_ID,
             target,
             context,
             target.module_id,
-            (PYDANTIC_MODELS, PYDANTIC_FIELDS),
-            True,
+            (PYDANTIC_MODELS, PYDANTIC_CONFIGS) if requires_pydantic else (),
+            requires_pydantic,
+            lambda fact: (
+                context.model.canonical_symbol(
+                    getattr(fact, "model", getattr(fact, "symbol", SymbolId("unknown")))
+                )
+                in relevant_symbols
+            ),
         )
         if uncertainty is not None:
             return uncertainty
@@ -136,11 +162,6 @@ class ImmutableDtoRule:
             context.model.canonical_symbol(item.model): item
             for item in context.model.capability_values(PYDANTIC_CONFIGS)
             if isinstance(item, PydanticConfigFact)
-        }
-        classes = {
-            context.model.canonical_symbol(item.symbol_id): item
-            for module_id in context.model.modules()
-            for item in context.model.module(module_id).classes
         }
 
         def pydantic_frozen(
@@ -223,9 +244,7 @@ class DtoNameRule:
         )
         if not candidates:
             return RuleEvaluation(DTO_NAME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = rule_uncertainty(
-            DTO_NAME_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
-        )
+        uncertainty = rule_uncertainty(DTO_NAME_RULE_ID, target, context, target.module_id)
         if uncertainty is not None:
             return uncertainty
         findings = tuple(
@@ -310,18 +329,32 @@ class SchemaConfigRule:
             raise ValueError("SCHEMA001 requires a module target")
         if _role(target, context) not in context.policy.code.schema_roles:
             return RuleEvaluation(SCHEMA_CONFIG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        module = context.model.module(target.module_id)
+        candidates = tuple(
+            class_fact
+            for class_fact in module.classes
+            if _is_base_model(class_fact)
+            and not context.symbol_in(
+                class_fact.symbol_id, context.policy.code.generic_schema_bases
+            )
+        )
+        candidate_symbols = {context.model.canonical_symbol(item.symbol_id) for item in candidates}
         uncertainty = rule_uncertainty(
-            SCHEMA_CONFIG_RULE_ID, target, context, target.module_id, (PYDANTIC_CONFIGS,), True
+            SCHEMA_CONFIG_RULE_ID,
+            target,
+            context,
+            target.module_id,
+            (PYDANTIC_CONFIGS,) if candidates else (),
+            bool(candidates),
+            lambda fact: (
+                context.model.canonical_symbol(getattr(fact, "model", SymbolId("unknown")))
+                in candidate_symbols
+            ),
         )
         if uncertainty is not None:
             return uncertainty
-        module = context.model.module(target.module_id)
         findings: list[Finding] = []
-        for class_fact in module.classes:
-            if not _is_base_model(class_fact) or context.symbol_in(
-                class_fact.symbol_id, context.policy.code.generic_schema_bases
-            ):
-                continue
+        for class_fact in candidates:
             field = _model_config(module.fields, class_fact)
             expected = (
                 context.policy.code.request_config_symbols
@@ -361,15 +394,18 @@ class SchemaInheritanceRule:
             return RuleEvaluation(
                 SCHEMA_INHERITANCE_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ()
             )
+        classes = tuple(
+            class_fact
+            for class_fact in context.model.module(target.module_id).classes
+            if not context.symbol_in(class_fact.symbol_id, context.policy.code.generic_schema_bases)
+        )
         uncertainty = rule_uncertainty(
-            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id, (PYDANTIC_MODELS,), True
+            SCHEMA_INHERITANCE_RULE_ID, target, context, target.module_id
         )
         if uncertainty is not None:
             return uncertainty
         findings: list[Finding] = []
-        for class_fact in context.model.module(target.module_id).classes:
-            if context.symbol_in(class_fact.symbol_id, context.policy.code.generic_schema_bases):
-                continue
+        for class_fact in classes:
             forbidden = tuple(
                 symbol
                 for base in class_fact.bases

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from taut.analysis.framework.pydantic import PYDANTIC_OPERATIONS
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
 from taut.domain.facts import AnalysisStage, CallFact
 from taut.domain.findings import Finding
@@ -26,7 +25,7 @@ class ResponseMappingRule:
             and role not in context.policy.code.router_roles
         ):
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(RULE_ID, target, context, (PYDANTIC_OPERATIONS,), True)
+        uncertainty = target_uncertainty(RULE_ID, target, context)
         if uncertainty is not None:
             return uncertainty
         module = context.model.module(target.module_id)

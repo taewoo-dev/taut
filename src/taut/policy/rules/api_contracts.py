@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-from taut.analysis.framework.fastapi import (
-    FASTAPI_ENDPOINTS,
-    FASTAPI_RESPONSE_MODELS,
-    FASTAPI_ROUTERS,
-)
-from taut.analysis.framework.pydantic import PYDANTIC_FIELDS
 from taut.domain.evaluations import (
     ChangeImpact,
     EvaluationReason,
@@ -23,17 +17,19 @@ from taut.domain.findings import Finding
 from taut.domain.ids import RuleId, SymbolId
 from taut.policy.context import PolicyContext
 from taut.policy.rule import RuleDefinition, RuleEvaluation, RuleRequirements
-from taut.policy.rules.api_field_metadata import field_metadata_names, is_base_model
+from taut.policy.rules.api_fields import (
+    FIELD_RULE_ID,
+    FIELD_RULE_VERSION,
+    PublicFieldDocumentationRule,
+)
 from taut.policy.rules.helpers import (
     build_policy_finding,
     target_uncertainty,
 )
 
 ENDPOINT_RULE_ID = RuleId("API001")
-FIELD_RULE_ID = RuleId("API002")
 ROUTER_METADATA_RULE_ID = RuleId("API003")
 RULE_VERSION = 1
-FIELD_RULE_VERSION = 2
 ROUTER_METADATA_RULE_VERSION = 2
 _HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
 _NO_BODY_RETURNS = ("FileResponse", "NoReturn", "Never", "Response", "StreamingResponse")
@@ -161,12 +157,10 @@ class EndpointDocumentationRule:
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.router_roles:
             return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(
-            ENDPOINT_RULE_ID, target, context, (FASTAPI_ENDPOINTS, FASTAPI_RESPONSE_MODELS), True
-        )
+        module = context.model.module(target.module_id)
+        uncertainty = target_uncertainty(ENDPOINT_RULE_ID, target, context)
         if uncertainty is not None:
             return uncertainty
-        module = context.model.module(target.module_id)
         functions = {function.symbol_id: function for function in module.functions}
         findings: list[Finding] = []
         coverage_gaps: list[EvaluationReason] = []
@@ -251,60 +245,6 @@ class EndpointDocumentationRule:
         return RuleEvaluation(ENDPOINT_RULE_ID, target, RuleVerdict.PASS, ())
 
 
-class PublicFieldDocumentationRule:
-    def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
-        if target.module_id is None:
-            raise ValueError("API002 requires a module target")
-        role = context.classification.get(target.module_id).role
-        if role not in context.policy.code.schema_roles:
-            return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertainty = target_uncertainty(FIELD_RULE_ID, target, context, (PYDANTIC_FIELDS,), True)
-        if uncertainty is not None:
-            return uncertainty
-        module = context.model.module(target.module_id)
-        classes = {
-            class_fact.symbol_id: class_fact
-            for class_fact in module.classes
-            if is_base_model(class_fact)
-        }
-        findings: list[Finding] = []
-        for field in module.fields:
-            if (
-                field.owner_symbol not in classes
-                or field.name.startswith("_")
-                or field.name == "model_config"
-            ):
-                continue
-            names = field_metadata_names(field, module.calls)
-            missing: list[str] = []
-            if names is None:
-                missing.extend(("description", "examples"))
-            else:
-                if "description" not in names:
-                    missing.append("description")
-                if (
-                    "examples" not in names
-                    and field.owner_symbol not in context.policy.code.generic_schema_bases
-                ):
-                    missing.append("examples")
-            if missing:
-                findings.append(
-                    build_policy_finding(
-                        FIELD_RULE_ID,
-                        target.module_id,
-                        field.owner_symbol,
-                        field.id,
-                        field.location,
-                        "api.field_metadata_missing",
-                        ",".join(missing),
-                        rule_version=FIELD_RULE_VERSION,
-                    )
-                )
-        if findings:
-            return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.FAIL, tuple(findings))
-        return RuleEvaluation(FIELD_RULE_ID, target, RuleVerdict.PASS, ())
-
-
 def _call_symbol(call: CallFact) -> str | None:
     if call.ref.symbol is None:
         return None
@@ -379,14 +319,13 @@ class RouterMetadataRule:
                 RuleVerdict.NOT_APPLICABLE,
                 (),
             )
-        uncertainty = target_uncertainty(
-            ROUTER_METADATA_RULE_ID, target, context, (FASTAPI_ROUTERS,), True
-        )
+        module = context.model.module(target.module_id)
+        uncertainty = target_uncertainty(ROUTER_METADATA_RULE_ID, target, context)
         if uncertainty is not None:
             return uncertainty
         findings: list[Finding] = []
         registrations = _router_registration_tags(target, context)
-        for call in context.model.module(target.module_id).calls:
+        for call in module.calls:
             symbol = _call_symbol(call)
             if symbol in _ROUTER_CONSTRUCTORS:
                 router_symbols = _router_symbols_for_constructor(call, context)

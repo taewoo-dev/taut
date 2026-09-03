@@ -31,27 +31,7 @@ from taut.domain.assurance import (
 )
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.loading.source_discovery import SourceDiscoveryResult
-
-_IGNORED_DIRECTORY_NAMES = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".mypy_cache",
-        ".nox",
-        ".pytest_cache",
-        ".research",
-        ".ruff_cache",
-        ".svn",
-        ".taut_cache",
-        ".tox",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-        "node_modules",
-        "venv",
-    }
-)
+from taut.project_observation import python_files
 
 
 def audit_project_assurance(
@@ -230,12 +210,7 @@ def audit_project_assurance(
 
 
 def _project_python_files(project_root: Path) -> frozenset[str]:
-    values: set[str] = set()
-    for path in project_root.rglob("*.py"):
-        if not path.is_file() or any(part in _IGNORED_DIRECTORY_NAMES for part in path.parts):
-            continue
-        values.add(path.relative_to(project_root).as_posix())
-    return frozenset(values)
+    return frozenset(python_files(project_root))
 
 
 def _reasoned_exclusions(
@@ -302,12 +277,12 @@ def _feature_evidence(
         path = module.module.path.value
         classification = classifications.modules.get(module_id)
         role = classification.role if classification is not None else None
-        lowered_parts = {part.lower() for part in Path(path).parts}
-        if "tests" in lowered_parts:
+        zone = classification.zone.value if classification is not None else "prod"
+        if zone == "test":
             add("tests", "path", path, path)
-        if "migrations" in lowered_parts or "alembic" in lowered_parts:
+        elif zone == "migration":
             add("migrations", "path", path, path)
-        if "scripts" in lowered_parts:
+        elif zone == "script":
             add("scripts", "path", path, path)
         if module.classes and role in code.dto_roles:
             add("dto", "path", path, path)
@@ -444,14 +419,23 @@ def _activation_issues(
         active = bool(boundaries.logged_external_calls) and bool(boundaries.external_call_wrappers)
         if active:
             active = any(
-                ref.symbol is not None
-                and any(
-                    same_symbol(ref.symbol, wrapper)
-                    for wrapper in boundaries.external_call_wrappers
+                (
+                    call.enclosing_symbol is not None
+                    and any(
+                        same_symbol(call.enclosing_symbol, wrapper)
+                        for wrapper in boundaries.external_call_wrappers
+                    )
+                )
+                or any(
+                    ref.symbol is not None
+                    and any(
+                        same_symbol(ref.symbol, wrapper)
+                        for wrapper in boundaries.external_call_wrappers
+                    )
+                    for ref in call.enclosing_contexts
                 )
                 for module in snapshot.modules.values()
                 for call in module.calls
-                for ref in call.enclosing_contexts
             )
         key = "external.logged_calls/wrappers"
     elif domain == "tests":

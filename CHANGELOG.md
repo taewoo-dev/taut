@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.0
+
+### Isolated workspace orchestration
+
+- Added an explicit `[tool.taut.workspace]` manifest that runs each member with its own policy,
+  import roots, cache, and analysis graph while aggregating root `check`, `audit`, and config output.
+- Added generic init discovery for repositories containing multiple independent Python projects;
+  combined root policies are refused and the workspace manifest is written only after member setup.
+- Added explicit `[tool.taut] extend` inheritance with deterministic table overrides, array
+  replacement, missing-file validation, and cycle rejection instead of implicit cascading.
+
+### Proof-oriented onboarding
+
+- Added init contract v6 with reviewed glob role selectors, exact exceptions, and blocking grouped
+  questions for every low-confidence role instead of silently accepting `application`.
+- Split safe observed import acceptance from individually reasoned risky-edge allow/deny decisions.
+- Unified Python source inventory and exclusive test/migration/script path precedence across init
+  and strict assurance, and preflight-audited generated policy before allowing a write.
+- Replaced repeated text scans with one parsed source observation pass and semantic feature checks.
+- Made repository-noise exclusions an engine-owned baseline and connected reasoned
+  `[[tool.taut.exclusions]]` entries directly to source discovery, so generated configuration no
+  longer repeats cache, VCS, build, virtual-environment, and dependency-directory patterns.
+
+### Provider precision and extensibility
+
+- Limited provider uncertainty to rule-relevant symbols and removed provider dependencies from
+  rules that consume only core semantic facts, preventing unrelated module-wide exit-code-2 fanout.
+- Preserved definite findings alongside target-local coverage gaps for public API field metadata.
+- Allowed an approved external-call wrapper to be either the callable that owns the call or an
+  enclosing context manager, covering centralized HTTP client methods without weakening LOG001.
+- Added the public `OnboardingContributorV1` contract and
+  `taut.onboarding_contributors.v1` entry point for third-party framework/provider discovery.
+
 ## 0.5.0
 
 ### Explicit cross-project contracts

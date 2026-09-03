@@ -228,6 +228,61 @@ def test_cli_json_v4_is_deterministic_for_compliant_project(
 
 
 @pytest.mark.integration
+def test_workspace_check_keeps_member_graphs_isolated_and_aggregates_exit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    backend = tmp_path / "backend"
+    ai = tmp_path / "ai"
+    backend.mkdir()
+    ai.mkdir()
+    _write_pyproject_project(backend, "value = 1\n", strict=True)
+    _write_pyproject_project(
+        ai,
+        "from datetime import datetime\nvalue = datetime.now()\n",
+        strict=True,
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.taut.workspace]\nschema_version = 1\nmembers = ["backend", "ai"]\n'
+    )
+
+    code = main(["check", str(tmp_path), "--format", "json", "--no-cache"])
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+
+    assert code == 1
+    assert payload["kind"] == "workspace"
+    members = cast(list[dict[str, object]], payload["members"])
+    assert [member["path"] for member in members] == ["ai", "backend"]
+    ai_report = cast(dict[str, object], members[0]["report"])
+    backend_report = cast(dict[str, object], members[1]["report"])
+    assert any(
+        diagnostic["rule_id"] == "TIME001"
+        for diagnostic in cast(list[dict[str, object]], ai_report["diagnostics"])
+    )
+    assert backend_report["diagnostics"] == []
+
+    assert main(["check", str(tmp_path), "--no-cache"]) == 1
+    text_output = capsys.readouterr().out
+    assert "== ai ==" in text_output
+    assert "== backend ==" in text_output
+    assert "workspace 검사 완료" in text_output
+
+
+@pytest.mark.integration
+def test_workspace_member_configuration_failure_is_attributed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    member = tmp_path / "backend"
+    member.mkdir()
+    (member / "pyproject.toml").write_text('[project]\nname = "backend"\nversion = "1"\n')
+    (tmp_path / "pyproject.toml").write_text('[tool.taut.workspace]\nmembers = ["backend"]\n')
+
+    assert main(["check", str(tmp_path)]) == 2
+    assert "workspace member backend" in capsys.readouterr().err
+
+
+@pytest.mark.integration
 def test_pyproject_non_strict_mode_reports_without_failing(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -481,10 +536,10 @@ def test_init_json_is_read_only_then_writes_only_with_complete_answers(
     assert proposal["status"] == "needs_input"
     assert not (tmp_path / "pyproject.toml").exists()
 
-    answers = {
-        "schema_version": 5,
+    answers: dict[str, object] = {
+        "schema_version": 6,
         "project_digest": proposal["project_digest"],
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
     }
@@ -510,9 +565,9 @@ def test_init_rejects_stale_answers_without_writing(
     answers.write_text(
         json.dumps(
             {
-                "schema_version": 5,
+                "schema_version": 6,
                 "project_digest": "0" * 64,
-                "accept_observed_architecture": True,
+                "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
                 "size": {"accept_observed": True},
                 "features": {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES},
             }
@@ -535,6 +590,62 @@ def test_init_routes_existing_configuration_to_audit_or_migrate(
     payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
     issues = cast(list[dict[str, object]], payload["engine_issues"])
     assert "taut audit" in cast(str, issues[0]["message"])
+
+
+@pytest.mark.integration
+def test_init_guides_independent_projects_before_writing_workspace(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name in ("backend", "ai"):
+        member = tmp_path / name
+        member.mkdir()
+        (member / "pyproject.toml").write_text(f'[project]\nname = "{name}"\nversion = "1"\n')
+        (member / "app.py").write_text("value = 1\n")
+
+    assert main(["init", str(tmp_path), "--format", "json"]) == 2
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["status"] == "workspace_needs_members"
+    assert payload["workspace"] == {
+        "members": ["ai", "backend"],
+        "unconfigured_members": ["ai", "backend"],
+    }
+    assert not (tmp_path / "pyproject.toml").exists()
+
+
+@pytest.mark.integration
+def test_init_writes_ready_workspace_and_root_config_validate_checks_members(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name in ("backend", "ai"):
+        member = tmp_path / name
+        member.mkdir()
+        _write_pyproject_project(member, "value = 1\n", strict=True)
+
+    assert main(["init", str(tmp_path), "--write"]) == 0
+    output = capsys.readouterr().out
+    assert "workspace 설정 저장 완료" in output
+    assert 'members = ["ai", "backend"]' in (tmp_path / "pyproject.toml").read_text()
+
+    assert main(["config", "validate", str(tmp_path)]) == 0
+    validation = capsys.readouterr().out
+    assert "ai/pyproject.toml" in validation
+    assert "backend/pyproject.toml" in validation
+
+    assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
+    explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert explanation["workspace_schema_version"] == 1
+
+    assert main(["config", "migrate", str(tmp_path)]) == 2
+    assert "migrate workspace members individually" in capsys.readouterr().err
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 0
+    payload = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert payload["kind"] == "workspace_audit"
+
+    assert main(["audit", str(tmp_path)]) == 0
+    assert "workspace assurance 완료" in capsys.readouterr().out
 
 
 @pytest.mark.integration
@@ -662,10 +773,10 @@ async def run(session):
     detected = set(cast(list[str], discovered["features"]))
     assert detected == set(BUILTIN_ASSURANCE_FEATURES)
 
-    answers = {
-        "schema_version": 5,
+    answers: dict[str, object] = {
+        "schema_version": 6,
         "project_digest": proposal["project_digest"],
-        "accept_observed_architecture": True,
+        "architecture": {"accept_safe_observed_edges": True, "risky_edges": []},
         "size": {"accept_observed": True},
         "roles": {"app/snapshot.py": "snapshot"},
         "features": {feature: "required" for feature in BUILTIN_ASSURANCE_FEATURES},

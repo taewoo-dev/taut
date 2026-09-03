@@ -7,7 +7,7 @@ import shutil
 import sys
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 
 from taut import __version__
@@ -16,8 +16,14 @@ from taut.cache import CacheStore
 from taut.cache.authenticated import load_user_signing_key
 from taut.cache.store import ReportEnvelope
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
-from taut.check_service import CheckRequest, run_check_request
+from taut.check_service import CheckRequest, CheckResult, run_check_request
 from taut.cli_assurance import run_audit, run_config_schema, run_init, run_rules
+from taut.cli_workspace import (
+    CheckOptions,
+    configuration_payload,
+    run_workspace_check,
+    run_workspace_config,
+)
 from taut.daemon_client import (
     DaemonError,
     check_daemon,
@@ -35,20 +41,7 @@ from taut.loading.errors import PolicyConfigError
 from taut.loading.source_discovery import discover_sources
 from taut.reporting.json import render_configuration_error_json
 from taut.reporting.text import DEFAULT_TEXT_WIDTH, MINIMUM_TEXT_WIDTH
-
-
-@dataclass(frozen=True)
-class CheckOptions:
-    project_root: Path
-    config_path: ConfigPath | None
-    output_format: str
-    show_inactive: bool
-    verbose: bool
-    color: str
-    width: int | None
-    no_cache: bool = False
-    cache_dir: Path | None = None
-    daemon_mode: str = "never"
+from taut.workspace import load_workspace
 
 
 @contextmanager
@@ -191,6 +184,18 @@ def _check_options(namespace: argparse.Namespace) -> CheckOptions:
 
 
 def run_check(options: CheckOptions) -> int:
+    workspace = load_workspace(options.project_root) if options.config_path is None else None
+    if workspace is not None:
+        return run_workspace_check(options, workspace, _execute_check)
+    result = _execute_check(options)
+    sys.stdout.buffer.write(result.stdout)
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
+    return result.exit_code
+
+
+def _execute_check(options: CheckOptions) -> CheckResult:
+    messages: list[str] = []
     request = _check_request(options)
     if options.daemon_mode != "never":
         try:
@@ -199,21 +204,17 @@ def run_check(options: CheckOptions) -> int:
             if options.daemon_mode == "required":
                 raise
             if options.verbose:
-                print("taut daemon: unavailable; using local pipeline", file=sys.stderr)
+                messages.append("taut daemon: unavailable; using local pipeline")
         else:
-            sys.stdout.buffer.write(result.stdout)
-            if result.stderr:
-                sys.stderr.buffer.write(result.stderr)
             if options.verbose:
                 counters = result.counters
-                print(
+                messages.append(
                     "taut daemon: "
                     f"reparsed={counters.reparsed_modules} "
                     f"reused={counters.reused_modules} "
-                    f"evaluated={counters.recomputed_evaluations}",
-                    file=sys.stderr,
+                    f"evaluated={counters.recomputed_evaluations}"
                 )
-            return result.exit_code
+            return _with_messages(result, messages)
     runtime = prepare_check_runtime(options.project_root, options.config_path)
     config = runtime.config
     discovery = discover_sources(options.project_root, config)
@@ -228,7 +229,7 @@ def run_check(options: CheckOptions) -> int:
             and config.cache_enabled
             and options.verbose
         ):
-            print("taut cache: error", file=sys.stderr)
+            messages.append("taut cache: error")
         if cache_store is not None:
             fingerprint = _report_cache_key(runtime, request, discovery.sources)
             cache_key = fingerprint
@@ -237,23 +238,22 @@ def run_check(options: CheckOptions) -> int:
             except Exception:
                 cached = None
             if cached is not None:
-                sys.stdout.buffer.write(cached.stdout)
-                if cached.stderr:
-                    sys.stderr.buffer.write(cached.stderr)
                 if options.verbose:
-                    print("taut cache: hit", file=sys.stderr)
-                return int(cached.exit_code)
+                    messages.append("taut cache: hit")
+                return CheckResult(
+                    cached.stdout,
+                    cached.stderr + _message_bytes(messages),
+                    int(cached.exit_code),
+                    None,
+                )
             if options.verbose:
-                print("taut cache: miss", file=sys.stderr)
+                messages.append("taut cache: miss")
     if cache_key is None:
         result = run_check_request(request, runtime=runtime)
     else:
         with _cache_context(directory, enabled=True) as module_store:
             result = run_check_request(request, module_store, runtime)
     output_bytes = result.stdout
-    sys.stdout.buffer.write(result.stdout)
-    if result.stderr:
-        sys.stderr.buffer.write(result.stderr)
     if cache_key is not None:
         try:
             with _cache_context(directory, enabled=True) as write_store:
@@ -277,8 +277,16 @@ def run_check(options: CheckOptions) -> int:
                     )
         except Exception:
             if options.verbose:
-                print("taut cache: error", file=sys.stderr)
-    return result.exit_code
+                messages.append("taut cache: error")
+    return _with_messages(result, messages)
+
+
+def _with_messages(result: CheckResult, messages: list[str]) -> CheckResult:
+    return replace(result, stderr=result.stderr + _message_bytes(messages))
+
+
+def _message_bytes(messages: list[str]) -> bytes:
+    return ("" if not messages else "\n".join(messages) + "\n").encode()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -298,6 +306,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return run_config_schema(namespace.format)
             root = Path(namespace.project_root).resolve()
             config_path = ConfigPath(namespace.config) if namespace.config is not None else None
+            workspace = load_workspace(root) if config_path is None else None
+            if workspace is not None:
+                return run_workspace_config(
+                    workspace, namespace.config_command, getattr(namespace, "format", "text")
+                )
             if namespace.config_command == "migrate":
                 _, migrated = migrate_configuration_text(root, config_path)
                 output = namespace.output
@@ -310,24 +323,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if namespace.config_command == "explain":
                 loaded = prepare_check_runtime(root, config_path).config
-                payload = {
-                    "schema_version": loaded.schema_version,
-                    "configuration_digest": loaded.digest(),
-                    "packs": loaded.packs,
-                    "providers": loaded.providers,
-                    "source_roots": tuple(path.value for path in loaded.source_roots),
-                    "roles": tuple(
-                        {
-                            "name": role.role.value,
-                            "include": role.patterns,
-                            "exclude": role.exclude,
-                            "priority": role.priority,
-                        }
-                        for role in loaded.manifest.roles
-                    ),
-                    "default_zone": loaded.manifest.default_zone.value,
-                    "default_max_lines": loaded.policy.default_max_lines,
-                }
+                payload = configuration_payload(loaded)
                 if namespace.format == "json":
                     print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
                 else:

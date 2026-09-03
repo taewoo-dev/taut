@@ -21,6 +21,7 @@ from taut.configuration.manifest import (
     Zone,
     ZoneMatcher,
 )
+from taut.configuration.source_scope import DEFAULT_EXCLUDE_PATTERNS
 from taut.configuration.validation import validate_classification_for_policy
 from taut.domain.evaluations import RuleLevel
 from taut.domain.frozen import FrozenMap
@@ -123,6 +124,80 @@ def test_pyproject_configuration_uses_concise_tables_and_builtin_defaults(
     assert config.policy.code.non_str_enum_exceptions == frozenset(
         {SymbolId("app.enums.NumericCode")}
     )
+    assert config.exclude == DEFAULT_EXCLUDE_PATTERNS
+
+
+def test_excludes_merge_builtin_configured_and_reasoned_patterns(tmp_path: Path) -> None:
+    _write_pyproject(
+        tmp_path,
+        _PYPROJECT_VALID.replace(
+            'source_roots = ["src"]',
+            'source_roots = ["src"]\nexclude = ["scratch/**"]',
+        )
+        + """
+
+[[tool.taut.exclusions]]
+patterns = ["generated/**"]
+reason = "generated from the versioned service contract"
+""",
+    )
+
+    config = load_project_configuration(tmp_path)
+
+    assert config.exclude == (
+        *DEFAULT_EXCLUDE_PATTERNS,
+        "scratch/**",
+        "generated/**",
+    )
+
+
+def test_pyproject_configuration_explicitly_extends_shared_policy(tmp_path: Path) -> None:
+    base = tmp_path / "taut-base.toml"
+    base.write_text(
+        f"""
+[tool.taut]
+strict = true
+source_roots = ["src"]
+max_lines = 600
+
+[tool.taut.roles]
+service = ["src/services/**"]
+
+[tool.taut.allow]
+service = ["service"]
+
+{assurance_toml(pyproject=True)}
+""".strip()
+    )
+    member = tmp_path / "backend"
+    member.mkdir()
+    (member / "pyproject.toml").write_text(
+        """
+[tool.taut]
+extend = "../taut-base.toml"
+max_lines = 700
+
+[tool.taut.roles]
+test = ["tests/**"]
+
+[tool.taut.allow]
+test = ["service", "test"]
+""".strip()
+    )
+
+    config = load_project_configuration(member)
+
+    assert config.policy.default_max_lines == 700
+    assert {matcher.role.value for matcher in config.manifest.roles} == {"service", "test"}
+    assert config.manifest.source.path.value == "pyproject.toml"
+
+
+def test_configuration_extend_cycle_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.taut]\nextend = "base.toml"\n')
+    (tmp_path / "base.toml").write_text('[tool.taut]\nextend = "pyproject.toml"\n')
+
+    with pytest.raises(PolicyConfigError, match="extend cycle"):
+        load_project_configuration(tmp_path)
 
 
 def test_pyproject_configuration_accepts_cache_and_rule_tables(tmp_path: Path) -> None:

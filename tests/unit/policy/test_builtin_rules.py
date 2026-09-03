@@ -813,6 +813,27 @@ def test_log_rule_requires_approved_context_around_external_call() -> None:
     )
 
 
+def test_log_rule_accepts_configured_callable_that_owns_external_call() -> None:
+    source = make_source(
+        "app/client.py",
+        "import httpx\ndef logged_request():\n    return httpx.get('https://example.test')",
+    )
+    boundary_policy = replace(
+        _boundary_policy(),
+        external_call_wrappers=frozenset({SymbolId("app.client.logged_request")}),
+    )
+
+    result = _run(
+        source,
+        roles={"adapter": ("app/**",)},
+        allowed_imports={"adapter": frozenset({"adapter"})},
+        boundary_policy=boundary_policy,
+    )
+    evaluation = next(item for item in result.evaluations if item.rule_id == RuleId("LOG001"))
+
+    assert evaluation.verdict is RuleVerdict.PASS
+
+
 def test_dto_and_snapshot_rules_find_deep_mutability_and_wrong_placement() -> None:
     source = make_source(
         "app/dtos/report.py",
