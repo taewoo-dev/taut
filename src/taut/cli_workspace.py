@@ -14,7 +14,7 @@ from taut.check_service import CheckResult
 from taut.configuration.model import ProjectConfiguration
 from taut.domain.location import ConfigPath
 from taut.loading.errors import PolicyConfigError
-from taut.workspace import TautWorkspace
+from taut.workspace import TautWorkspace, unlisted_workspace_projects
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,7 @@ def run_workspace_check(
     execute: Callable[[CheckOptions], CheckResult],
 ) -> int:
     results: list[tuple[str, CheckResult]] = []
+    unlisted = unlisted_workspace_projects(workspace)
     for member in workspace.members:
         member_cache = options.cache_dir / member.path if options.cache_dir is not None else None
         member_options = replace(options, project_root=member.root, cache_dir=member_cache)
@@ -45,7 +46,7 @@ def run_workspace_check(
         except (PolicyConfigError, ValueError, OSError) as error:
             raise PolicyConfigError(f"workspace member {member.path}: {error}") from error
         results.append((member.path, result))
-    exit_code = max(result.exit_code for _, result in results)
+    exit_code = max((2 if unlisted else 0), *(result.exit_code for _, result in results))
     if options.output_format == "json":
         payload = {
             "schema_version": 1,
@@ -59,13 +60,15 @@ def run_workspace_check(
                 }
                 for path, result in results
             ],
+            "unlisted_projects": unlisted,
             "exit": {
                 "code": exit_code,
                 "reasons": [
                     f"{path}: exit {result.exit_code}"
                     for path, result in results
                     if result.exit_code != 0
-                ],
+                ]
+                + [f"unlisted workspace project: {path}" for path in unlisted],
             },
         }
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
@@ -75,6 +78,8 @@ def run_workspace_check(
             "workspace 검사 완료: "
             + ", ".join(f"{path}=exit {result.exit_code}" for path, result in results)
         )
+        if unlisted:
+            sections.append("unlisted workspace projects: " + ", ".join(unlisted))
         print("\n\n".join(sections))
     for path, result in results:
         if result.stderr:
@@ -94,6 +99,12 @@ def run_workspace_config(workspace: TautWorkspace, command: str, output_format: 
         except (PolicyConfigError, ValueError, OSError) as error:
             raise PolicyConfigError(f"workspace member {member.path}: {error}") from error
     if command == "validate":
+        unlisted = unlisted_workspace_projects(workspace)
+        if unlisted:
+            raise PolicyConfigError(
+                "workspace projects missing from tool.taut.workspace.members: "
+                + ", ".join(unlisted)
+            )
         for path, configured in loaded_members:
             print(f"설정 정상: {path}/{configured.manifest.source.path} ({configured.digest()})")
         return 0

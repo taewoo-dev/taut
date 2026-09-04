@@ -125,7 +125,7 @@ def _decorated_boundary(function: FunctionFact, context: PolicyContext) -> bool:
 
 
 def _lexical_boundary(call: CallFact, context: PolicyContext) -> bool:
-    allowed = context.policy.transaction_session_providers.union(_BUILTIN_BOUNDARIES)
+    allowed = context.policy.transaction_boundary_contexts.union(_BUILTIN_BOUNDARIES)
     return any(context.symbol_in(item.symbol, allowed) for item in call.enclosing_contexts)
 
 

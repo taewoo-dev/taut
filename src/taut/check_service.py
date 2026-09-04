@@ -294,6 +294,7 @@ class ResidentCheckSession:
             classifications,
             used_approvals=len(processing.approval_audit.used),
             used_ignores=len(processing.ignore_audit.used),
+            unused_approvals=processing.approval_audit.unused,
         )
         extension_assurance = tuple(
             issue

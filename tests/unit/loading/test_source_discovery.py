@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from taut.configuration.model import ProjectConfiguration
@@ -136,3 +137,37 @@ def test_source_discovery_uses_the_most_specific_overlapping_source_root(
         "src/app/__init__.py": "app",
         "src/app/service.py": "app.service",
     }
+
+
+def test_source_discovery_analyzes_stub_only_modules_and_shadows_duplicate_stubs(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "contract.pyi").write_text("def load() -> str: ...\n")
+    (package / "service.py").write_text("value = 1\n")
+    (package / "service.pyi").write_text("value: int\n")
+
+    result = discover_sources(tmp_path, default_project_configuration())
+
+    assert tuple(source.path.value for source in result.sources) == (
+        "app/contract.pyi",
+        "app/service.py",
+    )
+    assert any(
+        entry.path.value == "app/service.pyi" and entry.reason == "shadowed_stub"
+        for entry in result.report.entries
+    )
+    assert result.issues == ()
+
+
+def test_force_include_can_override_engine_owned_directory_exclusion(tmp_path: Path) -> None:
+    generated = tmp_path / "build" / "first_party.py"
+    generated.parent.mkdir()
+    generated.write_text("value = 1\n")
+    base = default_project_configuration()
+    config = replace(base, force_include=("build/first_party.py",))
+
+    result = discover_sources(tmp_path, config)
+
+    assert tuple(source.path.value for source in result.sources) == ("build/first_party.py",)

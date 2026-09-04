@@ -25,6 +25,7 @@ from taut.workspace import (
     discover_independent_projects,
     load_workspace,
     member_has_configuration,
+    unlisted_workspace_projects,
     workspace_toml,
     write_workspace_manifest,
 )
@@ -152,7 +153,8 @@ def run_audit(namespace: argparse.Namespace) -> int:
 
 def _run_workspace_audit(workspace: TautWorkspace, output_format: str) -> int:
     members: list[dict[str, object]] = []
-    complete = True
+    unlisted = unlisted_workspace_projects(workspace)
+    complete = not unlisted
     for member in workspace.members:
         try:
             result = run_check_request(
@@ -183,6 +185,7 @@ def _run_workspace_audit(workspace: TautWorkspace, output_format: str) -> int:
                     "engine_version": __version__,
                     "kind": "workspace_audit",
                     "members": members,
+                    "unlisted_projects": unlisted,
                     "exit": {
                         "code": code,
                         "reasons": [] if complete else ["workspace strict assurance 미완료"],
@@ -197,6 +200,8 @@ def _run_workspace_audit(workspace: TautWorkspace, output_format: str) -> int:
         for item in members:
             state = "완료" if item["complete"] else "미완료"
             print(f"{item['path']}: assurance {state}")
+        for project in unlisted:
+            print(f"error: [assurance:WORKSPACE_MEMBER_UNLISTED] {project}")
         print("workspace assurance 완료" if complete else "workspace assurance 미완료")
     return code
 

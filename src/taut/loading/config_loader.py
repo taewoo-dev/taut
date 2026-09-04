@@ -79,6 +79,16 @@ _ROOT_KEYS = frozenset(
         "strict",
     }
 )
+_TRANSACTION_KEYS = frozenset(
+    {
+        "boundary_contexts",
+        "boundary_decorators",
+        "owner_roles",
+        "participant_roles",
+        "provider_item_types",
+        "session_providers",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -147,11 +157,15 @@ def _load_project_configuration(
     project = _table(root.get("project", {}), "project")
     _reject_unknown(
         project,
-        frozenset({"include", "exclude", "source_roots", "default_zone"}),
+        frozenset({"include", "exclude", "force_include", "source_roots", "default_zone"}),
         "project",
     )
-    include = _strings(project.get("include", ["*.py", "**/*.py"]), "project.include")
+    include = _strings(
+        project.get("include", ["*.py", "**/*.py", "*.pyi", "**/*.pyi"]),
+        "project.include",
+    )
     configured_excludes = _strings(project.get("exclude", []), "project.exclude")
+    force_include = _strings(project.get("force_include", []), "project.force_include")
     source_roots = tuple(
         ProjectPath(value)
         for value in _strings(project.get("source_roots", ["."]), "project.source_roots")
@@ -184,6 +198,7 @@ def _load_project_configuration(
         manifest,
         catalog,
         policy,
+        force_include=force_include,
         schema_version=5,
         packs=packs,
         providers=providers,
@@ -336,7 +351,6 @@ def _load_policy(
                 raise PolicyConfigError(f"{rule_id.value} is fixed at {level.value}")
         effective_level = level if strict or level is RuleLevel.ADVISORY else RuleLevel.ADVISORY
         settings.append((rule_id, RuleSetting(effective_level, FrozenMap())))
-
     rule_zones = load_rule_zones(root, known)
     approvals = load_approvals(root, known)
 
@@ -352,19 +366,7 @@ def _load_policy(
     )
 
     transaction = _table(root.get("transaction", {}), "transaction")
-    _reject_unknown(
-        transaction,
-        frozenset(
-            {
-                "owner_roles",
-                "participant_roles",
-                "session_providers",
-                "provider_item_types",
-                "boundary_decorators",
-            }
-        ),
-        "transaction",
-    )
+    _reject_unknown(transaction, _TRANSACTION_KEYS, "transaction")
     owners = frozenset(
         Role(value)
         for value in _strings(transaction.get("owner_roles", []), "transaction.owner_roles")
@@ -389,10 +391,15 @@ def _load_policy(
             "transaction.boundary_decorators",
         )
     )
-    if (session_providers or boundary_decorators) and not owners:
-        raise PolicyConfigError(
-            "transaction.session_providers/boundary_decorators require owner_roles"
+    boundary_contexts = frozenset(
+        SymbolId(value)
+        for value in _strings(
+            transaction.get("boundary_contexts", []),
+            "transaction.boundary_contexts",
         )
+    )
+    if (session_providers or boundary_decorators or boundary_contexts) and not owners:
+        raise PolicyConfigError("transaction session providers and boundaries require owner_roles")
     provider_item_types = FrozenMap(
         (
             SymbolId(provider),
@@ -426,6 +433,7 @@ def _load_policy(
         transaction_participant_roles=participants,
         transaction_session_providers=session_providers,
         transaction_boundary_decorators=boundary_decorators,
+        transaction_boundary_contexts=boundary_contexts,
         transaction_provider_item_types=provider_item_types,
         rule_zones=rule_zones,
         approvals=approvals,

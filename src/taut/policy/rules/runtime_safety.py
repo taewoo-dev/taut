@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fnmatch import fnmatchcase
 
+from taut.configuration.catalog import Effect, EffectResolutionState
 from taut.configuration.manifest import Zone
 from taut.domain.evaluations import (
     ChangeImpact,
@@ -106,7 +107,11 @@ class ExternalCallTransactionRule:
             return uncertain
         findings: list[Finding] = []
         for call in context.model.module(target.module_id).calls:
-            if not context.indexes.is_logged_external_call(call):
+            resolution = context.transitive_effect_of(call)
+            if not context.indexes.is_logged_external_call(call) and not (
+                resolution.state is EffectResolutionState.MATCHED
+                and Effect.EXTERNAL_CALL in resolution.effects
+            ):
                 continue
             context_symbols = {
                 item.symbol
@@ -118,13 +123,17 @@ class ExternalCallTransactionRule:
                 for symbol in context_symbols
             )
             holds_transaction = any(
-                symbol
-                in {
-                    SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin"),
-                    SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin_nested"),
-                    SymbolId("tortoise.transactions.atomic"),
-                    SymbolId("tortoise.transactions.in_transaction"),
-                }
+                context.symbol_in(
+                    symbol,
+                    context.policy.transaction_boundary_contexts.union(
+                        {
+                            SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin"),
+                            SymbolId("sqlalchemy.ext.asyncio.AsyncSession.begin_nested"),
+                            SymbolId("tortoise.transactions.atomic"),
+                            SymbolId("tortoise.transactions.in_transaction"),
+                        }
+                    ),
+                )
                 for symbol in context_symbols
             )
             atomic_function = any(

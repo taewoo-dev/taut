@@ -279,9 +279,11 @@ class SnapshotPlacementRule:
             return uncertainty
         findings: list[Finding] = []
         for class_fact in module.classes:
-            if not _is_base_model(class_fact) or (
-                "Snapshot" not in class_fact.name and not snapshot_file
-            ):
+            # A snapshot module may contain nested component models whose schema
+            # version is owned by the enclosing/root Snapshot contract. Requiring
+            # every helper model in ``*_snapshot.py`` to carry ``SnapshotVn``
+            # creates duplicate version markers without improving compatibility.
+            if not _is_base_model(class_fact) or "Snapshot" not in class_fact.name:
                 continue
             if role not in context.policy.code.snapshot_roles:
                 findings.append(

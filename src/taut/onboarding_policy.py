@@ -46,6 +46,7 @@ class InitPolicyAnswers:
     transaction_participants: tuple[str, ...] = ()
     session_providers: tuple[str, ...] = ()
     boundary_decorators: tuple[str, ...] = ()
+    boundary_contexts: tuple[str, ...] = ()
     provider_item_types: tuple[tuple[str, str], ...] = ()
     external_modules: tuple[str, ...] = ()
     logged_calls: tuple[str, ...] = ()
@@ -94,6 +95,7 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
             "session_providers",
             "provider_item_types",
             "boundary_decorators",
+            "boundary_contexts",
         },
         "policy.transaction",
     )
@@ -107,6 +109,10 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
     boundary_decorators = _symbols(
         transaction.get("boundary_decorators", []),
         "policy.transaction.boundary_decorators",
+    )
+    boundary_contexts = _symbols(
+        transaction.get("boundary_contexts", []),
+        "policy.transaction.boundary_contexts",
     )
     provider_types = _symbol_mapping(
         transaction.get("provider_item_types", {}), "policy.transaction.provider_item_types"
@@ -138,6 +144,7 @@ def answer_policy(answers: dict[str, object] | None) -> InitPolicyAnswers:
         transaction_participants=participants,
         session_providers=providers,
         boundary_decorators=boundary_decorators,
+        boundary_contexts=boundary_contexts,
         provider_item_types=provider_types,
         external_modules=modules,
         logged_calls=logged,
@@ -164,13 +171,15 @@ def missing_policy_decisions(
     if expectations["enum"] == "required" and not policy.shared_enum_modules:
         missing.append(("enum", "shared_modules"))
     if expectations["transaction"] == "required" and not (
-        policy.transaction_roles and (policy.session_providers or policy.boundary_decorators)
+        policy.transaction_roles
+        and (policy.session_providers or policy.boundary_decorators or policy.boundary_contexts)
     ):
-        missing.append(("transaction", "owner_roles and session_providers or boundary_decorators"))
-    if expectations["external_calls"] == "required" and not (
-        policy.logged_calls and policy.external_wrappers
-    ):
-        missing.append(("external_calls", "logged_calls and wrappers"))
+        missing.append(
+            (
+                "transaction",
+                "owner_roles and session_providers, boundary_decorators, or boundary_contexts",
+            )
+        )
     return tuple(missing)
 
 
@@ -202,7 +211,12 @@ def render_policy_lines(policy: InitPolicyAnswers) -> tuple[str, ...]:
         lines.append(f"response_mapper_name = {json.dumps(policy.response_mapper_name)}")
         for name, values in policy.code_conventions:
             lines.append(f"{name} = {_toml_array(values)}")
-    if policy.transaction_roles or policy.session_providers or policy.boundary_decorators:
+    if (
+        policy.transaction_roles
+        or policy.session_providers
+        or policy.boundary_decorators
+        or policy.boundary_contexts
+    ):
         lines.extend(("", "[tool.taut.transaction]"))
         lines.append(f"owner_roles = {_toml_array(policy.transaction_roles)}")
         if policy.transaction_participants:
@@ -210,6 +224,8 @@ def render_policy_lines(policy: InitPolicyAnswers) -> tuple[str, ...]:
         lines.append(f"session_providers = {_toml_array(policy.session_providers)}")
         if policy.boundary_decorators:
             lines.append(f"boundary_decorators = {_toml_array(policy.boundary_decorators)}")
+        if policy.boundary_contexts:
+            lines.append(f"boundary_contexts = {_toml_array(policy.boundary_contexts)}")
         if policy.provider_item_types:
             lines.extend(("", "[tool.taut.transaction.provider_item_types]"))
             for provider, item_type in policy.provider_item_types:

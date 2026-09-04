@@ -187,6 +187,7 @@ class EffectivePolicy:
     transaction_participant_roles: frozenset[Role] = frozenset()
     transaction_session_providers: frozenset[SymbolId] = frozenset()
     transaction_boundary_decorators: frozenset[SymbolId] = frozenset()
+    transaction_boundary_contexts: frozenset[SymbolId] = frozenset()
     transaction_provider_item_types: FrozenMap[SymbolId, SymbolId] = field(
         default_factory=lambda: FrozenMap[SymbolId, SymbolId]()
     )
@@ -270,6 +271,9 @@ class EffectivePolicy:
             ),
             "transaction_boundary_decorators": sorted(
                 symbol.value for symbol in self.transaction_boundary_decorators
+            ),
+            "transaction_boundary_contexts": sorted(
+                symbol.value for symbol in self.transaction_boundary_contexts
             ),
             "transaction_provider_item_types": [
                 (provider.value, item_type.value)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from taut.configuration.catalog import Effect, EffectResolutionState
 from taut.domain.evaluations import (
     ChangeImpact,
     EvaluationReason,
@@ -98,6 +99,10 @@ class ExternalCallLoggingRule:
             call
             for call in context.model.module(target.module_id).calls
             if context.indexes.is_logged_external_call(call)
+            or (
+                (resolution := context.effect_of(call)).state is EffectResolutionState.MATCHED
+                and Effect.EXTERNAL_CALL in resolution.effects
+            )
         )
         if not relevant:
             return RuleEvaluation(LOG_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())

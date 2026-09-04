@@ -267,6 +267,7 @@ def configuration_schema_payload() -> dict[str, object]:
             "owner_roles": "roles allowed to create or finish transactions",
             "session_providers": "fully qualified context-manager call symbols",
             "boundary_decorators": "fully qualified transaction decorator symbols",
+            "boundary_contexts": "fully qualified atomic transaction context-manager symbols",
             "provider_item_types": "optional provider-symbol to yielded-type mapping",
         },
         "code_conventions": {
@@ -396,7 +397,7 @@ def _render_configuration(
         f"providers = {_toml_array(providers)}",
         "strict = true",
         f"max_lines = {size.default_max_lines}",
-        'include = ["*.py", "**/*.py"]',
+        'include = ["*.py", "**/*.py", "*.pyi", "**/*.pyi"]',
         f"source_roots = {_toml_array(source_roots)}",
         "",
     ]

@@ -27,6 +27,9 @@ FASTAPI_ENDPOINTS = "taut.fastapi.endpoints@1"
 FASTAPI_ROUTERS = "taut.fastapi.routers@1"
 FASTAPI_DEPENDENCIES = "taut.fastapi.dependencies@1"
 FASTAPI_RESPONSE_MODELS = "taut.fastapi.response_models@1"
+_ROUTE_METHODS = frozenset(
+    {"api_route", "delete", "get", "head", "options", "patch", "post", "put"}
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -308,7 +311,7 @@ class FastAPIProvider:
                     if method_ref.symbol is not None
                     else ""
                 )
-                if method not in {"get", "post", "put", "patch", "delete", "options", "head"}:
+                if method not in _ROUTE_METHODS:
                     continue
                 receiver_edges = tuple(
                     edge

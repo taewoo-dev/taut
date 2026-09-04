@@ -89,6 +89,7 @@ _MESSAGES = {
     "api.field_metadata_missing": "공개 API 필드 {symbol}에 {missing}이 없습니다.",
     "api.router_tags_missing": "APIRouter {symbol}와 등록 지점에 tags가 없습니다.",
     "api.query_description_missing": "Query 매개변수 {symbol}에 description이 없습니다.",
+    "api.parameter_description_missing": "{symbol} 매개변수에 description이 없습니다.",
     "enum.class_suffix": "Enum {kind}의 class 이름에 Enum suffix가 있습니다.",
     "enum.base_type": "Enum {kind}이 StrEnum을 사용하지 않습니다.",
     "enum.shared_location": "공유 Enum이 중앙 폴더 밖에 있습니다({kind}).",
@@ -104,6 +105,7 @@ _MESSAGES = {
     "exception.code_duplicate": "오류 코드 {kind}를 둘 이상의 업무 예외가 사용합니다.",
     "exception.name_duplicate": "업무 예외 이름 {kind}가 둘 이상의 모듈에 있습니다.",
     "exception.code_unused": "오류 코드 {kind}가 사용 또는 예약되지 않았습니다.",
+    "exception.family_unregistered": "예외 {symbol}가 등록된 업무 예외 계층에 속하지 않습니다.",
 }
 
 

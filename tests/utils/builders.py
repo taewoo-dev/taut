@@ -204,6 +204,7 @@ def make_context(
     transaction_owners: frozenset[str] = frozenset(),
     transaction_participants: frozenset[str] = frozenset(),
     transaction_session_providers: frozenset[str] = frozenset(),
+    transaction_boundary_contexts: frozenset[str] = frozenset(),
     rule_zones: dict[str, frozenset[str]] | None = None,
     approvals: tuple[PolicyApproval, ...] = (),
     import_boundaries: tuple[
@@ -330,6 +331,9 @@ def make_context(
         transaction_participant_roles=frozenset(Role(role) for role in transaction_participants),
         transaction_session_providers=frozenset(
             SymbolId(symbol) for symbol in transaction_session_providers
+        ),
+        transaction_boundary_contexts=frozenset(
+            SymbolId(symbol) for symbol in transaction_boundary_contexts
         ),
         rule_zones=FrozenMap(
             (RuleId(rule), frozenset(Zone(zone) for zone in zones))

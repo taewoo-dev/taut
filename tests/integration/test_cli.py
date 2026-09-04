@@ -524,6 +524,36 @@ def test_unknown_risky_call_is_advisory(
 
 
 @pytest.mark.integration
+def test_external_calls_without_wrapper_audit_cleanly_then_fail_log_rule(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_project(
+        tmp_path,
+        """import httpx
+
+async def send() -> object:
+    async with httpx.AsyncClient() as client:
+        return await client.get("https://example.test")
+""",
+        role="adapter",
+    )
+    policy_path = tmp_path / ".policy" / "policy.toml"
+    policy = policy_path.read_text().replace(
+        'external_calls = "absent"', 'external_calls = "required"'
+    )
+    policy = policy.replace('security = "absent"', 'security = "required"')
+    policy_path.write_text(policy)
+
+    assert main(["audit", str(tmp_path), "--format", "json"]) == 0
+    audit = cast(dict[str, object], json.loads(capsys.readouterr().out))
+    assert cast(dict[str, object], audit["assurance"])["complete"] is True
+
+    assert main(["check", str(tmp_path), "--no-cache"]) == 1
+    assert "LOG001" in capsys.readouterr().out
+
+
+@pytest.mark.integration
 def test_init_json_is_read_only_then_writes_only_with_complete_answers(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

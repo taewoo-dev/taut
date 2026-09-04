@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from taut.analysis.framework.fastapi import FASTAPI_RESPONSE_MODELS, FastAPIResponseModelFact
+from taut.analysis.framework.pydantic import PYDANTIC_MODELS
+from taut.analysis.framework.pydantic_facts import PydanticModelFact
 from taut.analysis.semantic_model import SemanticModel
 from taut.configuration.effective_policy import EffectivePolicy
 from taut.configuration.manifest import ClassificationIndex
@@ -60,6 +63,26 @@ class SymbolContractIndex:
                 SymbolId("enum.StrEnum"),
             }
         )
+        pydantic_models = {
+            model.canonical_symbol(fact.symbol)
+            for fact in model.capability_values(PYDANTIC_MODELS)
+            if isinstance(fact, PydanticModelFact)
+        }
+        response_models = {
+            model.canonical_symbol(fact.model)
+            for fact in model.capability_values(FASTAPI_RESPONSE_MODELS)
+            if isinstance(fact, FastAPIResponseModelFact) and fact.model is not None
+        }
+        response_models.update(
+            model.canonical_symbol(candidate)
+            for module_id in model.modules()
+            for call in model.calls_in(module_id)
+            if call.ref.symbol is not None
+            and call.ref.symbol.value.rsplit(".", maxsplit=1)[-1] == "add_api_route"
+            for argument in call.arguments
+            if argument.name == "response_model"
+            for candidate in argument.value.symbols
+        )
         result: list[tuple[SymbolId, frozenset[ContractKind]]] = []
         for symbol, item in classes.items():
             role = classification.get(item.module_id).role
@@ -71,14 +94,16 @@ class SymbolContractIndex:
                 for decorator in module.decorators
             )
             role_dto = role in policy.code.dto_roles and (
-                is_dataclass or item.name.endswith(policy.code.dto_name_suffixes)
+                is_dataclass
+                or symbol in pydantic_models
+                or item.name.endswith(policy.code.dto_name_suffixes)
             )
             if role_dto or inherits(symbol, policy.code.dto_base_symbols):
                 kinds.add(ContractKind.DTO)
             if role in policy.code.schema_roles:
                 if item.name.endswith(("Request", "RequestModel")):
                     kinds.add(ContractKind.REQUEST)
-                if item.name.endswith(("Response", "ResponseModel")):
+                if item.name.endswith(("Response", "ResponseModel")) or symbol in response_models:
                     kinds.add(ContractKind.RESPONSE)
             if "Snapshot" in item.name:
                 kinds.add(ContractKind.SNAPSHOT)

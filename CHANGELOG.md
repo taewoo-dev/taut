@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.0
+
+### Transitive safety analysis
+
+- Added bounded first-party function summaries so transaction, external-call, async, and runtime
+  rules follow project-owned helpers without spreading unrelated unresolved calls across modules.
+- Made `TX002` recognize transitive `external.call` effects, including application wrappers whose
+  HTTP implementation lives in another module.
+- Distinguished session-resource lifetime from proven atomic transaction contexts and documented
+  explicit `boundary_contexts` for SQLAlchemy and Tortoise projects.
+
+### Stricter assurance with fewer configuration false positives
+
+- Added semantic role audits for FastAPI routers, DTOs, Responses, exceptions, tests, and framework
+  providers, plus liveness and kind checks for configured policy symbols.
+- Made approved external-call wrappers optional: projects without one now complete audit and get
+  actionable `LOG001` findings instead of being forced to configure a fictitious symbol.
+- Limited snapshot version enforcement to root `SnapshotVn` contracts so nested component models
+  inherit the root schema version without duplicate naming requirements.
+- Added `.pyi` accounting, explicit `force_include` support for owned code under default ignored
+  directories, and workspace detection for package members missing from the Taut manifest.
+
+### Framework and contract precision
+
+- Improved programmatic FastAPI route analysis, response mapping, Pydantic inheritance, exception
+  hierarchy checks, SQLAlchemy/Tortoise persistence facts, and test fixture boundaries.
+- Expanded role onboarding and source discovery while preserving reviewed project-specific policy
+  instead of hard-coding layouts from any validation repository.
+
 ## 0.6.0
 
 ### Isolated workspace orchestration

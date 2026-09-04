@@ -92,6 +92,48 @@ def discover_independent_projects(project_root: Path) -> tuple[str, ...]:
     return tuple(path.relative_to(root).as_posix() for path in sorted(projects))
 
 
+def discover_workspace_projects(project_root: Path) -> tuple[str, ...]:
+    """Discover Python project members that a workspace manifest must account for."""
+    root = project_root.resolve()
+    explicit: set[Path] = set()
+    path = root / "pyproject.toml"
+    if path.is_file():
+        document = _read_toml(path)
+        uv = _mapping(_mapping(document.get("tool"), "tool").get("uv"), "tool.uv")
+        uv_workspace = _mapping(uv.get("workspace"), "tool.uv.workspace")
+        members = _string_list(uv_workspace.get("members", []), "tool.uv.workspace.members")
+        excludes = _string_list(uv_workspace.get("exclude", []), "tool.uv.workspace.exclude")
+        for pattern in members:
+            explicit.update(
+                candidate.resolve()
+                for candidate in root.glob(pattern)
+                if candidate.is_dir()
+                and candidate.resolve().is_relative_to(root)
+                and not any(candidate.match(exclude) for exclude in excludes)
+            )
+    candidates = explicit or {
+        directory
+        for directory in _nested_pyproject_directories(root)
+        if _contains_python(directory)
+    }
+    return tuple(
+        sorted(
+            candidate.relative_to(root).as_posix()
+            for candidate in candidates
+            if (candidate / "pyproject.toml").is_file() and _contains_python(candidate)
+        )
+    )
+
+
+def unlisted_workspace_projects(workspace: TautWorkspace) -> tuple[str, ...]:
+    declared = {member.path for member in workspace.members}
+    return tuple(
+        project
+        for project in discover_workspace_projects(workspace.root)
+        if project not in declared
+    )
+
+
 def workspace_toml(members: tuple[str, ...]) -> str:
     rendered = ", ".join(_toml_string(member) for member in members)
     return (
@@ -168,6 +210,30 @@ def _contains_python(root: Path) -> bool:
         if any(name.endswith((".py", ".pyi")) for name in file_names):
             return True
     return False
+
+
+def _nested_pyproject_directories(root: Path) -> tuple[Path, ...]:
+    values: list[Path] = []
+    for current, directory_names, file_names in os.walk(root):
+        directory_names[:] = sorted(
+            name for name in directory_names if name not in IGNORED_DIRECTORY_NAMES
+        )
+        directory = Path(current)
+        if directory != root and "pyproject.toml" in file_names:
+            values.append(directory.resolve())
+            directory_names[:] = []
+    return tuple(sorted(values))
+
+
+def _string_list(value: object, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise PolicyConfigError(f"{label} must contain only paths")
+    strings: list[str] = []
+    for item in cast(list[object], value):
+        if not isinstance(item, str):
+            raise PolicyConfigError(f"{label} must contain only paths")
+        strings.append(item)
+    return tuple(strings)
 
 
 def _read_toml(path: Path) -> dict[str, object]:

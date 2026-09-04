@@ -119,7 +119,8 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
         ),
         raw_query_roles=roles("raw_query_roles", ("raw_query",)),
         external_modules=modules(
-            "external_modules", ("anthropic", "boto3", "httpx", "openai", "requests")
+            "external_modules",
+            ("aiohttp", "anthropic", "boto3", "httpx", "openai", "requests"),
         ),
         database_modules=modules("database_modules", ("sqlalchemy", "tortoise")),
         transport_modules=modules("transport_modules", ("fastapi", "starlette")),
@@ -178,7 +179,13 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
         ),
         external_client_constructors=symbols(
             "external_client_constructors",
-            ("httpx.AsyncClient", "httpx.Client", "openai.AsyncOpenAI", "openai.OpenAI"),
+            (
+                "aiohttp.ClientSession",
+                "httpx.AsyncClient",
+                "httpx.Client",
+                "openai.AsyncOpenAI",
+                "openai.OpenAI",
+            ),
         ),
         adapter_implementation_symbols=frozenset(symbols("adapter_implementation_symbols")),
         adapter_implementation_suffixes=names(
@@ -258,7 +265,22 @@ def load_boundary_extensions(root: dict[str, object]) -> BoundaryPolicy:
                 "upsert_",
             ),
         ),
-        http_timeout_calls=symbols("http_timeout_calls", ("httpx.AsyncClient", "httpx.Client")),
+        http_timeout_calls=symbols(
+            "http_timeout_calls",
+            (
+                "aiohttp.ClientSession",
+                "httpx.AsyncClient",
+                "httpx.Client",
+                "requests.delete",
+                "requests.get",
+                "requests.head",
+                "requests.options",
+                "requests.patch",
+                "requests.post",
+                "requests.put",
+                "requests.request",
+            ),
+        ),
         logged_external_calls=symbols("logged_external_calls"),
         external_call_wrappers=frozenset(symbols("external_call_wrappers")),
         entry_allowed_kinds=FrozenMap(

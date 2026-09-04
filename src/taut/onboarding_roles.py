@@ -490,4 +490,9 @@ def _structural_patterns(observation: InitRoleObservation) -> tuple[str, ...]:
     if not roots:
         return ()
     root = min(roots, key=lambda item: (len(Path(item).parts), item))
-    return (f"{root}/*.py", f"{root}/**/*.py")
+    return (
+        f"{root}/*.py",
+        f"{root}/**/*.py",
+        f"{root}/*.pyi",
+        f"{root}/**/*.pyi",
+    )

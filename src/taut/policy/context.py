@@ -21,6 +21,10 @@ from taut.configuration.manifest import ClassificationIndex
 from taut.domain.facts import CallFact, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
+from taut.policy.function_summaries import (
+    FunctionSemanticSummary,
+    build_function_semantic_summaries,
+)
 from taut.policy.indexes import PolicyIndexes
 from taut.policy.symbol_contracts import SymbolContractIndex
 
@@ -70,6 +74,38 @@ class PolicyContext:
         return resolution
 
     @cached_property
+    def function_summaries(self) -> Mapping[SymbolId, FunctionSemanticSummary]:
+        return MappingProxyType(dict(build_function_semantic_summaries(self).items()))
+
+    def transitive_effect_of(self, call: CallFact) -> EffectResolution:
+        """Resolve configured effects or effects derived from project-owned callees."""
+        direct = self.effect_of(call)
+        if direct.state is not EffectResolutionState.NO_MATCH or call.ref.symbol is None:
+            return direct
+        summary = self.function_summaries.get(self.model.canonical_symbol(call.ref.symbol))
+        if summary is None or not summary.effects:
+            return direct
+        accesses = frozenset(summary.effect_access.values())
+        access = (
+            AccessPath.APPROVED_WRAPPER
+            if accesses == frozenset({AccessPath.APPROVED_WRAPPER})
+            else AccessPath.DIRECT
+        )
+        return EffectResolution(
+            EffectResolutionState.MATCHED,
+            summary.effects,
+            access,
+            self.model.canonical_symbol(call.ref.symbol)
+            if access is AccessPath.APPROVED_WRAPPER
+            else None,
+        )
+
+    def function_summary(self, symbol: SymbolId | None) -> FunctionSemanticSummary | None:
+        if symbol is None:
+            return None
+        return self.function_summaries.get(self.model.canonical_symbol(symbol))
+
+    @cached_property
     def tortoise_queries(self) -> Mapping[FactId, TortoiseQueryFact]:
         """Index Tortoise query facts without coupling boundary rules to fact classes."""
         return MappingProxyType(
@@ -117,6 +153,36 @@ class PolicyContext:
             return False
         canonical = self.model.canonical_symbol(symbol)
         return any(self.model.canonical_symbol(candidate) == canonical for candidate in candidates)
+
+    def symbol_in_or_inherits(
+        self, symbol: SymbolId | None, candidates: frozenset[SymbolId]
+    ) -> bool:
+        if symbol is None:
+            return False
+        wanted = frozenset(self.model.canonical_symbol(item) for item in candidates)
+        current = self.model.canonical_symbol(symbol)
+        classes = {
+            self.model.canonical_symbol(class_fact.symbol_id): class_fact
+            for module_id in self.model.modules()
+            for class_fact in self.model.module(module_id).classes
+        }
+        pending = [current]
+        visited: set[SymbolId] = set()
+        while pending:
+            candidate = pending.pop()
+            if candidate in wanted:
+                return True
+            if candidate in visited:
+                continue
+            visited.add(candidate)
+            class_fact = classes.get(candidate)
+            if class_fact is not None:
+                pending.extend(
+                    self.model.canonical_symbol(parent)
+                    for base in class_fact.bases
+                    for parent in base.symbols
+                )
+        return False
 
     def matching_symbol(
         self, symbol: SymbolId | None, candidates: tuple[SymbolId, ...] | frozenset[SymbolId]

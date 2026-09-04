@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
-from taut.domain.facts import AnalysisStage, CallFact
+from taut.domain.facts import AnalysisStage, CallFact, ClassFact
 from taut.domain.findings import Finding
 from taut.domain.ids import FactId, RuleId, SymbolId
 from taut.domain.location import SourceRange
@@ -103,6 +103,21 @@ class ResponseMappingRule:
                     if call.enclosing_symbol == method_symbol
                     and _is_bulk_mapping(call, class_fact.symbol_id)
                 )
+                findings.extend(
+                    _finding(
+                        target,
+                        class_fact.symbol_id,
+                        call.id,
+                        call.location,
+                        "schema.bulk_mapping",
+                        sorted(summary.bulk_mapping_operations)[0],
+                    )
+                    for call in module.calls
+                    if call.enclosing_symbol == method_symbol
+                    and (summary := context.function_summary(call.ref.symbol)) is not None
+                    and summary.bulk_mapping_operations
+                    and _feeds_response_construction(call, module.calls, class_fact.symbol_id)
+                )
         else:
             findings.extend(_router_findings(target, context))
         if findings:
@@ -124,6 +139,17 @@ def _is_bulk_mapping(call: CallFact, response_symbol: SymbolId) -> bool:
     return symbol == response_symbol or (
         symbol is not None
         and symbol.value.rsplit(".", maxsplit=1)[-1].endswith(("Response", "ResponseModel"))
+    )
+
+
+def _feeds_response_construction(
+    call: CallFact,
+    calls: tuple[CallFact, ...],
+    response_symbol: SymbolId,
+) -> bool:
+    parent_id = call.context.parent_fact_id
+    return parent_id is not None and any(
+        parent.id == parent_id and _is_bulk_mapping(parent, response_symbol) for parent in calls
     )
 
 
@@ -164,7 +190,27 @@ def _router_findings(target: RuleTargetRef, context: PolicyContext) -> tuple[Fin
         for call in context.model.module(target.module_id).calls
         if (symbol := call.ref.symbol) is not None
         and not symbol.value.startswith(("fastapi.", "starlette."))
-        and (class_name := symbol.value.rsplit(".", maxsplit=1)[-1]).endswith("Response")
+        and (class_name := symbol.value.rsplit(".", maxsplit=1)[-1])
+        and (
+            (
+                (class_fact := _class_for_symbol(symbol, context)) is not None
+                and context.symbol_contracts.has(class_fact, ContractKind.RESPONSE)
+            )
+            or class_name.endswith(("Response", "ResponseModel"))
+        )
+    )
+
+
+def _class_for_symbol(symbol: SymbolId, context: PolicyContext) -> ClassFact | None:
+    canonical = context.model.canonical_symbol(symbol)
+    return next(
+        (
+            class_fact
+            for module_id in context.model.modules()
+            for class_fact in context.model.module(module_id).classes
+            if context.model.canonical_symbol(class_fact.symbol_id) == canonical
+        ),
+        None,
     )
 
 

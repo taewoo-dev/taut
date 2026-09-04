@@ -1,7 +1,7 @@
 # Start using pytaut in a project
 
 This guide covers the complete path from a repository without Taut to strict CI. It describes
-pytaut 0.6.0, init answers/proposal contract v6, and configuration schema v5.
+pytaut 0.7.0, init answers/proposal contract v6, and configuration schema v5.
 
 ## Choose project or workspace scope
 
@@ -42,7 +42,7 @@ or replaces an existing policy.
 ## 1. Install a fixed version
 
 ```bash
-uv add --dev pytaut==0.6.0
+uv add --dev pytaut==0.7.0
 uv run taut --version
 ```
 
@@ -289,6 +289,8 @@ owner_roles = ["service"]
 session_providers = ["app.db.get_async_session"]
 # Or, for decorator-managed transactions:
 # boundary_decorators = ["app.db.atomic"]
+# Or, for an atomic context manager distinct from session creation:
+# boundary_contexts = ["app.db.atomic_session"]
 
 [tool.taut.code_conventions]
 dto_roles = ["dto"]
@@ -312,8 +314,11 @@ shared_modules = ["app.enums"]
 ```
 
 `external.wrappers` accepts either a callable that directly contains the external call or a context
-manager surrounding it. This supports centralized client methods and explicit observability scopes;
-it does not trust their callers or unrelated calls transitively.
+manager surrounding it. Built-in HTTP effects do not need to be repeated in `logged_calls`;
+`logged_calls` remains useful for opaque SDK calls. Taut derives effects through project-owned
+helper calls, while a configured wrapper remains the explicit observability boundary. A project
+that has external calls but no approved wrapper can still complete `audit`; `check` then reports
+those calls through `LOG001` instead of requiring a fictitious wrapper setting.
 
 Use symbols that exist in the repository. Required policy symbols must resolve exactly; missing
 symbols and local class/value/callable kind mismatches are assurance failures.
@@ -332,6 +337,7 @@ type yielded by a project wrapper:
 [tool.taut.transaction]
 owner_roles = ["service"]
 session_providers = ["app.db.transaction"]
+boundary_contexts = ["app.db.transaction"]
 
 [tool.taut.transaction.provider_item_types]
 "app.db.transaction" = "tortoise.backends.base.client.TransactionalDBClient"
@@ -340,7 +346,14 @@ session_providers = ["app.db.transaction"]
 Keep `taut.tortoise` in the provider list. Taut then classifies Tortoise models, fields,
 relationships, reads, writes, QuerySets returned through first-party helpers, transactions, and
 raw SQL. The item-type mapping is unnecessary when
-`session_providers` contains `tortoise.transactions.in_transaction` itself.
+`session_providers` and `boundary_contexts` contain
+`tortoise.transactions.in_transaction` itself.
+
+Taut analyzes `.py` and stub-only `.pyi` modules. If both files define the same module, the `.py`
+implementation is analyzed and the `.pyi` file is recorded as a shadowed, accounted stub. Use
+`project.force_include` only when first-party code intentionally lives under a default ignored
+directory. Workspace audit/check also fail with exit 2 when a Python member declared by the package
+workspace is missing from `tool.taut.workspace.members`.
 
 The generic database, boundary, transaction, and raw-SQL policies apply to Tortoise. The
 SQLAlchemy-specific meanings of `ORM001`, `ORM002`, and `DB001` are not reinterpreted as Tortoise
