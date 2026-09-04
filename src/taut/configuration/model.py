@@ -20,6 +20,7 @@ class ProjectConfiguration:
     manifest: ProjectManifest
     catalog: EffectCatalog
     policy: EffectivePolicy
+    force_include: tuple[str, ...] = ()
     schema_version: int = 5
     packs: tuple[str, ...] = ("taut.backend",)
     providers: tuple[str, ...] = BUILTIN_BACKEND_PROVIDER_IDS
@@ -72,6 +73,7 @@ class ProjectConfiguration:
             },
             "include": self.include,
             "exclude": self.exclude,
+            "force_include": self.force_include,
             "source_roots": [path.value for path in self.source_roots],
             "roles": [
                 {

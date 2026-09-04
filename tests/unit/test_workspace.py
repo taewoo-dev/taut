@@ -7,8 +7,10 @@ import pytest
 from taut.loading.errors import PolicyConfigError
 from taut.workspace import (
     discover_independent_projects,
+    discover_workspace_projects,
     load_workspace,
     member_has_configuration,
+    unlisted_workspace_projects,
     workspace_toml,
     write_workspace_manifest,
 )
@@ -110,3 +112,32 @@ def test_workspace_manifest_write_preserves_root_metadata_and_is_not_repeatable(
     assert not member_has_configuration(tmp_path, "missing")
     with pytest.raises(PolicyConfigError, match="already exists"):
         write_workspace_manifest(tmp_path, ("backend",))
+
+
+def test_workspace_drift_finds_new_uv_member_missing_from_taut_manifest(tmp_path: Path) -> None:
+    _member(tmp_path, "packages/backend")
+    _member(tmp_path, "packages/worker")
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["packages/*"]\n'
+        '[tool.taut.workspace]\nmembers = ["packages/backend"]\n'
+    )
+
+    workspace = load_workspace(tmp_path)
+
+    assert workspace is not None
+    assert discover_workspace_projects(tmp_path) == (
+        "packages/backend",
+        "packages/worker",
+    )
+    assert unlisted_workspace_projects(workspace) == ("packages/worker",)
+
+
+def test_workspace_discovery_falls_back_to_nested_python_projects(tmp_path: Path) -> None:
+    _member(tmp_path, "backend")
+    _member(tmp_path, "worker")
+    (tmp_path / "pyproject.toml").write_text('[tool.taut.workspace]\nmembers = ["backend"]\n')
+
+    workspace = load_workspace(tmp_path)
+
+    assert workspace is not None
+    assert unlisted_workspace_projects(workspace) == ("worker",)

@@ -19,6 +19,7 @@ from taut.analysis.framework.tortoise import (
     TORTOISE_RAW_SQL,
     TORTOISE_TRANSACTIONS,
 )
+from taut.assurance_roles import semantic_role_issues
 from taut.assurance_symbols import policy_symbol_issues, same_symbol
 from taut.configuration.assurance import FeatureExpectation
 from taut.configuration.manifest import ClassificationIndex
@@ -31,6 +32,7 @@ from taut.domain.assurance import (
 )
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.loading.source_discovery import SourceDiscoveryResult
+from taut.onboarding_contributors import onboarding_framework_specs
 from taut.project_observation import python_files
 
 
@@ -43,13 +45,17 @@ def audit_project_assurance(
     *,
     used_approvals: int,
     used_ignores: int,
+    unused_approvals: tuple[str, ...] = (),
 ) -> AssuranceReport:
-    all_python = _project_python_files(project_root)
+    all_python = _project_python_files(project_root, config.force_include)
     analyzed = frozenset(source.path.value for source in discovery.sources)
+    accounted = analyzed.union(
+        entry.path.value for entry in discovery.report.entries if entry.reason == "shadowed_stub"
+    )
     excluded, unused_exclusions = _reasoned_exclusions(all_python, config)
     issues: list[AssuranceIssue] = []
 
-    for path in sorted(all_python.difference(analyzed).difference(excluded)):
+    for path in sorted(all_python.difference(accounted).difference(excluded)):
         issues.append(
             _issue(
                 "SOURCE_UNACCOUNTED",
@@ -111,12 +117,12 @@ def audit_project_assurance(
                 )
             )
 
+    issues.extend(semantic_role_issues(snapshot, classifications, config.policy.code))
+
     framework_providers = {
-        "fastapi": "taut.fastapi",
-        "pydantic": "taut.pydantic",
-        "pytest": "taut.pytest",
-        "sqlalchemy": "taut.sqlalchemy",
-        "tortoise": "taut.tortoise",
+        root: spec.provider_id
+        for spec in onboarding_framework_specs()
+        for root in spec.import_roots
     }
     configured_providers = set(config.providers)
     imported_frameworks = {
@@ -190,6 +196,15 @@ def audit_project_assurance(
                 "approval을 제거하거나 max_approvals를 의도적으로 조정하세요.",
             )
         )
+    for approval in unused_approvals:
+        issues.append(
+            _issue(
+                "APPROVAL_UNUSED",
+                "approval이 현재 어떤 위반이나 명시적 참여 계약에도 사용되지 않습니다.",
+                approval,
+                "오래된 approval을 제거하거나 정확한 rule/symbol/target으로 수정하세요.",
+            )
+        )
     if used_ignores > config.assurance.max_inline_ignores:
         issues.append(
             _issue(
@@ -209,8 +224,10 @@ def audit_project_assurance(
     )
 
 
-def _project_python_files(project_root: Path) -> frozenset[str]:
-    return frozenset(python_files(project_root))
+def _project_python_files(
+    project_root: Path, force_include: tuple[str, ...] = ()
+) -> frozenset[str]:
+    return frozenset(python_files(project_root, force_include))
 
 
 def _reasoned_exclusions(
@@ -369,7 +386,6 @@ def _activation_issues(
 ) -> tuple[AssuranceIssue, ...]:
     roles = {item.role for item in classifications.modules.values() if item.role is not None}
     code = config.policy.code
-    boundaries = config.policy.boundaries
     active = True
     key = ""
     if domain == "api":
@@ -398,11 +414,12 @@ def _activation_issues(
         active = bool(config.policy.transaction_owner_roles) and bool(
             config.policy.transaction_session_providers
             or config.policy.transaction_boundary_decorators
+            or config.policy.transaction_boundary_contexts
         )
         if active:
             transaction_symbols = config.policy.transaction_session_providers.union(
                 config.policy.transaction_boundary_decorators
-            )
+            ).union(config.policy.transaction_boundary_contexts)
             active = any(
                 decorator.ref.symbol is not None
                 and any(same_symbol(decorator.ref.symbol, item) for item in transaction_symbols)
@@ -414,30 +431,12 @@ def _activation_issues(
                 for module in snapshot.modules.values()
                 for call in module.calls
             )
-        key = "transaction.owner_roles/session_providers/boundary_decorators"
+        key = "transaction.owner_roles/session_providers/boundary_decorators/boundary_contexts"
     elif domain == "external_calls":
-        active = bool(boundaries.logged_external_calls) and bool(boundaries.external_call_wrappers)
-        if active:
-            active = any(
-                (
-                    call.enclosing_symbol is not None
-                    and any(
-                        same_symbol(call.enclosing_symbol, wrapper)
-                        for wrapper in boundaries.external_call_wrappers
-                    )
-                )
-                or any(
-                    ref.symbol is not None
-                    and any(
-                        same_symbol(ref.symbol, wrapper)
-                        for wrapper in boundaries.external_call_wrappers
-                    )
-                    for ref in call.enclosing_contexts
-                )
-                for module in snapshot.modules.values()
-                for call in module.calls
-            )
-        key = "external.logged_calls/wrappers"
+        # A wrapper is an optional approved boundary, not a prerequisite for LOG001:
+        # projects without one must receive actionable rule failures instead of being
+        # forced to invent a configuration symbol merely to complete assurance.
+        active = True
     elif domain == "tests":
         active = any(item.zone.value == "test" for item in classifications.modules.values())
         key = "zones.test"

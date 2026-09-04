@@ -4,13 +4,12 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.6.0 makes onboarding proof-oriented: one source inventory and exclusive path-zone model
-drive init and audit, low-confidence roles require reviewed selectors, risky architecture edges
-need individual decisions, and generated policy is audited before it can be written. Provider
-uncertainty is limited to facts a rule actually consumes. It supports Python 3.12 or newer:
+Version 0.7.0 follows first-party helper calls when enforcing effects and transaction safety,
+audits semantic role and workspace coverage, and reduces configuration-only failures without
+weakening definite findings. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.6.0
+uv add --dev pytaut==0.7.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -249,6 +248,8 @@ providers = [
 ]
 strict = true
 source_roots = ["."]
+# Optional: re-include owned source under an engine-default ignored directory.
+# force_include = ["build/owned_package/**/*.py"]
 
 [tool.taut.roles.router]
 include = ["app/router/*.py", "app/router/**/*.py"]
@@ -268,6 +269,8 @@ owner_roles = ["service"]
 session_providers = ["app.database.get_async_session"]
 # Decorator-managed projects may use:
 # boundary_decorators = ["app.database.atomic"]
+# Atomic context managers are distinct from plain session lifetime:
+# boundary_contexts = ["app.database.atomic_session"]
 
 [tool.taut.code_conventions]
 response_mapper_name = "from_internal"
@@ -525,13 +528,14 @@ through first-party helpers), transaction contexts, and
 raw SQL through `Model.raw`, `RawSQL`, or `BaseDBAsyncClient.execute_*`. These facts participate in
 database assurance, layer boundaries, query write restrictions, transaction checks, and `SQL001`.
 
-When application code uses Tortoise's context manager directly, configure it as the transaction
-provider:
+When application code uses Tortoise's context manager directly, configure it as both the session
+provider and an atomic transaction context:
 
 ```toml
 [tool.taut.transaction]
 owner_roles = ["service"]
 session_providers = ["tortoise.transactions.in_transaction"]
+boundary_contexts = ["tortoise.transactions.in_transaction"]
 ```
 
 For a project-owned wrapper, also declare the type yielded by that wrapper so calls on the
@@ -541,12 +545,15 @@ connection resolve semantically:
 [tool.taut.transaction]
 owner_roles = ["service"]
 session_providers = ["app.db.transaction"]
+boundary_contexts = ["app.db.transaction"]
 
 [tool.taut.transaction.provider_item_types]
 "app.db.transaction" = "tortoise.backends.base.client.TransactionalDBClient"
 ```
 
-`provider_item_types` keys must also appear in `session_providers`. SQLAlchemy wrappers remain
+`session_providers` describes resource lifetime; it does not prove atomicity. Put only genuinely
+atomic context managers in `boundary_contexts`. `provider_item_types` keys must also appear in
+`session_providers`. SQLAlchemy wrappers remain
 backward compatible and default to `sqlalchemy.ext.asyncio.AsyncSession` when no item type is
 specified.
 

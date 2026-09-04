@@ -1,3 +1,10 @@
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
 
-items = relationship(lazy="raise_on_sql")
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Item(Base):
+    __tablename__ = "item"
+    items: Mapped[list["Item"]] = relationship(lazy="raise_on_sql")

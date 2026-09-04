@@ -44,7 +44,7 @@ class BlockingCallInAsyncRule:
         )
         if uncertain is not None:
             return uncertain
-        resolution = context.effect_of(call)
+        resolution = context.transitive_effect_of(call)
         if resolution.state is EffectResolutionState.SYMBOL_UNRESOLVED:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if resolution.state is not EffectResolutionState.MATCHED:

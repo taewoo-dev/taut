@@ -45,7 +45,7 @@ def default_project_configuration(
         ),
     )
     return ProjectConfiguration(
-        include=("*.py", "**/*.py"),
+        include=("*.py", "**/*.py", "*.pyi", "**/*.pyi"),
         exclude=DEFAULT_EXCLUDE_PATTERNS,
         source_roots=(ProjectPath("."),),
         manifest=ProjectManifest((), (), Zone("prod"), location),
@@ -58,6 +58,7 @@ def default_project_configuration(
             transaction_owner_roles=frozenset(),
             security=security,
         ),
+        force_include=(),
         schema_version=5,
         strict=False,
         assurance=AssuranceConfiguration.non_strict_default(),

@@ -102,9 +102,14 @@ class NestedSessionRule:
                 return uncertain
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         provider = call.ref.symbol
-        if provider is None or not context.symbol_in(
+        direct_provider = provider is not None and context.symbol_in(
             provider, context.policy.transaction_session_providers
-        ):
+        )
+        summary = context.function_summary(provider)
+        inferred_providers: frozenset[SymbolId] = (
+            summary.session_providers if summary is not None else frozenset()
+        )
+        if not direct_provider and not inferred_providers:
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         enclosing = next(
             (
@@ -116,19 +121,22 @@ class NestedSessionRule:
         )
         if enclosing is None:
             return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.PASS, ())
+        reported_provider = (
+            provider if direct_provider and provider is not None else sorted(inferred_providers)[0]
+        )
         finding = build_finding(
             rule_id=NESTED_RULE_ID,
             rule_version=RULE_VERSION,
             module_id=call.module_id,
             enclosing_symbol=call.enclosing_symbol,
             subject=call.id,
-            normalized_subject=f"{enclosing.value}:{provider.value}:{call.id.value}",
+            normalized_subject=f"{enclosing.value}:{reported_provider.value}:{call.id.value}",
             message_key="session.nested",
-            arguments=(("provider", provider.value),),
+            arguments=(("provider", reported_provider.value),),
             location=call.location,
             evidence=(
                 EvidenceItem("outer_provider", enclosing.value),
-                EvidenceItem("inner_provider", provider.value),
+                EvidenceItem("inner_provider", reported_provider.value),
             ),
         )
         return RuleEvaluation(NESTED_RULE_ID, target, RuleVerdict.FAIL, (finding,))
@@ -137,10 +145,19 @@ class NestedSessionRule:
 def _session_annotation(
     annotation: ExpressionSummary | None,
     session_types: tuple[SymbolId, ...],
+    context: PolicyContext,
 ) -> SymbolId | None:
     if annotation is None:
         return None
-    return next((symbol for symbol in annotation.symbols if symbol in session_types), None)
+    configured = frozenset(session_types)
+    return next(
+        (
+            symbol
+            for symbol in annotation.symbols
+            if context.symbol_in_or_inherits(symbol, configured)
+        ),
+        None,
+    )
 
 
 class ServiceSessionParameterRule:
@@ -164,6 +181,7 @@ class ServiceSessionParameterRule:
                         symbol := _session_annotation(
                             parameter.annotation,
                             context.policy.boundaries.session_type_symbols,
+                            context,
                         )
                     )
                     is not None

@@ -39,3 +39,39 @@ def test_policy_symbol_liveness_rejects_wrong_local_kind() -> None:
     issues = policy_symbol_issues(_dto_config("app.contracts.DTO_BASE"), snapshot)
 
     assert [item.code for item in issues] == ["POLICY_SYMBOL_KIND_MISMATCH"]
+
+
+def test_policy_symbol_liveness_covers_project_owned_extension_symbols() -> None:
+    config = default_project_configuration()
+    config = replace(
+        config,
+        policy=replace(
+            config.policy,
+            boundaries=replace(
+                config.policy.boundaries,
+                settings_constructors=(SymbolId("app.settings.missing"),),
+            ),
+        ),
+    )
+    snapshot = analyze(make_source("app/settings.py", "VALUE = 1"))
+
+    issues = policy_symbol_issues(config, snapshot)
+
+    assert [item.code for item in issues] == ["POLICY_SYMBOL_UNRESOLVED"]
+
+
+def test_policy_symbol_liveness_does_not_require_dependency_definitions() -> None:
+    config = default_project_configuration()
+    config = replace(
+        config,
+        policy=replace(
+            config.policy,
+            boundaries=replace(
+                config.policy.boundaries,
+                settings_constructors=(SymbolId("third_party.Settings"),),
+            ),
+        ),
+    )
+    snapshot = analyze(make_source("app/settings.py", "VALUE = 1"))
+
+    assert policy_symbol_issues(config, snapshot) == ()

@@ -68,6 +68,23 @@ class PolicyIndexes:
                     symbol in _BASE_SETTINGS for base in class_fact.bases for symbol in base.symbols
                 ):
                     settings_symbols.add(class_fact.symbol_id)
+        construction_targets = adapter_symbols.union(boundaries.external_client_constructors)
+        construction_factories: set[SymbolId] = set()
+        changed = True
+        while changed:
+            changed = False
+            known_targets = construction_targets.union(construction_factories)
+            for function in functions_by_symbol.values():
+                canonical_returns = {
+                    model.canonical_symbol(symbol) for symbol in function.returned_symbols
+                }
+                if (
+                    function.symbol_id not in construction_factories
+                    and canonical_returns.intersection(known_targets)
+                ):
+                    construction_factories.add(function.symbol_id)
+                    changed = True
+        adapter_symbols.update(construction_factories)
         return cls(
             adapter_implementation_symbols=frozenset(adapter_symbols),
             settings_constructor_symbols=frozenset(settings_symbols),

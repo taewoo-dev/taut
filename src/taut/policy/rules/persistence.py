@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from taut.analysis.framework.sqlalchemy_facts import SQLALCHEMY_RAW_SQL, SQLAlchemyRawSQLFact
+from taut.analysis.framework.sqlalchemy_facts import (
+    SQLALCHEMY_RAW_SQL,
+    SQLALCHEMY_RELATIONSHIPS,
+    SQLAlchemyRawSQLFact,
+    SQLAlchemyRelationshipFact,
+)
 from taut.analysis.framework.tortoise_facts import TORTOISE_RAW_SQL, TortoiseRawSQLFact
 from taut.configuration.manifest import Role
 from taut.domain.evaluations import ChangeImpact, RuleTarget, RuleTargetRef, RuleVerdict
@@ -68,20 +73,39 @@ class RelationshipLoadingRule:
         role = context.classification.get(target.module_id).role
         if role not in context.policy.code.model_roles:
             return RuleEvaluation(RELATIONSHIP_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
+        sqlalchemy_relevant = SQLALCHEMY_RELATIONSHIPS in context.model.capabilities() or any(
+            call.ref.symbol is not None and call.ref.symbol.value.startswith("sqlalchemy.")
+            for call in context.model.module(target.module_id).calls
+        )
+        if sqlalchemy_relevant:
+            provider_uncertain = uncertain_provider_evaluation(
+                RELATIONSHIP_RULE_ID,
+                target,
+                context,
+                (SQLALCHEMY_RELATIONSHIPS,),
+                target.module_id,
+                require_capabilities=True,
+            )
+            if provider_uncertain is not None:
+                return provider_uncertain
+        relationships = tuple(
+            fact
+            for fact in context.model.capability_values(SQLALCHEMY_RELATIONSHIPS)
+            if isinstance(fact, SQLAlchemyRelationshipFact) and fact.module_id == target.module_id
+        )
         findings: list[Finding] = []
-        for call in context.model.module(target.module_id).calls:
-            if _call_symbol(call).rsplit(".", maxsplit=1)[-1] != "relationship":
-                continue
-            lazy = _keyword(call, "lazy")
+        for relationship in relationships:
+            call = relationship.call
+            lazy = _keyword(call, "lazy") if call is not None else None
             value = (lazy.literal_value or "").strip("'\"") if lazy is not None else ""
             if value not in {"raise", "raise_on_sql"}:
                 findings.append(
                     _finding(
                         RELATIONSHIP_RULE_ID,
                         target.module_id,
-                        call.enclosing_symbol,
-                        call.id,
-                        call.location,
+                        relationship.field.owner_symbol,
+                        call.id if call is not None else relationship.field.id,
+                        call.location if call is not None else relationship.field.location,
                         "orm.relationship_loading",
                         value or "missing",
                     )
@@ -170,8 +194,15 @@ class TimezoneColumnRule:
             return RuleEvaluation(DATETIME_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         findings: list[Finding] = []
         for call in context.model.module(target.module_id).calls:
-            name = _call_symbol(call).rsplit(".", maxsplit=1)[-1]
-            if name not in {"DateTime", "TIMESTAMP"}:
+            symbol = context.model.canonical_symbol(call.ref.symbol) if call.ref.symbol else None
+            if symbol is None or symbol.value not in {
+                "sqlalchemy.DateTime",
+                "sqlalchemy.TIMESTAMP",
+                "sqlalchemy.sql.sqltypes.DateTime",
+                "sqlalchemy.sql.sqltypes.TIMESTAMP",
+                "sqlalchemy.types.DateTime",
+                "sqlalchemy.types.TIMESTAMP",
+            }:
                 continue
             timezone = _keyword(call, "timezone")
             if timezone is None or timezone.literal_value != "True":

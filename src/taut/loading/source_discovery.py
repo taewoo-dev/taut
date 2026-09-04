@@ -44,7 +44,9 @@ def discover_sources(
     seen_modules: dict[ModuleId, tuple[ProjectPath, str]] = {}
     project_root = project_root.resolve()
     resolved_project_root = project_root
-    candidates = _included_python_paths(project_root, config.include)
+    candidates, shadowed_stubs = _included_python_paths(
+        project_root, (*config.include, *config.force_include)
+    )
 
     valid_roots: list[tuple[ProjectPath, Path]] = []
     for source_root in config.source_roots:
@@ -81,7 +83,9 @@ def discover_sources(
             issues.append(_discovery_issue("SOURCE_SYMLINK_OUTSIDE", project_path.value))
             entries.append(DiscoveryEntry(project_path, False, "프로젝트 밖 symlink"))
             continue
-        if _matches(project_path.value, config.exclude):
+        if _matches(project_path.value, config.exclude) and not _matches(
+            project_path.value, config.force_include
+        ):
             entries.append(DiscoveryEntry(project_path, False, "exclude 패턴과 일치"))
             continue
         folded = project_path.value.casefold()
@@ -133,6 +137,12 @@ def discover_sources(
         entries.append(DiscoveryEntry(project_path, True, "검사 대상"))
     if not sources:
         issues.append(_discovery_issue("NO_SOURCES", "일치하는 Python 파일이 없음"))
+    entries.extend(
+        DiscoveryEntry(
+            ProjectPath(path.relative_to(project_root).as_posix()), False, "shadowed_stub"
+        )
+        for path in shadowed_stubs
+    )
     return SourceDiscoveryResult(
         sources=tuple(sorted(sources, key=lambda source: source.path.value)),
         report=SourceDiscoveryReport(tuple(sorted(entries, key=lambda entry: entry.path.value))),
@@ -144,14 +154,24 @@ def _matches(path: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatchcase(path, pattern) for pattern in patterns)
 
 
-def _included_python_paths(project_root: Path, patterns: tuple[str, ...]) -> tuple[Path, ...]:
+def _included_python_paths(
+    project_root: Path, patterns: tuple[str, ...]
+) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
     candidates = {
         path
         for pattern in patterns
         for path in project_root.glob(pattern)
-        if path.name.endswith(".py") and path.is_file()
+        if path.name.endswith((".py", ".pyi")) and path.is_file()
     }
-    return tuple(sorted(candidates))
+    implementations = {path.with_suffix("") for path in candidates if path.suffix == ".py"}
+    shadowed = tuple(
+        sorted(
+            path
+            for path in candidates
+            if path.suffix == ".pyi" and path.with_suffix("") in implementations
+        )
+    )
+    return tuple(sorted(candidates.difference(shadowed))), shadowed
 
 
 def _discovery_issue(code: str, subject: str, cause: str | None = None) -> EngineIssue:

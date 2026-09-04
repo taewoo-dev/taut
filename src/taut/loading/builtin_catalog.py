@@ -54,4 +54,5 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
             )
         )
         entries.append(_direct(f"httpx.AsyncClient.{name}", Effect.EXTERNAL_CALL))
+        entries.append(_direct(f"aiohttp.ClientSession.{name}", Effect.EXTERNAL_CALL))
     return tuple(sorted(entries, key=lambda entry: entry.symbol))

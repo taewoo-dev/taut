@@ -127,7 +127,13 @@ def load_code_conventions(value: object) -> CodeConventionPolicy:
             for item in locked_values(
                 "raw_test_http_calls",
                 tuple(
-                    f"httpx.AsyncClient.{method}"
+                    f"{client}.{method}"
+                    for client in (
+                        "aiohttp.ClientSession",
+                        "httpx.AsyncClient",
+                        "httpx.Client",
+                        "requests",
+                    )
                     for method in (
                         "delete",
                         "get",
@@ -146,7 +152,13 @@ def load_code_conventions(value: object) -> CodeConventionPolicy:
             SymbolId(item)
             for item in locked_values(
                 "raw_test_http_client_constructors",
-                ("httpx.AsyncClient", "httpx.Client"),
+                (
+                    "aiohttp.ClientSession",
+                    "fastapi.testclient.TestClient",
+                    "httpx.AsyncClient",
+                    "httpx.Client",
+                    "starlette.testclient.TestClient",
+                ),
             )
         ),
         test_http_fixture_roles=roles("test_http_fixture_roles", []),

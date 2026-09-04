@@ -137,6 +137,25 @@ def _exception_families(
     )
 
 
+def _looks_like_exception(
+    symbol: SymbolId,
+    classes: Mapping[SymbolId, ClassFact],
+    context: PolicyContext,
+    visiting: frozenset[SymbolId] = frozenset(),
+) -> bool:
+    canonical = context.model.canonical_symbol(symbol)
+    if canonical in visiting:
+        return False
+    class_fact = classes.get(canonical)
+    if class_fact is None:
+        name = canonical.value.rsplit(".", maxsplit=1)[-1]
+        return name in {"BaseException", "Exception"} or name.endswith(("Error", "Exception"))
+    return class_fact.name.endswith(("Error", "Exception")) or any(
+        _looks_like_exception(base, classes, context, visiting | {canonical})
+        for base in _base_symbols(class_fact)
+    )
+
+
 class ExceptionRegistryRule:
     def evaluate(self, target: RuleTargetRef, context: PolicyContext) -> RuleEvaluation:
         if target.kind is not RuleTarget.PROJECT:
@@ -202,6 +221,25 @@ class ExceptionRegistryRule:
             )
         direct_fields = {(field.owner_symbol, field.name): field for field in fields}
         findings: list[Finding] = []
+        if policy.exception_base_symbols:
+            for symbol, class_fact in classes.items():
+                if (
+                    context.symbol_in(symbol, policy.exception_base_symbols)
+                    or context.symbol_in(symbol, policy.abstract_exception_symbols)
+                    or not _looks_like_exception(symbol, classes, context)
+                    or _exception_families(symbol, classes, policy.exception_base_symbols, context)
+                ):
+                    continue
+                findings.append(
+                    _finding(
+                        class_fact.module_id,
+                        class_fact.symbol_id,
+                        class_fact.id,
+                        class_fact.location,
+                        "exception.family_unregistered",
+                        "exception_family",
+                    )
+                )
         code_owners: dict[SymbolId, list[tuple[ClassFact, FieldFact | CallFact]]] = defaultdict(
             list
         )

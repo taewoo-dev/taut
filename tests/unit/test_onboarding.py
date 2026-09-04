@@ -28,6 +28,7 @@ from taut.onboarding import (
 )
 from taut.onboarding_architecture import architecture_policy
 from taut.onboarding_contributors import OnboardingFrameworkSpec, onboarding_framework_specs
+from taut.onboarding_policy import answer_policy, missing_policy_decisions
 from taut.onboarding_preflight import preflight_questions
 from taut.project_observation import observe_path, python_files
 
@@ -136,6 +137,13 @@ def test_assurance_value_objects_reject_ambiguous_exceptions() -> None:
     assert AssuranceConfiguration.non_strict_default().features == FrozenMap()
     assert AssuranceReport().complete is True
     assert configuration_schema_payload()["schema_version"] == 5
+
+
+def test_external_calls_do_not_require_an_invented_wrapper_during_init() -> None:
+    expectations = {feature: "absent" for feature in BUILTIN_ASSURANCE_FEATURES}
+    expectations["external_calls"] = "required"
+
+    assert missing_policy_decisions(expectations, answer_policy({})) == ()
 
 
 def test_getting_started_document_covers_the_machine_onboarding_contract() -> None:
@@ -664,6 +672,23 @@ def test_project_observation_has_one_zone_and_one_inventory_contract(tmp_path: P
     assert observe_path("scripts/tests/test_repair.py").zone == "test"
     assert observe_path("migrations/scripts/revision.py").zone == "migration"
     assert observe_path("scripts/repair.py").zone == "script"
+
+
+def test_project_observation_includes_stubs_and_allows_explicit_ignored_paths(
+    tmp_path: Path,
+) -> None:
+    stub = tmp_path / "src" / "contract.pyi"
+    stub.parent.mkdir()
+    stub.write_text("value: int\n")
+    forced = tmp_path / "build" / "owned.py"
+    forced.parent.mkdir()
+    forced.write_text("value = 1\n")
+
+    assert python_files(tmp_path) == ("src/contract.pyi",)
+    assert python_files(tmp_path, ("build/owned.py",)) == (
+        "build/owned.py",
+        "src/contract.pyi",
+    )
 
 
 def test_init_groups_low_confidence_roles_and_accepts_reasoned_selector(tmp_path: Path) -> None:

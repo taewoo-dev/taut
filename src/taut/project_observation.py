@@ -9,6 +9,7 @@ each caller.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from taut.configuration.source_scope import IGNORED_DIRECTORY_NAMES
@@ -40,11 +41,21 @@ def observe_path(path: str) -> PathObservation:
     return PathObservation("prod", "production_path", "high", path)
 
 
-def python_files(root: Path) -> tuple[str, ...]:
+def python_files(root: Path, force_include: tuple[str, ...] = ()) -> tuple[str, ...]:
     return tuple(
         sorted(
-            path.relative_to(root).as_posix()
-            for path in root.rglob("*.py")
-            if path.is_file() and not is_ignored_path(path.relative_to(root))
+            {
+                path.relative_to(root).as_posix()
+                for pattern in ("*.py", "**/*.py", "*.pyi", "**/*.pyi")
+                for path in root.glob(pattern)
+                if path.is_file()
+                and (
+                    not is_ignored_path(path.relative_to(root))
+                    or any(
+                        fnmatchcase(path.relative_to(root).as_posix(), candidate)
+                        for candidate in force_include
+                    )
+                )
+            }
         )
     )

@@ -22,6 +22,7 @@ from taut.policy.rules.api_fields import (
     FIELD_RULE_VERSION,
     PublicFieldDocumentationRule,
 )
+from taut.policy.rules.api_programmatic import programmatic_route_evidence
 from taut.policy.rules.helpers import (
     build_policy_finding,
     target_uncertainty,
@@ -31,7 +32,17 @@ ENDPOINT_RULE_ID = RuleId("API001")
 ROUTER_METADATA_RULE_ID = RuleId("API003")
 RULE_VERSION = 1
 ROUTER_METADATA_RULE_VERSION = 2
-_HTTP_METHODS = {"delete", "get", "head", "options", "patch", "post", "put", "trace"}
+_HTTP_METHODS = {
+    "api_route",
+    "delete",
+    "get",
+    "head",
+    "options",
+    "patch",
+    "post",
+    "put",
+    "trace",
+}
 _NO_BODY_RETURNS = ("FileResponse", "NoReturn", "Never", "Response", "StreamingResponse")
 _ROUTER_CONSTRUCTORS = frozenset({"fastapi.APIRouter", "fastapi.routing.APIRouter"})
 _ROUTER_REGISTRATIONS = frozenset(
@@ -225,6 +236,9 @@ class EndpointDocumentationRule:
                         "확정하지 못했습니다.",
                     )
                 )
+        route_findings, route_gaps = programmatic_route_evidence(ENDPOINT_RULE_ID, target, context)
+        findings.extend(route_findings)
+        coverage_gaps.extend(route_gaps)
         if findings:
             return RuleEvaluation(
                 ENDPOINT_RULE_ID,
@@ -345,7 +359,15 @@ class RouterMetadataRule:
                             rule_version=ROUTER_METADATA_RULE_VERSION,
                         )
                     )
-            if symbol in {"fastapi.Query", "fastapi.params.Query"} and "description" not in {
+            parameter_kind = next(
+                (
+                    kind
+                    for kind in ("Body", "Cookie", "Header", "Path", "Query")
+                    if symbol in {f"fastapi.{kind}", f"fastapi.params.{kind}"}
+                ),
+                None,
+            )
+            if parameter_kind is not None and "description" not in {
                 argument.name for argument in call.arguments
             }:
                 findings.append(
@@ -355,8 +377,12 @@ class RouterMetadataRule:
                         call.enclosing_symbol or SymbolId(f"{target.module_id.value}.query"),
                         call.id,
                         call.location,
-                        "api.query_description_missing",
-                        "description",
+                        (
+                            "api.query_description_missing"
+                            if parameter_kind == "Query"
+                            else "api.parameter_description_missing"
+                        ),
+                        parameter_kind,
                         rule_version=ROUTER_METADATA_RULE_VERSION,
                     )
                 )

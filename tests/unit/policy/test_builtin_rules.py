@@ -28,6 +28,7 @@ def _run(
     owners: frozenset[str] = frozenset(),
     participants: frozenset[str] = frozenset(),
     session_providers: frozenset[str] = frozenset(),
+    boundary_contexts: frozenset[str] = frozenset(),
     zones: dict[str, tuple[str, ...]] | None = None,
     rule_zones: dict[str, frozenset[str]] | None = None,
     approvals: tuple[PolicyApproval, ...] = (),
@@ -52,6 +53,7 @@ def _run(
         transaction_owners=owners,
         transaction_participants=participants,
         transaction_session_providers=session_providers,
+        transaction_boundary_contexts=boundary_contexts,
         rule_zones=rule_zones,
         approvals=approvals,
         import_boundaries=import_boundaries,
@@ -862,7 +864,30 @@ class ReportSnapshot(BaseModel):
         RuleId("DTO002"),
         RuleId("SNAPSHOT001"),
     }
-    assert len([finding for finding in result.findings if finding.rule_id == RuleId("DTO001")]) == 2
+    assert len([finding for finding in result.findings if finding.rule_id == RuleId("DTO001")]) == 3
+
+
+def test_snapshot_rule_versions_root_contract_not_nested_component_models() -> None:
+    source = make_source(
+        "app/snapshots/report_snapshot.py",
+        """from pydantic import BaseModel
+
+class ReportTotals(BaseModel):
+    total: int
+
+class ReportSnapshotV1(BaseModel):
+    totals: ReportTotals
+""",
+    )
+
+    result = _run(
+        source,
+        roles={"snapshot": ("app/snapshots/**",)},
+        allowed_imports={"snapshot": frozenset({"snapshot"})},
+        code_policy=_code_policy(),
+    )
+
+    assert not [finding for finding in result.findings if finding.rule_id == RuleId("SNAPSHOT001")]
 
 
 def test_dto_rule_accepts_frozen_pydantic_contract_and_rejects_mutable_one() -> None:
@@ -980,12 +1005,16 @@ def test_enum_relationship_db_enum_and_timezone_rules_are_explicit() -> None:
         "app/models/item.py",
         """
 from sqlalchemy import DateTime, Enum as SQLEnum
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from app.core.enums.status import StatusEnum
 
-status = SQLEnum(StatusEnum)
-created_at = DateTime()
-items = relationship()
+class Base(DeclarativeBase): pass
+class Item(Base):
+    __tablename__ = "item"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[StatusEnum] = mapped_column(SQLEnum(StatusEnum))
+    created_at: Mapped[object] = mapped_column(DateTime())
+    items: Mapped[list["Item"]] = relationship()
 """.strip(),
     )
 
@@ -1119,6 +1148,177 @@ def test_external_call_rule_recognizes_tortoise_atomic_decorator() -> None:
     assert RuleId("TX002") in {finding.rule_id for finding in result.findings}
 
 
+def test_tx002_propagates_external_effect_through_project_owned_wrapper() -> None:
+    external = make_source(
+        "app/external.py",
+        "import httpx\n"
+        "async def post_product(client: httpx.AsyncClient):\n"
+        "    return await client.post('https://example.test')",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.database import get_async_session\n"
+        "from app.external import post_product\n"
+        "async def run():\n"
+        "    async with get_async_session():\n"
+        "        await post_product()",
+    )
+    boundaries = replace(
+        _boundary_policy(),
+        logged_external_calls=(SymbolId("httpx.AsyncClient.post"),),
+    )
+
+    result = _run(
+        external,
+        service,
+        roles={"adapter": ("app/external.py",), "service": ("app/service.py",)},
+        allowed_imports={
+            "adapter": frozenset({"adapter"}),
+            "service": frozenset({"service", "adapter"}),
+        },
+        owners=frozenset({"service"}),
+        session_providers=frozenset({"app.database.get_async_session"}),
+        boundary_policy=boundaries,
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("TX002"))
+    assert len(findings) == 1
+    assert findings[0].enclosing_symbol == SymbolId("app.service.run")
+
+
+def test_async001_propagates_blocking_effect_through_project_helper() -> None:
+    helper = make_source(
+        "app/helper.py",
+        "import requests\ndef fetch():\n    return requests.get('https://example.test')",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.helper import fetch\nasync def run():\n    return fetch()",
+    )
+
+    result = _run(
+        helper,
+        service,
+        roles={"service": ("app/**",)},
+        allowed_imports={"service": frozenset({"service"})},
+        boundary_policy=_boundary_policy(),
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("ASYNC001"))
+    assert len(findings) == 1
+    assert findings[0].enclosing_symbol == SymbolId("app.service.run")
+
+
+def test_session002_propagates_session_open_through_project_helper() -> None:
+    helper = make_source(
+        "app/helper.py",
+        "from app.database import get_async_session\n"
+        "async def load():\n"
+        "    async with get_async_session():\n"
+        "        return None",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.database import get_async_session\n"
+        "from app.helper import load\n"
+        "async def run():\n"
+        "    async with get_async_session():\n"
+        "        return await load()",
+    )
+
+    result = _run(
+        helper,
+        service,
+        roles={"service": ("app/**",)},
+        allowed_imports={"service": frozenset({"service"})},
+        owners=frozenset({"service"}),
+        session_providers=frozenset({"app.database.get_async_session"}),
+        boundary_policy=_boundary_policy(),
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("SESSION002"))
+    assert len(findings) == 1
+    assert findings[0].enclosing_symbol == SymbolId("app.service.run")
+
+
+def test_schema003_propagates_bulk_mapping_through_project_helper() -> None:
+    schema = make_source(
+        "app/schema.py",
+        "from pydantic import BaseModel\n"
+        "def copy_fields(value: object) -> dict:\n"
+        "    return value.model_dump()\n"
+        "class UserResponse(BaseModel):\n"
+        "    name: str\n"
+        "    @classmethod\n"
+        "    def from_internal(cls, value: object) -> 'UserResponse':\n"
+        "        return cls(**copy_fields(value))",
+    )
+
+    result = _run(
+        schema,
+        roles={"schema": ("app/**",)},
+        allowed_imports={"schema": frozenset({"schema"})},
+        boundary_policy=_boundary_policy(),
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("SCHEMA003"))
+    assert any(f.message_key == "schema.bulk_mapping" for f in findings)
+
+
+def test_dto_rules_classify_pydantic_model_before_checking_its_name() -> None:
+    dto = make_source(
+        "app/dto.py",
+        "from pydantic import BaseModel\nclass AgentPrompt(BaseModel):\n    values: list[str]",
+    )
+
+    result = _run(
+        dto,
+        roles={"dto": ("app/**",)},
+        allowed_imports={"dto": frozenset({"dto"})},
+        code_policy=_code_policy(),
+    )
+
+    dto_findings = {f.rule_id for f in result.findings}
+    assert {RuleId("DTO001"), RuleId("DTO002")} <= dto_findings
+
+
+def test_schema003_uses_fastapi_response_model_semantics_without_name_suffix() -> None:
+    schema = make_source(
+        "app/schema.py",
+        "from pydantic import BaseModel\nclass UserView(BaseModel):\n    name: str",
+    )
+    router = make_source(
+        "app/router.py",
+        "from fastapi import APIRouter\n"
+        "from app.schema import UserView\n"
+        "router = APIRouter()\n"
+        "@router.get('/', response_model=UserView)\n"
+        "async def get_user():\n"
+        "    return UserView(name='Ada')",
+    )
+
+    result = _run(
+        schema,
+        router,
+        roles={"schema": ("app/schema.py",), "router": ("app/router.py",)},
+        allowed_imports={
+            "schema": frozenset({"schema"}),
+            "router": frozenset({"router", "schema"}),
+        },
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("SCHEMA003"))
+    assert {f.message_key for f in findings} == {
+        "schema.mapper_missing",
+        "schema.router_direct_mapping",
+    }
+
+
 def test_exception_registry_rule_checks_missing_duplicate_and_unused_codes() -> None:
     base = make_source("app/errors.py", "class AppException(Exception):\n    pass")
     codes = make_source(
@@ -1164,6 +1364,35 @@ class MissingError(AppException):
         "exception.code_missing",
         "exception.code_unused",
     }
+
+
+def test_exception_registry_rejects_a_new_unregistered_exception_family() -> None:
+    base = make_source("app/errors.py", "class AppException(Exception):\n    pass")
+    other = make_source("app/other.py", "class DeliveryError(Exception):\n    pass")
+    codes = make_source(
+        "app/codes.py",
+        "from enum import StrEnum\nclass ErrorCode(StrEnum):\n    RESERVED = 'reserved'",
+    )
+    code_policy = replace(
+        _code_policy(),
+        reserved_error_code_symbols=frozenset({SymbolId("app.codes.ErrorCode.RESERVED")}),
+    )
+
+    result = _run(
+        base,
+        other,
+        codes,
+        roles={"core": ("app/**",)},
+        allowed_imports={"core": frozenset({"core"})},
+        code_policy=code_policy,
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("EXC001"))
+    assert any(
+        f.enclosing_symbol == SymbolId("app.other.DeliveryError")
+        and f.message_key == "exception.family_unregistered"
+        for f in findings
+    )
 
 
 def test_strict_shape_and_api_examples_pass_all_new_contract_rules() -> None:
@@ -1412,6 +1641,163 @@ async def safe():
     assert [finding.enclosing_symbol for finding in findings] == [
         SymbolId("app.services.user.unsafe")
     ]
+
+
+def test_tx003_does_not_treat_plain_session_lifetime_as_atomic_transaction() -> None:
+    model = make_source(
+        "app/model.py",
+        "from tortoise.models import Model\nclass User(Model): pass",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.database import get_session\n"
+        "from app.model import User\n"
+        "async def update():\n"
+        "    async with get_session():\n"
+        "        await User.create(name='first')\n"
+        "        await User.create(name='second')",
+    )
+
+    result = _run(
+        model,
+        service,
+        roles={"model": ("app/model.py",), "service": ("app/service.py",)},
+        allowed_imports={
+            "model": frozenset({"model"}),
+            "service": frozenset({"service", "model"}),
+        },
+        owners=frozenset({"service"}),
+        session_providers=frozenset({"app.database.get_session"}),
+        code_policy=_code_policy(),
+    )
+
+    assert any(f.rule_id == RuleId("TX003") for f in result.findings)
+
+
+def test_tx003_accepts_explicit_atomic_transaction_context() -> None:
+    model = make_source(
+        "app/model.py",
+        "from tortoise.models import Model\nclass User(Model): pass",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.database import atomic_session\n"
+        "from app.model import User\n"
+        "async def update():\n"
+        "    async with atomic_session():\n"
+        "        await User.create(name='first')\n"
+        "        await User.create(name='second')",
+    )
+
+    result = _run(
+        model,
+        service,
+        roles={"model": ("app/model.py",), "service": ("app/service.py",)},
+        allowed_imports={
+            "model": frozenset({"model"}),
+            "service": frozenset({"service", "model"}),
+        },
+        owners=frozenset({"service"}),
+        boundary_contexts=frozenset({"app.database.atomic_session"}),
+        code_policy=_code_policy(),
+    )
+
+    assert not any(f.rule_id == RuleId("TX003") for f in result.findings)
+
+
+def test_wiring_rule_propagates_adapter_construction_through_factory_functions() -> None:
+    adapter = make_source(
+        "app/adapter.py",
+        "class MailAdapter: pass\ndef build_mail():\n    return MailAdapter()",
+    )
+    service = make_source(
+        "app/service.py",
+        "from app.adapter import build_mail\ndef run():\n    return build_mail()",
+    )
+    boundaries = replace(
+        _strict_boundary_policy(),
+        adapter_roles=frozenset({Role("adapter")}),
+        bootstrap_roles=frozenset({Role("bootstrap")}),
+    )
+
+    result = _run(
+        adapter,
+        service,
+        roles={"adapter": ("app/adapter.py",), "service": ("app/service.py",)},
+        allowed_imports={
+            "adapter": frozenset({"adapter"}),
+            "service": frozenset({"service", "adapter"}),
+        },
+        boundary_policy=boundaries,
+        code_policy=_code_policy(),
+    )
+
+    findings = tuple(f for f in result.findings if f.rule_id == RuleId("WIRING001"))
+    assert any(f.enclosing_symbol == SymbolId("app.service.run") for f in findings)
+
+
+def test_orm_rules_do_not_match_unrelated_project_calls_by_method_name() -> None:
+    model = make_source(
+        "app/model.py",
+        "class Builder:\n"
+        "    @staticmethod\n"
+        "    def relationship(): return None\n"
+        "    @staticmethod\n"
+        "    def DateTime(): return None\n"
+        "relation = Builder.relationship()\n"
+        "created = Builder.DateTime()",
+    )
+
+    result = _run(
+        model,
+        roles={"model": ("app/**",)},
+        allowed_imports={"model": frozenset({"model"})},
+        code_policy=_code_policy(),
+    )
+
+    assert not any(f.rule_id in {RuleId("ORM001"), RuleId("DB001")} for f in result.findings)
+
+
+def test_known_external_effects_require_logging_without_repeating_logged_calls() -> None:
+    source = make_source(
+        "app/client.py",
+        "import requests\ndef load():\n    return requests.get('https://example.test', timeout=5)",
+    )
+    boundaries = replace(_boundary_policy(), logged_external_calls=())
+
+    result = _run(
+        source,
+        roles={"adapter": ("app/**",)},
+        allowed_imports={"adapter": frozenset({"adapter"})},
+        boundary_policy=boundaries,
+    )
+
+    assert any(f.rule_id == RuleId("LOG001") for f in result.findings)
+
+
+def test_api_rules_cover_api_route_programmatic_routes_and_parameter_metadata() -> None:
+    source = make_source(
+        "app/router.py",
+        "from fastapi import APIRouter, Header\n"
+        "router = APIRouter(tags=['users'])\n"
+        "@router.api_route('/decorated', methods=['GET'])\n"
+        "async def decorated(token: str = Header()): return {}\n"
+        "def programmatic(): return {}\n"
+        "router.add_api_route('/programmatic', programmatic, methods=['GET'])",
+    )
+
+    result = _run(
+        source,
+        roles={"router": ("app/**",)},
+        allowed_imports={"router": frozenset({"router"})},
+        code_policy=_code_policy(),
+    )
+
+    api1 = tuple(f for f in result.findings if f.rule_id == RuleId("API001"))
+    api3 = tuple(f for f in result.findings if f.rule_id == RuleId("API003"))
+    assert any(f.enclosing_symbol == SymbolId("app.router.decorated") for f in api1)
+    assert any(f.enclosing_symbol == SymbolId("app.router.programmatic") for f in api1)
+    assert any(f.message_key == "api.parameter_description_missing" for f in api3)
 
 
 def test_strict_persistence_examples_pass_orm_rules() -> None:

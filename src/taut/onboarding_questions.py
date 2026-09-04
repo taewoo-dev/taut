@@ -88,7 +88,7 @@ def build_init_questions(
         else:
             questions.append(_role_question(observation))
     for parent, observations in sorted(low_confidence.items()):
-        selector = f"{parent}/**/*.py" if parent != "." else "*.py"
+        selector = f"{parent}/**/*.py + {parent}/**/*.pyi" if parent != "." else "*.py + *.pyi"
         questions.append(
             InitQuestion(
                 f"role_group.{parent}",

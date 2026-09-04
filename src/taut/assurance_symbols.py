@@ -42,11 +42,68 @@ def policy_symbol_issues(
             ("transaction decorator", item, "callable")
             for item in policy.transaction_boundary_decorators
         )
+        configured.extend(
+            ("transaction context", item, "callable")
+            for item in policy.transaction_boundary_contexts
+        )
     if "external_calls" in required:
         configured.extend(
             ("external wrapper", item, "callable")
             for item in policy.boundaries.external_call_wrappers
         )
+
+    # Project-owned extension symbols remain part of the assurance contract after
+    # onboarding. Third-party symbols are intentionally excluded below because
+    # their definitions are outside the analyzed source graph.
+    configured.extend(
+        ("abstract exception", item, "class") for item in code.abstract_exception_symbols
+    )
+    configured.extend(
+        ("reserved error code", item, "value") for item in code.reserved_error_code_symbols
+    )
+    configured.extend(("generic schema base", item, "class") for item in code.generic_schema_bases)
+    configured.extend(
+        ("test HTTP fixture", item, "callable") for item in code.test_http_fixture_symbols
+    )
+    configured.extend(
+        ("raw query wrapper", item, "callable") for item in policy.boundaries.raw_query_wrappers
+    )
+    configured.extend(
+        ("adapter implementation", item, "class")
+        for item in policy.boundaries.adapter_implementation_symbols
+    )
+    configured.extend(
+        ("settings constructor", item, "callable")
+        for item in policy.boundaries.settings_constructors
+    )
+    configured.extend(
+        ("enum policy exception", item, "class")
+        for item in (
+            code.uppercase_enum_exceptions
+            | code.non_str_enum_exceptions
+            | code.native_enum_false_exceptions
+            | code.native_enum_no_constraint_exceptions
+        )
+    )
+    configured.extend(
+        ("session type", item, "class") for item in policy.boundaries.session_type_symbols
+    )
+    configured.extend(
+        ("configured policy call", item, "callable")
+        for item in (
+            *policy.boundaries.adapter_forbidden_calls,
+            *policy.boundaries.database_statement_calls,
+            *policy.boundaries.transport_exception_calls,
+            *policy.boundaries.dependency_injection_calls,
+            *policy.boundaries.external_client_constructors,
+            *policy.boundaries.raw_sql_calls,
+            *policy.boundaries.schema_sql_parent_calls,
+            *policy.boundaries.http_timeout_calls,
+            *policy.boundaries.logged_external_calls,
+            *code.raw_test_http_calls,
+            *code.raw_test_http_client_constructors,
+        )
+    )
 
     top_levels = {module_id.value.split(".", 1)[0] for module_id in snapshot.modules}
     classes = {item.symbol_id for module in snapshot.modules.values() for item in module.classes}
@@ -73,7 +130,17 @@ def policy_symbol_issues(
         }
     )
     issues: list[AssuranceIssue] = []
-    for label, symbol, expected_kind in configured:
+    unique_configured = {
+        (symbol, expected_kind): label for label, symbol, expected_kind in configured
+    }
+    for (symbol, expected_kind), label in sorted(
+        unique_configured.items(), key=lambda item: (item[0][0], item[0][1])
+    ):
+        # Taut cannot inspect definitions owned by dependencies. Provider facts and
+        # actual resolved uses cover those; liveness checks apply to first-party
+        # namespaces only.
+        if symbol.value.split(".", 1)[0] not in top_levels:
+            continue
         if symbol not in observed:
             issues.append(
                 AssuranceIssue(
@@ -83,8 +150,6 @@ def policy_symbol_issues(
                     f"{label} 설정을 실제 fully-qualified symbol로 수정하세요.",
                 )
             )
-            continue
-        if symbol.value.split(".", 1)[0] not in top_levels:
             continue
         correct = (
             symbol in classes
