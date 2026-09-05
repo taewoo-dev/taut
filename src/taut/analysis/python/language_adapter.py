@@ -17,6 +17,8 @@ from taut.domain.facts import AnalysisStage
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.location import SourceRange
 
+_MINIMUM_PARALLEL_BATCH = 100
+
 
 class PythonAstAdapter:
     identity = PYTHON_AST_IDENTITY
@@ -69,10 +71,11 @@ class PythonAstAdapter:
         resolver: ResolverSettings,
         workers: int,
     ) -> tuple[ModuleAnalysisResult, ...]:
-        if workers == 1:
+        effective_workers = min(workers, len(sources))
+        if effective_workers <= 1 or len(sources) < _MINIMUM_PARALLEL_BATCH:
             return tuple(self.analyze_module(source, resolver) for source in sources)
-        chunk_size = max(1, len(sources) // (workers * 16))
-        with ProcessPoolExecutor(max_workers=workers) as executor:
+        chunk_size = max(1, len(sources) // (effective_workers * 16))
+        with ProcessPoolExecutor(max_workers=effective_workers) as executor:
             return tuple(
                 executor.map(
                     _analyze_python_module,

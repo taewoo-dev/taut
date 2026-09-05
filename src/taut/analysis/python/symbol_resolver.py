@@ -49,6 +49,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         self.scopes: dict[SymbolId | None, Scope] = {None: Scope(None, None, "module")}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.binding_states: dict[SymbolId | None, dict[str, BindingState]] = defaultdict(dict)
+        self._shared_flow_maps: set[int] = set()
         self.type_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.future_bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
         self.types: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
@@ -349,6 +350,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         if self._type_checking_depth:
             self.type_bindings[scope][name] = symbol
             return
+        self._prepare_flow_write(scope)
         self.bindings[scope][name] = symbol
         self.binding_states[scope][name] = BindingState(
             frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()
@@ -358,6 +360,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         scope = self._binding_scope(name)
         symbol = self._child_symbol(scope, name)
         self.variable_symbols.add(symbol)
+        self._prepare_flow_write(scope)
         self.bindings[scope][name] = symbol
         self.binding_states[scope][name] = BindingState(
             frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()

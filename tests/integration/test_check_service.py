@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -270,6 +271,43 @@ def test_configuration_change_resets_all_runtime_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
+def test_seeded_mixed_edit_sequence_matches_fresh_and_releases_old_revisions(
+    tmp_path: Path,
+) -> None:
+    request = _project(
+        tmp_path,
+        {
+            "service.py": "def value() -> int:\n    return 1\n",
+            "obsolete.py": "obsolete = True\n",
+            "rename_me.py": "renamed = False\n",
+        },
+    )
+    session = ResidentCheckSession(tmp_path)
+    session.check(request)
+
+    operations: list[Callable[[], object]] = [
+        lambda: (tmp_path / "app" / "service.py").write_text("def value() -> int:\n    return 2\n"),
+        lambda: (tmp_path / "app" / "service.py").write_text(
+            "def value(seed: int = 2) -> int:\n    return seed\n"
+        ),
+        lambda: (tmp_path / "app" / "service.py").write_text("def broken(:\n"),
+        lambda: (tmp_path / "app" / "added.py").write_text("added = True\n"),
+        lambda: (tmp_path / "app" / "obsolete.py").unlink(),
+        lambda: (tmp_path / "app" / "rename_me.py").rename(tmp_path / "app" / "renamed.py"),
+        lambda: _write_config(tmp_path, limit=250),
+    ]
+    random.Random(20260905).shuffle(operations)
+
+    for operation in operations:
+        operation()
+
+        changed = session.check(request)
+
+        _assert_fresh_parity(request, changed)
+        assert session.retained_revision_count == 1
+
+
+@pytest.mark.integration
 def test_render_options_change_without_reanalysis(tmp_path: Path) -> None:
     request = _project(tmp_path)
     session = ResidentCheckSession(tmp_path)
@@ -342,8 +380,11 @@ def test_repeated_resident_output_is_deterministic(tmp_path: Path) -> None:
 def test_reset_rebuilds_state_and_close_is_terminal(tmp_path: Path) -> None:
     request = _project(tmp_path)
     session = ResidentCheckSession(tmp_path)
+    assert session.retained_revision_count == 0
     session.check(request)
+    assert session.retained_revision_count == 1
     session.reset()
+    assert session.retained_revision_count == 0
 
     rebuilt = session.check(request)
 

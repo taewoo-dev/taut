@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0
+
+### Faster incremental analysis
+
+- Select serial or process-based AST analysis from the actual pending batch so one-file resident
+  edits no longer create a process pool, while preserving deterministic large-batch ordering.
+- Reuse direct function summaries and dependency components across revisions, with explicit SCC
+  handling for recursive call graphs and bounded propagation when public summaries change.
+- Replace TX003's per-edit project-wide fixed point with incremental write-range summaries and
+  one-pass call ownership grouping.
+
+### Indexed policy and flow operations
+
+- Build canonical-symbol, class hierarchy, call, and external-call indexes once per policy
+  revision instead of rescanning the project from individual rule evaluations.
+- Reduce Python control-flow copying through copy-on-write scope snapshots and equal-state merge
+  fast paths, and index import edges by importer for constant-time module lookup.
+
+### Measured query foundation
+
+- Add versioned semantic digests, explicit query dependency recording, and an opt-in shadow
+  invalidation oracle without placing speculative graph construction on the normal check path.
+- Add deterministic mixed-edit differential coverage, one-revision resident retention visibility,
+  and automatic RSS plateau classification to the performance benchmark.
+- Document reproducible real-project results and defer native acceleration until profiling shows
+  that its compatibility and distribution cost is justified.
+
 ## 0.7.0
 
 ### Transitive safety analysis

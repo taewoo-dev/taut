@@ -116,6 +116,24 @@ def process_rss_bytes(pid: int) -> int:
     return int(result.stdout.strip()) * 1024
 
 
+def memory_plateau(rss_samples: tuple[int, ...]) -> dict[str, object]:
+    """Classify resident growth with a noise allowance suitable for cross-platform RSS."""
+    if not rss_samples:
+        raise ValueError("memory plateau requires at least one RSS sample")
+    first = rss_samples[0]
+    last = rss_samples[-1]
+    tail = rss_samples[len(rss_samples) // 2 :]
+    tolerance = max(8 << 20, int(first * 0.03))
+    growth = last - first
+    tail_span = max(tail) - min(tail)
+    return {
+        "stable": growth <= tolerance and tail_span <= tolerance,
+        "growth_bytes": growth,
+        "tail_span_bytes": tail_span,
+        "tolerance_bytes": tolerance,
+    }
+
+
 def benchmark_revision(seed: str, marker: str, revision: int) -> str:
     token = f"{revision:08d}"
     if revision < 0 or len(token) != 8:
@@ -323,6 +341,9 @@ def daemon_benchmark(
             "rss_delta_bytes": rss_after - rss_before,
             "rss_peak_bytes": max(
                 int(cast(int, sample["rss_bytes"])) for sample in samples["memory"]
+            ),
+            **memory_plateau(
+                tuple(int(cast(int, sample["rss_bytes"])) for sample in samples["memory"])
             ),
         },
         "phases": {key: summary(value) for key, value in samples.items()},

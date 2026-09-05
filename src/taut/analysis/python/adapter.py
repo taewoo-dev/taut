@@ -331,6 +331,7 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             arguments += (node.args.kwarg,)
         for argument in arguments:
             parameter_symbol = self._child_symbol(symbol, argument.arg)
+            self._prepare_flow_write(symbol)
             self.bindings[symbol][argument.arg] = parameter_symbol
             parameter_id = self._next_fact_id(
                 FactKind.FIELD, f"parameter:{symbol.value}:{argument.arg}"

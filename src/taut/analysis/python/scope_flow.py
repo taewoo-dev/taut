@@ -26,6 +26,7 @@ class PythonScopeFlow:
     current_scope: SymbolId | None
     bindings: dict[SymbolId | None, dict[str, SymbolId]]
     binding_states: dict[SymbolId | None, dict[str, BindingState]]
+    _shared_flow_maps: set[int]
     _type_checking_depth: int
     _type_resolution_depth: int
 
@@ -36,19 +37,39 @@ class PythonScopeFlow:
         raise NotImplementedError
 
     def _flow_snapshot(self) -> FlowSnapshot:
-        return (
-            {scope: dict(values) for scope, values in self.bindings.items()},
-            {scope: dict(values) for scope, values in self.binding_states.items()},
-        )
+        bindings = dict(self.bindings)
+        states = dict(self.binding_states)
+        self._shared_flow_maps.update(id(values) for values in bindings.values())
+        self._shared_flow_maps.update(id(values) for values in states.values())
+        return bindings, states
 
     def _restore_flow(self, snapshot: FlowSnapshot) -> None:
         bindings, states = snapshot
         self.bindings.clear()
-        self.bindings.update({scope: dict(values) for scope, values in bindings.items()})
+        self.bindings.update(bindings)
         self.binding_states.clear()
-        self.binding_states.update({scope: dict(values) for scope, values in states.items()})
+        self.binding_states.update(states)
+
+    def _prepare_flow_write(self, scope: SymbolId | None) -> None:
+        bindings = self.bindings[scope]
+        if id(bindings) in self._shared_flow_maps:
+            self.bindings[scope] = dict(bindings)
+        states = self.binding_states[scope]
+        if id(states) in self._shared_flow_maps:
+            self.binding_states[scope] = dict(states)
 
     def _merge_flows(self, snapshots: Sequence[FlowSnapshot]) -> None:
+        if not snapshots:
+            self.bindings.clear()
+            self.binding_states.clear()
+            return
+        first_bindings, first_states = snapshots[0]
+        if all(
+            bindings == first_bindings and states == first_states
+            for bindings, states in snapshots[1:]
+        ):
+            self._restore_flow(snapshots[0])
+            return
         scopes: set[SymbolId | None] = set()
         for _, states in snapshots:
             scopes.update(states)
