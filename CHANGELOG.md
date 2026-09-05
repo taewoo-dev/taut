@@ -2,12 +2,20 @@
 
 ## Unreleased
 
+- Model immediately invoked and locally assigned lambdas as callable facts while preserving
+  deferred/offloaded lambda behavior. Specialize valid direct synchronous callback invocations;
+  guarded/context-managed callback paths remain indeterminate.
+- Split the resident check pipeline into analysis setup, policy execution, and reporting stages;
+  move persistent module bundles into the cache layer.
+- Validate against an isolated 1,224-source anti-monitor snapshot and retain synthetic and
+  real-project measurements separately.
+
 - Clarify successful-check scope in text and additive JSON interpretation metadata; report
   effective rule levels and avoid a green success summary when assurance is incomplete.
 - Recognize selected pathlib and Requests session blocking operations and exact constructor
   chains without treating project-owned lookalikes as library constructors.
-- Surface known catalog effects passed to directly invoked function parameters as indeterminate,
-  including default/keyword arguments and helper propagation. Invalidate dependent effect checks
+- Track known catalog effects passed to invoked function parameters, including uncertainty where
+  synchronous execution is not proven, default/keyword arguments, and helper propagation. Invalidate dependent effect checks
   when helper bodies change; bump Python adapter and affected rule behavior versions.
 - Add a labeled detection evaluator that reports missed findings and uncertainty separately.
 - Allow individual rules to be advisory during adoption while retaining strict assurance.

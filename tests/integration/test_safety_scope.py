@@ -71,12 +71,8 @@ def test_callback_execution_is_not_silently_safe(tmp_path: Path, helper: str, ca
     result = run_check_request(
         _project(tmp_path, f"import time\n{helper}\nasync def work():\n    {call}\n")
     )
-    assert result.exit_code == 2
-    assert result.report is not None
-    assert any(
-        issue.rule_id == RuleId("ASYNC001") and issue.reason.code == "callback_effect"
-        for issue in result.report.coverage.skipped
-    )
+    assert result.exit_code == 1
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
     payload = json.loads(result.stdout)
     assert payload["interpretation"]["runtime_safety_proven"] is False
 
@@ -108,7 +104,7 @@ def test_callback_body_changes_preserve_resident_cold_parity(tmp_path: Path) -> 
     )
     helper = tmp_path / "app/helper.py"
     session = ResidentCheckSession(tmp_path)
-    for body, expected in [("return fn", 0), ("fn(1)", 2), ("return fn", 0)]:
+    for body, expected in [("return fn", 0), ("fn(1)", 1), ("return fn", 0)]:
         helper.write_text(f"def invoke(fn):\n    {body}\n")
         resident = session.check(request)
         cold = run_check_request(request)
@@ -161,3 +157,74 @@ def test_staging_does_not_bypass_assurance(tmp_path: Path) -> None:
     text = render_text(result.report, color=True)
     assert "지원 범위 내 정책 위반 없음" not in text
     assert "\033[31m검사 완료:" in text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "(lambda: time.sleep(1))()",
+        "callback = lambda: time.sleep(1)\n    callback()",
+        "(lambda fn: fn(1))(time.sleep)",
+        "(lambda *, fn: fn(1))(fn=time.sleep)",
+        "callback = lambda: (lambda: time.sleep(1))()\n    callback()",
+        "callback = lambda x=time.sleep(1): x",
+    ],
+)
+def test_lambda_execution_reports_blocking_effects(tmp_path: Path, body: str) -> None:
+    result = run_check_request(_project(tmp_path, f"import time\nasync def work():\n    {body}\n"))
+    assert result.exit_code == 1
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "callback = lambda: time.sleep(1)",
+        "await asyncio.to_thread(lambda: time.sleep(1))",
+        "loop = asyncio.get_running_loop()\n"
+        "    await loop.run_in_executor(None, lambda: time.sleep(1))",
+        "callback = lambda: time.sleep(1)\n    callback = str\n    callback(1)",
+        "callback = lambda: lambda: time.sleep(1)\n    callback()",
+        "(lambda: str(1))()",
+    ],
+)
+def test_deferred_and_offloaded_lambdas_are_not_blocked(tmp_path: Path, body: str) -> None:
+    result = run_check_request(
+        _project(tmp_path, f"import asyncio\nimport time\nasync def work():\n    {body}\n")
+    )
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "invoke(time.sleep, fn=time.sleep)",
+        "invoke(time.sleep, 1)",
+        "invoke(unknown=time.sleep)",
+        "invoke()",
+        "invoke(time.sleep.__name__)",
+        "invoke(type(time.sleep).__call__)",
+    ],
+)
+def test_invalid_or_non_callable_bindings_are_not_proven_blocking(
+    tmp_path: Path, call: str
+) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path, f"import time\ndef invoke(fn):\n    fn(1)\nasync def work():\n    {call}\n"
+        )
+    )
+    assert not any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+def test_lambda_edit_sequence_preserves_resident_cold_parity(tmp_path: Path) -> None:
+    request = _project(tmp_path, "value = 1\n")
+    session = ResidentCheckSession(tmp_path)
+    for expression, code in [("str(1)", 0), ("time.sleep(1)", 1), ("str(1)", 0)]:
+        (tmp_path / "app/service.py").write_text(
+            f"import time\nasync def work():\n    (lambda: {expression})()\n"
+        )
+        resident = session.check(request)
+        fresh = run_check_request(request)
+        assert resident.exit_code == fresh.exit_code == code
+        assert resident.stdout == fresh.stdout

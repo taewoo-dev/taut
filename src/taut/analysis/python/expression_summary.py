@@ -110,7 +110,7 @@ class ExpressionSummarizer:
 
     def parameters(
         self,
-        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     ) -> tuple[FunctionParameter, ...]:
         positional = (*node.args.posonlyargs, *node.args.args)
         default_start = len(positional) - len(node.args.defaults)
@@ -185,6 +185,6 @@ def _is_dynamic_string(node: ast.AST) -> bool:
 
 
 def summarize_parameters(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, resolve: Resolve
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, resolve: Resolve
 ) -> tuple[FunctionParameter, ...]:
     return ExpressionSummarizer(resolve).parameters(node)

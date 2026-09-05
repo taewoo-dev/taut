@@ -30,21 +30,26 @@ and `builtins.open` now participate in the effect catalog. Exact known construct
 Project-owned lookalikes and shadowed builtins are not matched merely by spelling.
 
 Known catalog effects supplied to directly invoked parameters of undecorated module-level
-synchronous functions produce `callback_effect` uncertainty for the relevant effect rule. This
-includes positional, keyword-only, positional-only, and default arguments. A project-owned helper
-that performs that call propagates the uncertainty to its callers. An enforced uncertain decision
-exits 2; it is not counted as a definite finding. Merely accepting/returning a callable does not
-make a helper a callback invoker, and `asyncio.to_thread(time.sleep, ...)` is not treated as a
-direct event-loop blocking call.
+synchronous functions can now produce definite effects when the parameter call has no guard or
+context-manager boundary and the argument binding is valid. Positional, keyword-only,
+positional-only, and default arguments are supported. Guarded or context-managed invocations
+remain `callback_effect` uncertainty. Attribute arguments must resolve to one symbol chain;
+merely containing a catalog symbol inside an expression is insufficient.
 
-This is deliberately bounded. Lambda invocation, method/decorator-based callback dispatch,
-starred argument binding, callback forwarding through arbitrary higher-order chains, reassigned
-parameters, and effects outside the catalog are not exhaustively modeled. Passing a first-party
-callable as an argument does not automatically specialize its effect summary. These limitations
-can still yield exit 0; see the retained lambda miss in the labeled corpus.
+Immediately invoked and locally assigned lambdas now have function facts and resolved call
+identities. Their effects propagate only through actual calls. Storing a lambda, returning an
+uninvoked lambda, `asyncio.to_thread(lambda: ...)`, and `run_in_executor(None, lambda: ...)` do
+not inherit those effects merely because a lambda exists. A lambda parameter can itself be a
+known callback. Default argument expressions still execute when the lambda is created.
+
+These improvements are bounded. Method/decorator-based callback dispatch, starred argument
+binding, callback forwarding through arbitrary higher-order chains, reassigned parameters, and
+effects outside the catalog are not exhaustively modeled. Passing a first-party callable as an
+argument does not automatically specialize its effect summary. These limitations can still yield
+exit 0, and the small labeled corpus does not exhaust these cases.
 
 Effect checks use dependent-module invalidation. A resident check after editing a callback
-invoker is tested against a fresh check in both directions: safe to uncertain and back to safe.
+invoker is tested against a fresh check in both directions: safe to a definite violation and back to safe.
 
 ## Reproduce a labeled detection measurement
 
@@ -85,8 +90,8 @@ baseline was executed rather than inferred from historical notes.
 | False findings / indeterminate on 4 safe controls | 0 / 0 | 0 / 0 |
 | Definite-detection recall on this corpus | 33.3% | 66.7% |
 
-The remaining silent miss is immediate lambda invocation. The callback case is still a missed
-definite finding, but is now surfaced as indeterminate. Original case outcomes and source hashes
+At that first improvement point, immediate lambda invocation remained a silent miss and the
+callback was indeterminate rather than a definite finding. Original case outcomes and source hashes
 are retained in [baseline JSON](quality/async-before.json) and [changed-source JSON](quality/async-after.json).
 
 A development performance sample used 32 synthetic mixed FastAPI/SQLAlchemy/Pydantic modules,
@@ -94,6 +99,18 @@ three independent cold runs each. Median wall time was approximately 0.060 s bef
 after, with deterministic digests within each version and no analysis/engine issues. This small,
 non-isolated sample does not establish a speedup, large-project latency, or daemon memory behavior.
 Raw samples: [before](quality/performance-before.json), [after](quality/performance-after.json).
+
+### Follow-up after commit 0dea529
+
+The same 10 snippets now produce six definite findings on the six labeled violations and no
+findings/indeterminate decisions on the four safe controls. The previously missed lambda and
+uncertain direct callback are both detected. This is a regression result on selected examples,
+not a claim of complete Python analysis. [Follow-up results](quality/async-followup.json).
+
+Real-project validation uses a temporary snapshot of the current anti-monitor backend, including
+its existing uncommitted source changes. Raw source and full analysis reports stay outside this
+repository. See [the real-project report](quality/antimonitor-followup.md) for source identity,
+controlled probes, resident parity, timing, memory, and limitations.
 
 ## Adopt rules incrementally
 
@@ -142,3 +159,8 @@ should use `database_operations.queries`/`database_query`; the old helpers were 
 
 The independent AST convention checker reads the dependency allow graph from `pyproject.toml`.
 It retains its own checking implementation without a second hard-coded graph to maintain.
+
+The resident check service now separates analysis-request construction, cache setup, policy
+execution, and report assembly. Its orchestration method shrank from 208 to 78 lines; persistent
+module-cache handling lives in `cache/module_results.py`. The same resident/cold integration and
+installed-wheel checks cover the refactoring.

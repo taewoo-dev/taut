@@ -43,7 +43,7 @@
       "rule": "ASYNC001",
       "source": "import time\nasync def work():\n    (lambda: time.sleep(1))()\n",
       "violation": true,
-      "reason": "The lambda is invoked immediately on the event loop; retained as an unsupported-expression probe."
+      "reason": "The lambda is invoked immediately on the event loop; retained as a regression probe."
     },
     {
       "id": "safe_compute",

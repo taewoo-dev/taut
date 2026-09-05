@@ -107,6 +107,9 @@ class PolicyContext:
     def callback_effects(self, call: CallFact) -> frozenset[Effect]:
         return self.callback_index.effects(call, self.model, self.canonical_catalog)
 
+    def synchronous_callback_effects(self, call: CallFact) -> frozenset[Effect]:
+        return self.callback_index.effects(call, self.model, self.canonical_catalog, definite=True)
+
     @cached_property
     def function_summary_state(self) -> FunctionSummaryState:
         return build_function_summary_state(
@@ -136,10 +139,20 @@ class PolicyContext:
         direct = self.effect_of(call)
         if direct.state is not EffectResolutionState.NO_MATCH or call.ref.symbol is None:
             return direct
+        callback_effects = self.synchronous_callback_effects(call)
         summary = self.function_summaries.get(self.model.canonical_symbol(call.ref.symbol))
-        if summary is None or not summary.effects:
+        effects = callback_effects | (
+            summary.effects if summary is not None else frozenset[Effect]()
+        )
+        if not effects:
             return direct
-        accesses = frozenset(summary.effect_access.values())
+        accesses = (
+            frozenset(summary.effect_access.values())
+            if summary is not None
+            else frozenset[AccessPath]()
+        )
+        if callback_effects:
+            accesses = accesses | {AccessPath.DIRECT}
         access = (
             AccessPath.APPROVED_WRAPPER
             if accesses == frozenset({AccessPath.APPROVED_WRAPPER})
@@ -147,7 +160,7 @@ class PolicyContext:
         )
         return EffectResolution(
             EffectResolutionState.MATCHED,
-            summary.effects,
+            effects,
             access,
             self.model.canonical_symbol(call.ref.symbol)
             if access is AccessPath.APPROVED_WRAPPER

@@ -405,6 +405,8 @@ class PythonSymbolResolver(PythonScopeFlow):
     def _resolve_uncached(self, node: ast.AST) -> SymbolRef:
         name = self._written_name(node)
         provenance = self._provenance(node)
+        if isinstance(node, ast.Lambda):
+            return SymbolRef(name, ResolutionState.RESOLVED, self.node_scopes[node], (), provenance)
         if isinstance(node, ast.Name):
             binding = self._lookup_binding_state(node.id)
             if binding is not None:

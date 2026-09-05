@@ -1,0 +1,342 @@
+{
+  "baseline_canonical_seconds": 13.826435916125774,
+  "baseline_engine_commit": "0dea5294ab49b06956194c51a47fe0b42ee88c05",
+  "benchmark": {
+    "after": {
+      "memory": {
+        "growth_bytes": -232390656,
+        "rss_after_bytes": 639778816,
+        "rss_before_bytes": 874299392,
+        "rss_delta_bytes": -234520576,
+        "rss_peak_bytes": 874528768,
+        "stable": false,
+        "tail_span_bytes": 511557632,
+        "tolerance_bytes": 26228981
+      },
+      "memory_checks": 30,
+      "phases": {
+        "cold": {
+          "max_wall_seconds": 14.342007250059396,
+          "median_wall_seconds": 14.342007250059396,
+          "p95_wall_seconds": 14.342007250059396
+        },
+        "concurrent_clients": {
+          "max_wall_seconds": 1.4970347920898348,
+          "median_wall_seconds": 0.9817655414808542,
+          "p95_wall_seconds": 1.4970347920898348
+        },
+        "memory": {
+          "max_wall_seconds": 2.540723083075136,
+          "median_wall_seconds": 0.3963600209681317,
+          "p95_wall_seconds": 2.3322387088555843
+        },
+        "ordinary_edit": {
+          "max_wall_seconds": 3.0214827090967447,
+          "median_wall_seconds": 2.5992460001725703,
+          "p95_wall_seconds": 3.0214827090967447
+        },
+        "restart": {
+          "max_wall_seconds": 14.808178500039503,
+          "median_wall_seconds": 14.73597608297132,
+          "p95_wall_seconds": 14.808178500039503
+        },
+        "shared_edit": {
+          "max_wall_seconds": 5.493137540994212,
+          "median_wall_seconds": 5.208825375186279,
+          "p95_wall_seconds": 5.493137540994212
+        },
+        "warm_unchanged": {
+          "max_wall_seconds": 0.4665829159785062,
+          "median_wall_seconds": 0.33840370806865394,
+          "p95_wall_seconds": 0.4665829159785062
+        }
+      },
+      "rss_samples_bytes": [
+        874299392,
+        874315776,
+        874315776,
+        874512384,
+        874528768,
+        873480192,
+        873480192,
+        873480192,
+        873480192,
+        858750976,
+        858750976,
+        858750976,
+        858750976,
+        858750976,
+        858750976,
+        840695808,
+        838451200,
+        838451200,
+        798785536,
+        700514304,
+        560087040,
+        566099968,
+        548814848,
+        329138176,
+        520060928,
+        552632320,
+        527482880,
+        607043584,
+        730202112,
+        641908736
+      ],
+      "selected_paths": {
+        "ordinary": "alembic/env.py",
+        "ordinary_transitive_inbound": 0,
+        "shared": "app/core/config.py",
+        "shared_transitive_inbound": 650
+      },
+      "stdout_stderr_exit_parity": true,
+      "timing_repeats": 3
+    },
+    "before": {
+      "memory": {
+        "growth_bytes": -4603904,
+        "rss_after_bytes": 815202304,
+        "rss_before_bytes": 837402624,
+        "rss_delta_bytes": -22200320,
+        "rss_peak_bytes": 832716800,
+        "stable": true,
+        "tail_span_bytes": 18317312,
+        "tolerance_bytes": 24594186
+      },
+      "memory_checks": 30,
+      "phases": {
+        "cold": {
+          "max_wall_seconds": 12.68966441694647,
+          "median_wall_seconds": 12.68966441694647,
+          "p95_wall_seconds": 12.68966441694647
+        },
+        "concurrent_clients": {
+          "max_wall_seconds": 1.625557707855478,
+          "median_wall_seconds": 1.0510881249792874,
+          "p95_wall_seconds": 1.625557707855478
+        },
+        "memory": {
+          "max_wall_seconds": 0.8140559999737889,
+          "median_wall_seconds": 0.36465702147688717,
+          "p95_wall_seconds": 0.7825943331699818
+        },
+        "ordinary_edit": {
+          "max_wall_seconds": 3.2477575840894133,
+          "median_wall_seconds": 2.0581754168961197,
+          "p95_wall_seconds": 3.2477575840894133
+        },
+        "restart": {
+          "max_wall_seconds": 15.38971354183741,
+          "median_wall_seconds": 12.494675332913175,
+          "p95_wall_seconds": 15.38971354183741
+        },
+        "shared_edit": {
+          "max_wall_seconds": 5.559719707816839,
+          "median_wall_seconds": 5.042761707911268,
+          "p95_wall_seconds": 5.559719707816839
+        },
+        "warm_unchanged": {
+          "max_wall_seconds": 0.6180627499707043,
+          "median_wall_seconds": 0.5536134999711066,
+          "p95_wall_seconds": 0.6180627499707043
+        }
+      },
+      "rss_samples_bytes": [
+        819806208,
+        819806208,
+        819822592,
+        813596672,
+        818675712,
+        823623680,
+        827621376,
+        803110912,
+        802111488,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        832716800,
+        831406080,
+        831406080,
+        814399488,
+        814596096,
+        815202304,
+        815202304
+      ],
+      "selected_paths": {
+        "ordinary": "alembic/env.py",
+        "ordinary_transitive_inbound": 0,
+        "shared": "app/core/config.py",
+        "shared_transitive_inbound": 650
+      },
+      "stdout_stderr_exit_parity": true,
+      "timing_repeats": 3
+    }
+  },
+  "benchmark_source_note": "After timings and memory measured before final nested-expression callback guard; final source reran full gate, labeled corpus, and real-snapshot controlled probes.",
+  "changed_engine_source_sha256": "f1dfcf7e12702e1339cd20e61e74727b0e2b310cf46bcb253c343504aab85b25",
+  "checks": {
+    "after": {
+      "assurance_issues": 0,
+      "diagnostics": 0,
+      "exit": 0
+    },
+    "before": {
+      "assurance_issues": 0,
+      "diagnostics": 0,
+      "exit": 0
+    }
+  },
+  "controlled_probes": [
+    {
+      "assurance_issues": 0,
+      "case": "original",
+      "cold_compared": false,
+      "cold_parity": true,
+      "diagnostics": [],
+      "engine_issues": 0,
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 13.085705125005916,
+      "stdout_sha256": "c9ab4549f777939b0d018cdb854a2262db3b65ac971dce247589383a5642a90f"
+    },
+    {
+      "assurance_issues": 0,
+      "case": "lambda",
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [
+        {
+          "line": 3,
+          "path": "app/services/taut_validation_probe.py",
+          "rule": "ASYNC001"
+        }
+      ],
+      "engine_issues": 0,
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 2.600723374867812,
+      "stdout_sha256": "016d29daa55a9563df525fe169f4b800f34ffd79be93afb44114967070679ee2"
+    },
+    {
+      "assurance_issues": 0,
+      "case": "callback",
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [
+        {
+          "line": 5,
+          "path": "app/services/taut_validation_probe.py",
+          "rule": "ASYNC001"
+        }
+      ],
+      "engine_issues": 0,
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 2.134529707953334,
+      "stdout_sha256": "e6f07df60b0f45e22ead71512f8cff3c4b12c96331dd245b24d6667891c9381b"
+    },
+    {
+      "assurance_issues": 0,
+      "case": "offload",
+      "cold_compared": false,
+      "cold_parity": true,
+      "diagnostics": [],
+      "engine_issues": 0,
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 2.0795444170944393,
+      "stdout_sha256": "640603ad9edeab39d3c4d2f4249f7d03b51b084ce200e8cdd8057442cbc9d91b"
+    },
+    {
+      "assurance_issues": 0,
+      "case": "restored",
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [],
+      "engine_issues": 0,
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 1.6591515408363193,
+      "stdout_sha256": "c9ab4549f777939b0d018cdb854a2262db3b65ac971dce247589383a5642a90f"
+    }
+  ],
+  "date": "2026-09-05",
+  "final_verified_engine_source_sha256": "9e347c9fb68cfd6fe13797b33d83ffa22f7f7b18ac651c430de6ac706314d88f",
+  "kind": "real_checkout_and_controlled_probes",
+  "limits": [
+    "Existing code is not an independently labeled accuracy corpus.",
+    "Timing is a shared-machine three-sample observation, not a speedup claim.",
+    "The initial changed-version RSS sequence did not establish a stable plateau."
+  ],
+  "memory_recheck": {
+    "checks": 30,
+    "exit": 0,
+    "growth_bytes": -22839296,
+    "rss_bytes": [
+      859144192,
+      857489408,
+      848773120,
+      848805888,
+      849051648,
+      849068032,
+      849231872,
+      849231872,
+      840450048,
+      837353472,
+      836304896,
+      836272128,
+      836272128,
+      836337664,
+      836337664,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896,
+      836304896
+    ],
+    "stable": true,
+    "stdout_sha256": "c9ab4549f777939b0d018cdb854a2262db3b65ac971dce247589383a5642a90f",
+    "stopped": true,
+    "tail_span_bytes": 0,
+    "tolerance_bytes": 25774325
+  },
+  "original_source_preservation": {
+    "changed_paths": [],
+    "checked_files": 1225,
+    "original_writes_by_this_task": 0
+  },
+  "project": "anti-monitor backend",
+  "schema_version": 1,
+  "source_count": 1224,
+  "source_head_at_capture": "14bf0c5efddc286db6e4127f28917b5f772f96c7",
+  "source_includes_working_tree_changes": true,
+  "source_manifest_sha256": "36e3e64d3e88ce3562558744960a487a2227f0743bb3fec5d2678d3aa55a5562",
+  "validation": {
+    "command": "bash scripts/test.sh",
+    "exit": 0,
+    "python": "3.14.0",
+    "tests_passed": 1350,
+    "total_coverage_percent": 90.41
+  }
+}

@@ -8,11 +8,9 @@ from pathlib import Path
 
 from taut import __version__
 from taut.analysis.contracts import (
-    AdapterIdentity,
     AnalysisRequest,
     ContextManagerProvider,
     LanguageSettings,
-    ModuleAnalysisResult,
     ProjectRoot,
     ResolverSettings,
     SourceInput,
@@ -25,8 +23,8 @@ from taut.analysis.providers import (
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.assurance import audit_project_assurance
-from taut.cache import CacheKey, CacheStore
-from taut.cache.authenticated import ModuleBundle, cache_signing_context
+from taut.cache import CacheStore
+from taut.cache.module_results import DiskModuleCache
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
 from taut.configuration.catalog import EffectResolver
 from taut.configuration.model import ProjectConfiguration
@@ -42,7 +40,7 @@ from taut.finding_processing.finding_processor import FindingProcessor
 from taut.finding_processing.report_builder import build_run_report
 from taut.incremental import IncrementalProjectAnalyzer
 from taut.loading.inline_ignores import load_inline_ignores
-from taut.loading.source_discovery import discover_sources
+from taut.loading.source_discovery import SourceDiscoveryResult, discover_sources
 from taut.policy.context import PolicyContext
 from taut.policy.decision_digest import build_decision_digest
 from taut.policy.engine import IncrementalPolicyResult, PolicyEngine
@@ -176,49 +174,8 @@ class ResidentCheckSession:
         discovery = discover_sources(self.project_root, config)
         _timed(timings, "discovery", started)
 
-        context_managers = {
-            ContextManagerProvider(
-                symbol,
-                config.policy.transaction_provider_item_types.get(
-                    symbol, _context_manager_item_type(symbol)
-                ),
-            )
-            for symbol in config.policy.transaction_session_providers
-        }
-        context_managers.update(
-            ContextManagerProvider(symbol, symbol)
-            for symbol in config.policy.boundaries.http_timeout_calls
-        )
-        analysis_request = AnalysisRequest(
-            project_root=ProjectRoot(self.project_root),
-            sources=discovery.sources,
-            language=LanguageSettings(),
-            resolver=ResolverSettings(
-                source_roots=config.source_roots,
-                context_manager_providers=tuple(sorted(context_managers)),
-            ),
-            adapter_versions=FrozenMap(
-                ((self._adapter.identity.name, self._adapter.identity.version),)
-            ),
-        )
-        module_cache = None
-        if self._module_store is not None:
-            resolver_identity = hashlib.sha256(
-                repr(
-                    (
-                        __version__,
-                        analysis_request.language,
-                        analysis_request.resolver,
-                        tuple(analysis_request.adapter_versions.items()),
-                    )
-                ).encode()
-            ).hexdigest()
-            module_cache = _DiskModuleCache(
-                self._module_store,
-                self._adapter.identity,
-                resolver_identity,
-                self.project_root,
-            )
+        analysis_request = self._analysis_request(discovery.sources, config)
+        module_cache = self._module_cache(analysis_request)
         started = time.perf_counter()
         snapshot = self._analyzer.analyze(
             analysis_request,
@@ -248,100 +205,11 @@ class ResidentCheckSession:
         _timed(timings, "providers", started)
 
         started = time.perf_counter()
-        classifications = config.manifest.classify(snapshot)
-        validate_classification_for_policy(classifications, config.policy)
-        prior_summary_state = (
-            self._prior_policy_context.function_summary_state
-            if self._prior_policy_context is not None and changes.touched
-            else None
-        )
-        prior_atomicity_state = (
-            self._prior_policy_context.cached_atomicity_summary_state()
-            if self._prior_policy_context is not None and changes.touched
-            else None
-        )
-        context = PolicyContext(
-            model=SnapshotSemanticModel(snapshot),
-            classification=classifications,
-            effects=EffectResolver(),
-            catalog=config.catalog,
-            policy=config.policy,
-            prior_function_summary_state=prior_summary_state,
-            function_summary_invalidated_modules=impact.impacted,
-            prior_atomicity_summary_state=prior_atomicity_state,
-            atomicity_summary_invalidated_modules=impact.impacted,
-        )
-        if self._engine is None or self._registry is None:
-            raise RuntimeError("resident check session is not configured")
-        if self._prior_policy_context is None or self._prior_policy_result is None:
-            policy_result = self._engine.run_tracked(context)
-        else:
-            policy_result = self._engine.run_incremental(
-                context,
-                self._prior_policy_context,
-                self._prior_policy_result,
-                changes,
-                impact,
-            )
+        context, policy_result = self._evaluate_policy(snapshot, config)
         _timed(timings, "policy", started)
 
         started = time.perf_counter()
-        ignore_result = load_inline_ignores(
-            discovery.sources, frozenset(self._registry.definitions)
-        )
-        help_by_rule = FrozenMap(
-            (rule_id, definition.help) for rule_id, definition in self._registry.definitions.items()
-        )
-        processing = FindingProcessor().process(
-            findings=policy_result.result.findings,
-            policy=config.policy,
-            help_by_rule=help_by_rule,
-            ignores=ignore_result.directives,
-            classifications=classifications,
-            canonicalize=context.model.canonical_symbol,
-            preused_approval_keys=policy_result.result.approval_keys,
-        )
-        assurance = audit_project_assurance(
-            self.project_root,
-            config,
-            discovery,
-            snapshot,
-            classifications,
-            used_approvals=len(processing.approval_audit.used),
-            used_ignores=len(processing.ignore_audit.used),
-            unused_approvals=processing.approval_audit.unused,
-        )
-        extension_assurance = tuple(
-            issue
-            for pack in self._packs
-            if pack.assurance_auditor is not None
-            for issue in pack.assurance_auditor.audit(snapshot, config)
-        )
-        if extension_assurance:
-            assurance = replace(
-                assurance,
-                issues=tuple(sorted(set((*assurance.issues, *extension_assurance)))),
-            )
-        report = build_run_report(
-            snapshot=snapshot,
-            engine_version=__version__,
-            decision_digest=build_decision_digest(
-                config, self._registry, self._adapter.identity, self._packs, self._providers
-            ),
-            diagnostics=processing.diagnostics,
-            engine_issues=(
-                *discovery.issues,
-                *snapshot.issues,
-                *policy_result.result.engine_issues,
-                *processing.engine_issues,
-                *ignore_result.issues,
-            ),
-            coverage=policy_result.result.coverage,
-            ignore_audit=processing.ignore_audit,
-            approval_audit=processing.approval_audit,
-            assurance=assurance,
-            enforce_assurance=config.strict,
-        )
+        report = self._build_report(config, discovery, snapshot, context, policy_result)
         rendered = (
             render_json(report)
             if request.output_format == "json"
@@ -379,98 +247,163 @@ class ResidentCheckSession:
             counters=counters,
         )
 
+    def _analysis_request(
+        self, sources: tuple[SourceInput, ...], config: ProjectConfiguration
+    ) -> AnalysisRequest:
+        context_managers = {
+            ContextManagerProvider(
+                symbol,
+                config.policy.transaction_provider_item_types.get(
+                    symbol, _context_manager_item_type(symbol)
+                ),
+            )
+            for symbol in config.policy.transaction_session_providers
+        }
+        context_managers.update(
+            ContextManagerProvider(symbol, symbol)
+            for symbol in config.policy.boundaries.http_timeout_calls
+        )
+        return AnalysisRequest(
+            project_root=ProjectRoot(self.project_root),
+            sources=sources,
+            language=LanguageSettings(),
+            resolver=ResolverSettings(
+                source_roots=config.source_roots,
+                context_manager_providers=tuple(sorted(context_managers)),
+            ),
+            adapter_versions=FrozenMap(
+                ((self._adapter.identity.name, self._adapter.identity.version),)
+            ),
+        )
 
-class _DiskModuleCache:
-    def __init__(
-        self,
-        store: CacheStore,
-        adapter: AdapterIdentity,
-        resolver_identity: str,
-        project_root: Path,
-    ) -> None:
-        self._store = store
-        self._adapter = adapter
-        self._resolver_identity = resolver_identity
-        self._bundle_context = cache_signing_context(
-            (
-                "module-bundle:1",
-                str(project_root.resolve()),
-                adapter.name,
-                adapter.version,
+    def _module_cache(self, analysis_request: AnalysisRequest) -> DiskModuleCache | None:
+        module_cache = None
+        if self._module_store is not None:
+            resolver_identity = hashlib.sha256(
+                repr(
+                    (
+                        __version__,
+                        analysis_request.language,
+                        analysis_request.resolver,
+                        tuple(analysis_request.adapter_versions.items()),
+                    )
+                ).encode()
+            ).hexdigest()
+            module_cache = DiskModuleCache(
+                self._module_store,
+                self._adapter.identity,
                 resolver_identity,
+                self.project_root,
             )
+        return module_cache
+
+    def _evaluate_policy(
+        self, snapshot: AnalysisSnapshot, config: ProjectConfiguration
+    ) -> tuple[PolicyContext, IncrementalPolicyResult]:
+        changes = self._analyzer.last_changes
+        impact = self._analyzer.last_impact
+        classifications = config.manifest.classify(snapshot)
+        validate_classification_for_policy(classifications, config.policy)
+        prior_summary_state = (
+            self._prior_policy_context.function_summary_state
+            if self._prior_policy_context is not None and changes.touched
+            else None
         )
-        self._bundle_key = hashlib.sha256(self._bundle_context).hexdigest()
-        self._sources: tuple[SourceInput, ...] = ()
-        self._cached: tuple[ModuleAnalysisResult | None, ...] = ()
-        self._bundle_present = False
-
-    def get_many(self, sources: tuple[SourceInput, ...]) -> tuple[ModuleAnalysisResult | None, ...]:
-        self._sources = sources
-        if not self._store.authenticated:
-            self._cached = self._store.get_modules(tuple(self._key(source) for source in sources))
-            return self._cached
-        bundle = self._store.get_module_bundle(self._bundle_key, context=self._bundle_context)
-        self._bundle_present = bundle is not None
-        if bundle is None:
-            individual = self._store.get_modules(tuple(self._key(source) for source in sources))
-            if any(result is not None for result in individual):
-                self._cached = individual
-                return self._cached
-        indexed: dict[str, tuple[str, ModuleAnalysisResult]] = {}
-        if bundle is not None:
-            for module_identity, source_hash, result in bundle.entries:
-                if module_identity in indexed:
-                    indexed.clear()
-                    self._bundle_present = False
-                    break
-                indexed[module_identity] = (source_hash, result)
-        values: list[ModuleAnalysisResult | None] = []
-        for source in sources:
-            entry = indexed.get(source.module_id.value)
-            if (
-                entry is None
-                or entry[0] != source.content_hash
-                or entry[1].facts.module.id != source.module_id
-            ):
-                values.append(None)
-            else:
-                values.append(entry[1])
-        self._cached = tuple(values)
-        return self._cached
-
-    def put_many(self, entries: tuple[tuple[SourceInput, ModuleAnalysisResult], ...]) -> None:
-        if not self._store.authenticated:
-            self._store.put_modules(
-                tuple((self._key(source), result) for source, result in entries)
-            )
-            return
-        fresh = {source.module_id: result for source, result in entries}
-        refresh_threshold = max(32, len(self._sources) // 4)
-        if self._bundle_present and len(entries) < refresh_threshold:
-            return
-        combined: list[tuple[str, str, ModuleAnalysisResult]] = []
-        for source, cached in zip(self._sources, self._cached, strict=True):
-            result = fresh.get(source.module_id, cached)
-            if result is None or result.facts.module.id != source.module_id:
-                return
-            combined.append((source.module_id.value, source.content_hash, result))
-        stored = self._store.put_module_bundle(
-            self._bundle_key,
-            ModuleBundle(tuple(combined)),
-            context=self._bundle_context,
+        prior_atomicity_state = (
+            self._prior_policy_context.cached_atomicity_summary_state()
+            if self._prior_policy_context is not None and changes.touched
+            else None
         )
-        if not stored:
-            self._store.put_modules(
-                tuple((self._key(source), result) for source, result in entries)
+        context = PolicyContext(
+            model=SnapshotSemanticModel(snapshot),
+            classification=classifications,
+            effects=EffectResolver(),
+            catalog=config.catalog,
+            policy=config.policy,
+            prior_function_summary_state=prior_summary_state,
+            function_summary_invalidated_modules=impact.impacted,
+            prior_atomicity_summary_state=prior_atomicity_state,
+            atomicity_summary_invalidated_modules=impact.impacted,
+        )
+        if self._engine is None or self._registry is None:
+            raise RuntimeError("resident check session is not configured")
+        if self._prior_policy_context is None or self._prior_policy_result is None:
+            policy_result = self._engine.run_tracked(context)
+        else:
+            policy_result = self._engine.run_incremental(
+                context,
+                self._prior_policy_context,
+                self._prior_policy_result,
+                changes,
+                impact,
             )
+        return context, policy_result
 
-    def _key(self, source: SourceInput) -> CacheKey:
-        return CacheKey(
-            source.content_hash,
-            self._adapter,
-            self._resolver_identity,
-            source.module_id.value,
+    def _build_report(
+        self,
+        config: ProjectConfiguration,
+        discovery: SourceDiscoveryResult,
+        snapshot: AnalysisSnapshot,
+        context: PolicyContext,
+        policy_result: IncrementalPolicyResult,
+    ) -> RunReport:
+        if self._registry is None:
+            raise RuntimeError("resident check session is not configured")
+        ignore_result = load_inline_ignores(
+            discovery.sources, frozenset(self._registry.definitions)
+        )
+        help_by_rule = FrozenMap(
+            (rule_id, definition.help) for rule_id, definition in self._registry.definitions.items()
+        )
+        processing = FindingProcessor().process(
+            findings=policy_result.result.findings,
+            policy=config.policy,
+            help_by_rule=help_by_rule,
+            ignores=ignore_result.directives,
+            classifications=context.classification,
+            canonicalize=context.model.canonical_symbol,
+            preused_approval_keys=policy_result.result.approval_keys,
+        )
+        assurance = audit_project_assurance(
+            self.project_root,
+            config,
+            discovery,
+            snapshot,
+            context.classification,
+            used_approvals=len(processing.approval_audit.used),
+            used_ignores=len(processing.ignore_audit.used),
+            unused_approvals=processing.approval_audit.unused,
+        )
+        extension_assurance = tuple(
+            issue
+            for pack in self._packs
+            if pack.assurance_auditor is not None
+            for issue in pack.assurance_auditor.audit(snapshot, config)
+        )
+        if extension_assurance:
+            assurance = replace(
+                assurance,
+                issues=tuple(sorted(set((*assurance.issues, *extension_assurance)))),
+            )
+        return build_run_report(
+            snapshot=snapshot,
+            engine_version=__version__,
+            decision_digest=build_decision_digest(
+                config, self._registry, self._adapter.identity, self._packs, self._providers
+            ),
+            diagnostics=processing.diagnostics,
+            engine_issues=(
+                *discovery.issues,
+                *snapshot.issues,
+                *policy_result.result.engine_issues,
+                *processing.engine_issues,
+                *ignore_result.issues,
+            ),
+            coverage=policy_result.result.coverage,
+            ignore_audit=processing.ignore_audit,
+            approval_audit=processing.approval_audit,
+            assurance=assurance,
+            enforce_assurance=config.strict,
         )
 
 

@@ -6,11 +6,13 @@ from dataclasses import replace
 from typing import Any, Protocol
 
 from taut.analysis.contracts import SourceInput
+from taut.analysis.python.expression_summary import ExpressionSummarizer
 from taut.domain.facts import (
     BindingFact,
     ExpressionSummary,
     FactKind,
     FieldFact,
+    FunctionFact,
     ReferenceFact,
     ResolutionState,
     ScopeKind,
@@ -31,6 +33,8 @@ class _BindingHost(Protocol):
     binding_facts: list[BindingFact]
     references: list[ReferenceFact]
     fields: list[FieldFact]
+    functions: list[FunctionFact]
+    function_symbols: set[SymbolId]
     class_symbols: set[SymbolId]
     types: dict[SymbolId | None, dict[str, SymbolId]]
     _expression_summary: Any
@@ -47,6 +51,7 @@ class _BindingHost(Protocol):
     ) -> None: ...
 
     def _declare_assignment(self, name: str, binding_id: FactId | None = None) -> None: ...
+    def _declare(self, name: str, symbol: SymbolId, binding_id: FactId | None = None) -> None: ...
     def _resolved_binding_ids(self, node: ast.AST) -> tuple[FactId, ...]: ...
     def _binding_scope(self, name: str) -> SymbolId | None: ...
     def _child_symbol(self, scope: SymbolId | None, name: str) -> SymbolId: ...
@@ -97,6 +102,8 @@ class PythonBindingFormsMixin:
                     self.types[self.current_scope][target.id] = inferred
         for target in node.targets:
             self.visit(target)
+            if isinstance(target, ast.Name) and isinstance(node.value, ast.Lambda):
+                self._declare(target.id, self.node_scopes[node.value])
 
     def _add_field(
         self: _BindingHost,
@@ -215,6 +222,23 @@ class PythonBindingFormsMixin:
 
     def visit_Lambda(self: _BindingHost, node: ast.Lambda) -> None:
         scope = self.node_scopes[node]
+        self.functions.append(
+            FunctionFact(
+                id=self._next_fact_id(FactKind.FUNCTION, scope.value),
+                module_id=self.source.module_id,
+                symbol_id=scope,
+                name="<lambda>",
+                is_async=False,
+                decorators=(),
+                parameters=ExpressionSummarizer(self._resolve).parameters(node),
+                return_annotation=None,
+                has_docstring=False,
+                location=self._location(node),
+                provenance=self._provenance(node),
+                context=self._syntax_context(),
+            )
+        )
+        self.function_symbols.add(scope)
         arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
         if node.args.vararg is not None:
             arguments += (node.args.vararg,)

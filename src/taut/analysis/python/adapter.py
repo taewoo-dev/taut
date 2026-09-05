@@ -116,7 +116,10 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         previous_scope = self.current_scope
         resolved_functions: list[FunctionFact] = []
         for function in self.functions:
-            node = self._function_nodes[function.symbol_id]
+            node = self._function_nodes.get(function.symbol_id)
+            if node is None:
+                resolved_functions.append(function)
+                continue
             self.current_scope = function.symbol_id
             resolved_functions.append(
                 replace(

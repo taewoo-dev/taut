@@ -53,6 +53,8 @@ class FunctionSummaryContext(Protocol):
 
     def callback_effects(self, call: CallFact) -> frozenset[Effect]: ...
 
+    def synchronous_callback_effects(self, call: CallFact) -> frozenset[Effect]: ...
+
     def matching_symbol(
         self, symbol: SymbolId | None, candidates: frozenset[SymbolId]
     ) -> SymbolId | None: ...
@@ -119,7 +121,10 @@ def build_function_summary_state(
         function = functions[symbol]
         for call in calls_by_owner.get((module_id, function.symbol_id), ()):
             evaluated_calls += 1
-            uncertain_effects.update(context.callback_effects(call))
+            synchronous = context.synchronous_callback_effects(call)
+            uncertain_effects.update(context.callback_effects(call) - synchronous)
+            for effect in synchronous:
+                _merge_access(effect_access, effect, AccessPath.DIRECT)
             resolution = context.effect_of(call)
             if resolution.state is EffectResolutionState.MATCHED:
                 assert resolution.access_path is not None

@@ -20,7 +20,8 @@ def test_quality_metrics_do_not_count_uncertainty_as_detection() -> None:
             Case(
                 "callback",
                 "ASYNC001",
-                "import time\ndef run(fn):\n    fn(1)\nasync def f():\n    run(time.sleep)",
+                "import time\ndef run(fn, enabled):\n    if enabled:\n        fn(1)\n"
+                "async def f():\n    run(time.sleep, True)",
                 True,
                 "callback executes sleep synchronously",
             ),

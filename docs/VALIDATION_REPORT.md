@@ -1,5 +1,20 @@
 # pytaut validation report
 
+## Unreleased follow-up — 2026-09-05
+
+The follow-up based on `0dea529` passed `bash scripts/test.sh` on Python 3.14.0:
+conventions, Ruff, strict mypy/Pyright, strict self-policy, 1,350 tests, 90.41% total
+coverage with branch measurement, sdist/wheel builds, and an isolated installed-wheel smoke test.
+Lambda invocation and valid direct callback effects now detect the two remaining selected
+synthetic violations: six definite findings on six violations, no findings or uncertainty on
+four safe controls. This is bounded regression evidence, not general accuracy.
+
+The temporary 1,224-source anti-monitor snapshot passed its existing policy. Injected dangerous
+lambda/callback cases failed as expected and matched fresh analysis; safe offloading and removal
+restored success. Timing and memory observations, including the initially unstable memory sample
+and stable recheck, are retained in the [real-project report](quality/antimonitor-followup.md).
+Package version remains 0.9.0 and has not been published.
+
 ## Unreleased review improvements — 2026-09-05
 
 The working tree based on `bfddf85` passed `bash scripts/test.sh` on Python 3.14.0:
