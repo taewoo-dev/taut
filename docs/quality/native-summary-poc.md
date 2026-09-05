@@ -1,5 +1,9 @@
 # Optional Rust function summary core PoC
 
+This is the historical 0.1.0 experiment. The [0.2.0 pipeline expansion](native-pipeline-poc.md)
+adds columnar input preparation and native atomicity analysis, with new measurements and
+installation instructions. The scope and results below describe v1 only.
+
 The Python API now has an opt-in Rust implementation of function effect propagation.
 The default remains Python. Parsing, fact extraction, callback interpretation, policy
 rules, atomicity analysis, rendering, and the daemon protocol remain Python-owned.
