@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "kind": "synthetic",
+  "reviewer": "Codex repository review; hand-labeled execution semantics, not external validation",
+  "cases": [
+    {
+      "id": "direct_sleep",
+      "rule": "ASYNC001",
+      "source": "import time\nasync def work():\n    time.sleep(1)\n",
+      "violation": true,
+      "reason": "Direct synchronous sleep blocks the event loop."
+    },
+    {
+      "id": "helper_sleep",
+      "rule": "ASYNC001",
+      "source": "import time\ndef helper():\n    time.sleep(1)\nasync def work():\n    helper()\n",
+      "violation": true,
+      "reason": "The helper runs blocking sleep on the same thread."
+    },
+    {
+      "id": "callback_sleep",
+      "rule": "ASYNC001",
+      "source": "import time\ndef invoke(fn):\n    fn(1)\nasync def work():\n    invoke(time.sleep)\n",
+      "violation": true,
+      "reason": "This direct callback invoker runs sleep synchronously."
+    },
+    {
+      "id": "path_read",
+      "rule": "ASYNC001",
+      "source": "from pathlib import Path\nasync def work():\n    Path(\"data\").read_text()\n",
+      "violation": true,
+      "reason": "File reading uses synchronous filesystem I/O."
+    },
+    {
+      "id": "session_get",
+      "rule": "ASYNC001",
+      "source": "import requests\nasync def work():\n    requests.Session().get(\"url\")\n",
+      "violation": true,
+      "reason": "Requests session I/O is synchronous."
+    },
+    {
+      "id": "lambda_sleep",
+      "rule": "ASYNC001",
+      "source": "import time\nasync def work():\n    (lambda: time.sleep(1))()\n",
+      "violation": true,
+      "reason": "The lambda is invoked immediately on the event loop; retained as an unsupported-expression probe."
+    },
+    {
+      "id": "safe_compute",
+      "rule": "ASYNC001",
+      "source": "async def work():\n    return 1\n",
+      "violation": false,
+      "reason": "No blocking I/O."
+    },
+    {
+      "id": "store_callback",
+      "rule": "ASYNC001",
+      "source": "import time\ndef store(fn):\n    return fn\nasync def work():\n    store(time.sleep)\n",
+      "violation": false,
+      "reason": "Storing a callable does not invoke it."
+    },
+    {
+      "id": "offload",
+      "rule": "ASYNC001",
+      "source": "import asyncio\nimport time\nasync def work():\n    await asyncio.to_thread(time.sleep, 1)\n",
+      "violation": false,
+      "reason": "The synchronous callback executes in a worker thread."
+    },
+    {
+      "id": "shadowed_open",
+      "rule": "ASYNC001",
+      "source": "def open(value):\n    return value\nasync def work():\n    open(\"data\")\n",
+      "violation": false,
+      "reason": "A project-owned function shadows builtins.open."
+    }
+  ]
+}

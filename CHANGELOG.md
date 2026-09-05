@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Clarify successful-check scope in text and additive JSON interpretation metadata; report
+  effective rule levels and avoid a green success summary when assurance is incomplete.
+- Recognize selected pathlib and Requests session blocking operations and exact constructor
+  chains without treating project-owned lookalikes as library constructors.
+- Surface known catalog effects passed to directly invoked function parameters as indeterminate,
+  including default/keyword arguments and helper propagation. Invalidate dependent effect checks
+  when helper bodies change; bump Python adapter and affected rule behavior versions.
+- Add a labeled detection evaluator that reports missed findings and uncertainty separately.
+- Allow individual rules to be advisory during adoption while retaining strict assurance.
+- Translate framework facts to neutral database operations outside PolicyContext, and share the
+  repository dependency declaration between the independent convention checker and self-policy.
+
 ## 0.9.0
 
 ### Compact, inspectable configuration

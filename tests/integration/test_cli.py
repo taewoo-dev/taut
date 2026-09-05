@@ -461,7 +461,7 @@ def test_cli_accepts_absolute_config_for_read_only_external_audit(
     code = main(["check", str(project), "--config", str(external_config)])
 
     assert code == 0
-    assert "검사 완료: 문제 없음" in capsys.readouterr().out
+    assert "검사 완료: 지원 범위 내 정책 위반 없음" in capsys.readouterr().out
 
 
 @pytest.mark.integration

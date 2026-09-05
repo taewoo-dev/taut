@@ -1,5 +1,25 @@
 # pytaut validation report
 
+## Unreleased review improvements — 2026-09-05
+
+The working tree based on `bfddf85` passed `bash scripts/test.sh` on Python 3.14.0:
+repository conventions, Ruff formatting/lint, mypy strict, Pyright strict, strict self-policy,
+1,331 tests, 90.36% total coverage with branch measurement, sdist/wheel builds, and an isolated
+installed-wheel smoke check. Package version remains 0.9.0; these changes have not been published.
+Other interpreter versions were not rerun locally for this review.
+
+The same labeled synthetic async corpus was executed against the baseline source extracted with
+`git archive` and the changed source. Of six dangerous snippets, definite detection increased
+from two to four; one additional case is now indeterminate and one lambda case remains a silent
+miss. Four safe controls produced neither findings nor indeterminate decisions in either version.
+This does not estimate real-project accuracy. See [detection quality](detection-quality.md) for
+raw results, metric definitions, limitations, adoption guidance, and the external pilot protocol.
+
+Regression checks cover direct filesystem and Requests session operations, callback positional/
+keyword/default binding, safe callable storage and offloading, shadowed names, preserving definite
+findings in the presence of uncertainty, helper-edit resident/cold parity, selective advisory
+adoption, promotion back to enforcement, and retention of strict assurance while staging a rule.
+
 ## 0.8.0 release candidate — 2026-09-05
 
 `bash scripts/test.sh` passed on Python 3.14 with repository conventions, Ruff, mypy strict,

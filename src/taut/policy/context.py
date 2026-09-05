@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from functools import cached_property
 from types import MappingProxyType
 
-from taut.analysis.framework.tortoise_facts import TortoiseQueryFact, TortoiseTransactionFact
+from taut.analysis.framework_operations import DatabaseOperationIndex
 from taut.analysis.semantic_model import SemanticModel
 from taut.configuration.catalog import (
     AccessPath,
@@ -18,6 +18,7 @@ from taut.configuration.catalog import (
 )
 from taut.configuration.effective_policy import EffectivePolicy, PolicyApproval
 from taut.configuration.manifest import ClassificationIndex
+from taut.domain.database_operations import DatabaseOperation
 from taut.domain.facts import CallFact, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
@@ -25,6 +26,7 @@ from taut.policy.atomicity_summaries import (
     AtomicitySummaryState,
     build_atomicity_summary_state,
 )
+from taut.policy.callback_effects import CallbackEffectIndex
 from taut.policy.function_summaries import (
     FunctionSemanticSummary,
     FunctionSummaryState,
@@ -82,7 +84,7 @@ class PolicyContext:
         if resolution is None:
             resolution = self.effects.resolve(self._canonical_call(call), self.canonical_catalog)
             self._effect_resolution_cache[call.id] = resolution
-        transaction = self.tortoise_transactions.get(call.id)
+        transaction = self.database_operations.transactions.get(call.id)
         if (
             resolution.state is EffectResolutionState.NO_MATCH
             and transaction is not None
@@ -97,6 +99,13 @@ class PolicyContext:
                 None,
             )
         return resolution
+
+    @cached_property
+    def callback_index(self) -> CallbackEffectIndex:
+        return CallbackEffectIndex.build(self.model)
+
+    def callback_effects(self, call: CallFact) -> frozenset[Effect]:
+        return self.callback_index.effects(call, self.model, self.canonical_catalog)
 
     @cached_property
     def function_summary_state(self) -> FunctionSummaryState:
@@ -151,28 +160,11 @@ class PolicyContext:
         return self.function_summaries.get(self.model.canonical_symbol(symbol))
 
     @cached_property
-    def tortoise_queries(self) -> Mapping[FactId, TortoiseQueryFact]:
-        """Index Tortoise query facts without coupling boundary rules to fact classes."""
-        return MappingProxyType(
-            {
-                fact.call.id: fact
-                for fact in self.model.capability_values("taut.tortoise.queries@1")
-                if isinstance(fact, TortoiseQueryFact)
-            }
-        )
+    def database_operations(self) -> DatabaseOperationIndex:
+        return DatabaseOperationIndex.build(self.model)
 
-    def tortoise_query(self, fact_id: FactId) -> TortoiseQueryFact | None:
-        return self.tortoise_queries.get(fact_id)
-
-    @cached_property
-    def tortoise_transactions(self) -> Mapping[FactId, TortoiseTransactionFact]:
-        return MappingProxyType(
-            {
-                fact.call.id: fact
-                for fact in self.model.capability_values("taut.tortoise.transactions@1")
-                if isinstance(fact, TortoiseTransactionFact)
-            }
-        )
+    def database_query(self, fact_id: FactId) -> DatabaseOperation | None:
+        return self.database_operations.queries.get(fact_id)
 
     def _canonical_call(self, call: CallFact) -> CallFact:
         if call.ref.symbol is None:

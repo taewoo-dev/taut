@@ -189,9 +189,9 @@ class AdapterBoundaryRule:
                 None,
             )
             if call_prefix is None:
-                tortoise = context.tortoise_queries.get(call.id)
-                if tortoise is not None and tortoise.confidence is ResolutionState.RESOLVED:
-                    call_prefix = SymbolId(f"tortoise.query.{tortoise.operation}")
+                database = context.database_query(call.id)
+                if database is not None and database.confidence is ResolutionState.RESOLVED:
+                    call_prefix = SymbolId(f"{database.provider}.query.{database.operation}")
             if call_prefix is None:
                 continue
             findings.append(

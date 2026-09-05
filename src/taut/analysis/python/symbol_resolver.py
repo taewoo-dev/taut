@@ -8,6 +8,7 @@ from taut.analysis.contracts import SourceInput
 from taut.analysis.module_identity import absolute_import_base
 from taut.analysis.python.fact_ids import next_fact_id
 from taut.analysis.python.identity import PYTHON_AST_IDENTITY
+from taut.analysis.python.known_types import constructed_type
 from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
 from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
 from taut.domain.facts import FactKind, ResolutionState, SymbolRef
@@ -28,6 +29,7 @@ _BUILTINS = frozenset(
         "list",
         "max",
         "min",
+        "open",
         "print",
         "range",
         "set",
@@ -444,6 +446,11 @@ class PythonSymbolResolver(PythonScopeFlow):
                 SymbolId(f"{candidate.value}.{node.attr}") for candidate in base.candidates
             )
             return SymbolRef(name, base.state, None, candidates, provenance)
+        if isinstance(node, ast.Call):
+            constructor = self._resolve(node.func)
+            inferred = constructed_type(constructor.symbol)
+            if inferred is not None:
+                return SymbolRef(name, ResolutionState.RESOLVED, inferred, (), provenance)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)

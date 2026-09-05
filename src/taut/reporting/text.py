@@ -123,14 +123,30 @@ def render_text(
     )
     errors = sum(item.level is RuleLevel.ENFORCED for item in active)
     warnings = sum(item.level is RuleLevel.ADVISORY for item in active)
-    summary = _summary(errors, warnings, len(report.engine_issues), report.coverage.indeterminate)
-    summary_color = _RED if errors or report.engine_issues else _YELLOW if warnings else _GREEN
+    check_issues = (
+        len(report.engine_issues) + len(report.assurance.issues) + len(report.coverage.gaps)
+    )
+    summary = _summary(errors, warnings, check_issues, report.coverage.indeterminate)
+    summary_color = _RED if report.exit_decision.code else _YELLOW if warnings else _GREEN
     lines.append(_paint(summary, summary_color, color))
+
+    calls = report.analysis_coverage.calls
+    uncertain_calls = calls.total - calls.resolved
+    if uncertain_calls:
+        lines.extend(
+            _wrap(f"검사 범위: 호출 대상 미확정 {uncertain_calls}건; 상세는 --verbose", width)
+        )
 
     if not verbose:
         return "\n".join(lines)
 
     coverage = report.coverage
+    advisory = [rule.value for rule, level in coverage.rule_levels if level is RuleLevel.ADVISORY]
+    if advisory:
+        lines.extend(_wrap("권고 규칙 (위반으로 차단하지 않음): " + ", ".join(advisory), width))
+    lines.extend(
+        _wrap("검사 범위: 지원하는 의미 분석과 설정된 정책. 런타임 안전성 증명은 아닙니다.", width)
+    )
     lines.append(
         "상세 판정: "
         f"통과 {coverage.passed}, 위반 {coverage.failed}, 대상 아님 {coverage.not_applicable}, "
@@ -166,7 +182,7 @@ def _diagnostic_label(diagnostic: Diagnostic) -> tuple[str, str]:
 
 def _summary(errors: int, warnings: int, engine_issues: int, indeterminate: int) -> str:
     if not any((errors, warnings, engine_issues, indeterminate)):
-        return "검사 완료: 문제 없음"
+        return "검사 완료: 지원 범위 내 정책 위반 없음"
     parts = [f"오류 {errors:,}건", f"경고 {warnings:,}건"]
     if engine_issues:
         parts.append(f"검사 문제 {engine_issues:,}건")

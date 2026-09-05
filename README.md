@@ -4,12 +4,11 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.7.0 follows first-party helper calls when enforcing effects and transaction safety,
-audits semantic role and workspace coverage, and reduces configuration-only failures without
-weakening definite findings. It supports Python 3.12 or newer:
+Version 0.9.0 adds compact configuration and stable role conventions on top of first-party
+helper analysis, semantic assurance, and incremental checks. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.7.0
+uv add --dev pytaut==0.9.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -440,6 +439,13 @@ every detected policy surface that must be reviewed.
 
 ## Results
 
+A successful check means no enforced violation was found within the supported semantics and
+configured policy. It does not prove runtime safety. `assurance.complete` describes source and
+feature configuration checks; `resolved` describes symbol identity. Neither proves every possible
+execution effect, and empty `gaps` means no rule reported a gap. The current development JSON adds
+`interpretation` to make this contract explicit; the report remains schema v5 with additive fields.
+See [measured detection limits](docs/detection-quality.md) for supported cases and known misses.
+
 The default terminal output prints one finding per line followed by the error and warning totals.
 Long findings wrap to the next indented line. Non-terminal output uses a width of 120 characters;
 override it with an option such as `--width 100`. Use `--verbose` only when you need related
@@ -478,8 +484,19 @@ f-strings or string concatenation.
 ## Built-in rules
 
 With the default `strict = true`, `CAT001` is advisory and the other 48 rules are enforced.
-Individual rules cannot be disabled. Use `strict = false` before adoption to report every finding
-as a warning.
+Individual rules cannot be disabled. In the current development version, stage selected rules as
+advisory while preserving strict assurance and enforcing every other rule:
+
+```toml
+[tool.taut.rules]
+ASYNC001 = "advisory"
+```
+
+The rule still runs and reports findings and uncertainty. Remove the entry to restore its default
+enforcement. `off` and promoting advisory-only rules such as `CAT001` are rejected. Use
+`strict = false` to report all findings as warnings before setup. JSON `coverage.rule_levels` and
+verbose text expose effective levels even when a rule has no findings. These changes are unreleased;
+see the [detection and adoption guide](docs/detection-quality.md).
 
 | Group | Rules |
 |---|---|
@@ -567,9 +584,9 @@ equivalent per-relationship lazy-loading or per-column timezone options, so Taut
 those SQLAlchemy checks apply. Tortoise's framework-specific model configuration should be added
 as separate rules when there is a precise, enforceable contract.
 
-An unregistered call that might have an external effect cannot be proven unsafe, so it is reported
-as a `CAT001` warning. After classifying the call, add it to the project effect catalog for precise
-enforcement.
+A resolved, unregistered call under a configured risky-symbol prefix is reported as a `CAT001`
+warning. Other unknown calls are not universally flagged. After classifying a call, add it to the
+project effect catalog for precise enforcement.
 
 ## Development
 

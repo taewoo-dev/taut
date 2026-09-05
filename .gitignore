@@ -18,3 +18,5 @@ dist/
 !/docs/getting-started.md
 !/docs/performance-roadmap.md
 !/docs/configuration-conventions.md
+!/docs/detection-quality.md
+!/docs/quality/

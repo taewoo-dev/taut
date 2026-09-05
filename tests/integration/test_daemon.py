@@ -241,7 +241,7 @@ def test_cli_auto_falls_back_but_required_fails_clearly(
 
     monkeypatch.setattr("taut.cli.check_daemon", unavailable)
     assert main(["check", str(root), "--daemon", "auto", "--no-cache"]) == 0
-    assert "문제 없음" in capsys.readouterr().out
+    assert "지원 범위 내 정책 위반 없음" in capsys.readouterr().out
     assert main(["check", str(root), "--daemon", "required", "--no-cache"]) == 2
     assert "unavailable for test" in capsys.readouterr().err
 

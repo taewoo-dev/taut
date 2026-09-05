@@ -22,6 +22,7 @@ class FunctionSemanticSummary:
     )
     session_providers: frozenset[SymbolId] = frozenset()
     bulk_mapping_operations: frozenset[str] = frozenset()
+    uncertain_effects: frozenset[Effect] = frozenset()
 
     @property
     def effects(self) -> frozenset[Effect]:
@@ -49,6 +50,8 @@ class FunctionSummaryContext(Protocol):
     def policy(self) -> EffectivePolicy: ...
 
     def effect_of(self, call: CallFact) -> EffectResolution: ...
+
+    def callback_effects(self, call: CallFact) -> frozenset[Effect]: ...
 
     def matching_symbol(
         self, symbol: SymbolId | None, candidates: frozenset[SymbolId]
@@ -110,11 +113,13 @@ def build_function_summary_state(
         module_id = modules[symbol]
         effect_access: dict[Effect, AccessPath] = {}
         providers: set[SymbolId] = set()
+        uncertain_effects: set[Effect] = set()
         bulk_operations: set[str] = set()
         owned_callees: set[SymbolId] = set()
         function = functions[symbol]
         for call in calls_by_owner.get((module_id, function.symbol_id), ()):
             evaluated_calls += 1
+            uncertain_effects.update(context.callback_effects(call))
             resolution = context.effect_of(call)
             if resolution.state is EffectResolutionState.MATCHED:
                 assert resolution.access_path is not None
@@ -145,6 +150,7 @@ def build_function_summary_state(
             FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
             frozenset(providers),
             frozenset(bulk_operations),
+            frozenset(uncertain_effects),
         )
 
     changed_symbols = set(functions)
@@ -300,6 +306,7 @@ def _merge_summary(
         FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
         left.session_providers | right.session_providers,
         left.bulk_mapping_operations | right.bulk_mapping_operations,
+        left.uncertain_effects | right.uncertain_effects,
     )
 
 

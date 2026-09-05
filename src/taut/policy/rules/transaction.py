@@ -21,7 +21,7 @@ from taut.policy.rules.helpers import (
 
 RULE_ID = RuleId("TX001")
 ATOMICITY_RULE_ID = RuleId("TX003")
-RULE_VERSION = 3
+RULE_VERSION = 4
 TRANSACTION_EFFECTS = frozenset({Effect.TX_COMMIT, Effect.TX_ROLLBACK})
 
 
@@ -84,7 +84,7 @@ def transaction_rule_definition() -> RuleDefinition:
         help="commit과 rollback은 저장소에서 정한 transaction owner에서만 실행하세요.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
-        change_impact=ChangeImpact.SELF,
+        change_impact=ChangeImpact.DEPENDENTS,
         implementation=TransactionOwnerRule(),
         compliant_fixtures=("tests/fixtures/rules/transaction/compliant.py",),
         violation_fixtures=("tests/fixtures/rules/transaction/violation.py",),

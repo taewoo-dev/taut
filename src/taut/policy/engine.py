@@ -415,4 +415,9 @@ def _coverage(
         indeterminate=verdicts.count(RuleVerdict.INDETERMINATE),
         skipped=skipped,
         gaps=gaps,
+        rule_levels=tuple(
+            (rule_id, setting.level)
+            for rule_id, setting in context.policy.rules.items()
+            if setting.level is not RuleLevel.OFF
+        ),
     )

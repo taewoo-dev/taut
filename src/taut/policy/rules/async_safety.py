@@ -20,7 +20,7 @@ from taut.policy.rules.helpers import (
 )
 
 RULE_ID = RuleId("ASYNC001")
-RULE_VERSION = 1
+RULE_VERSION = 2
 _ALL_ZONES = frozenset({Zone("prod"), Zone("test"), Zone("migration"), Zone("script")})
 
 
@@ -39,12 +39,16 @@ class BlockingCallInAsyncRule:
         )
         if enclosing is None or not enclosing.is_async:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        uncertain = unresolved_effect_evaluation(
-            RULE_ID, target, context, call.id, frozenset({Effect.IO_BLOCKING})
-        )
-        if uncertain is not None:
-            return uncertain
         resolution = context.transitive_effect_of(call)
+        if (
+            resolution.state is not EffectResolutionState.MATCHED
+            or Effect.IO_BLOCKING not in resolution.effects
+        ):
+            uncertain = unresolved_effect_evaluation(
+                RULE_ID, target, context, call.id, frozenset({Effect.IO_BLOCKING})
+            )
+            if uncertain is not None:
+                return uncertain
         if resolution.state is EffectResolutionState.SYMBOL_UNRESOLVED:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
         if resolution.state is not EffectResolutionState.MATCHED:
@@ -79,7 +83,7 @@ def async_safety_rule_definition() -> RuleDefinition:
         help="비동기 함수나 스레드 실행 경로를 사용해 event loop가 멈추지 않게 하세요.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
-        change_impact=ChangeImpact.SELF,
+        change_impact=ChangeImpact.DEPENDENTS,
         implementation=BlockingCallInAsyncRule(),
         compliant_fixtures=("tests/fixtures/rules/async_safety/compliant.py",),
         violation_fixtures=("tests/fixtures/rules/async_safety/violation.py",),

@@ -13,6 +13,13 @@ def render_json(report: RunReport) -> str:
         "engine_version": report.run.engine_version,
         "snapshot_id": report.run.snapshot_id.value,
         "decision_digest": report.run.decision_digest,
+        "interpretation": {
+            "scope": "supported_semantics_and_configured_policy",
+            "runtime_safety_proven": False,
+            "assurance_complete_means": "configured source and feature checks completed",
+            "resolved_means": "symbol identity resolved, not runtime behavior proven",
+            "empty_gaps_means": "no rule-reported gaps, not exhaustive semantic coverage",
+        },
         "diagnostics": [
             {
                 "rule_id": item.rule_id.value,
@@ -46,6 +53,7 @@ def render_json(report: RunReport) -> str:
         ],
         "coverage": {
             "enabled_rules": report.coverage.enabled_rules,
+            "rule_levels": {rule.value: level.value for rule, level in report.coverage.rule_levels},
             "total_targets": report.coverage.total_targets,
             "passed": report.coverage.passed,
             "failed": report.coverage.failed,

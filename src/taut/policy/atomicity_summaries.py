@@ -6,9 +6,9 @@ from heapq import heappop, heappush
 from itertools import chain
 from typing import Protocol
 
-from taut.analysis.framework.tortoise_facts import TortoiseQueryFact
 from taut.analysis.semantic_model import SemanticModel
 from taut.configuration.effective_policy import EffectivePolicy
+from taut.domain.database_operations import DatabaseOperation
 from taut.domain.facts import CallFact, FunctionFact, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, SymbolId
@@ -72,7 +72,7 @@ class AtomicitySummaryContext(Protocol):
     @property
     def policy(self) -> EffectivePolicy: ...
 
-    def tortoise_query(self, fact_id: FactId) -> TortoiseQueryFact | None: ...
+    def database_query(self, fact_id: FactId) -> DatabaseOperation | None: ...
 
     def symbol_in(self, symbol: SymbolId | None, candidates: frozenset[SymbolId]) -> bool: ...
 
@@ -250,7 +250,7 @@ def _lexical_boundary(call: CallFact, context: AtomicitySummaryContext) -> bool:
 
 
 def _database_write_range(call: CallFact, context: AtomicitySummaryContext) -> WriteRange:
-    tortoise = context.tortoise_query(call.id)
+    tortoise = context.database_query(call.id)
     if tortoise is not None and tortoise.is_write:
         return (
             WriteRange(1, 1)

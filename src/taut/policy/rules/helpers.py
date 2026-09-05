@@ -216,13 +216,30 @@ def unresolved_effect_evaluation(
     call_id: FactId,
     effects: frozenset[Effect],
 ) -> RuleEvaluation | None:
-    """Propagate uncertainty only from resolver-owned effect candidates.
+    """Propagate catalog-relevant symbol and bounded callback-effect uncertainty.
 
     Written call text is deliberately not consulted: unresolved and dynamic
     references have no semantic identity unless the resolver preserved a
     candidate set that intersects the configured catalog effect.
     """
     call = context.model.call(call_id)
+    direct = context.effect_of(call)
+    if direct.effects.intersection(effects):
+        return None
+    summary = context.function_summary(call.ref.symbol)
+    uncertain = context.callback_effects(call)
+    if summary is not None:
+        uncertain = uncertain | summary.uncertain_effects
+    if uncertain.intersection(effects):
+        return RuleEvaluation(
+            rule_id,
+            target,
+            RuleVerdict.INDETERMINATE,
+            (),
+            EvaluationReason(
+                "callback_effect", "위험 효과를 가진 콜백의 실행 방식을 확정하지 못했습니다."
+            ),
+        )
     if call.ref.state is ResolutionState.RESOLVED:
         return None
     relevant = {

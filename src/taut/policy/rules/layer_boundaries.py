@@ -69,10 +69,10 @@ def _database_primitive(call: CallFact, context: PolicyContext) -> str | None:
     statement = _matches_symbol(call, context.policy.boundaries.database_statement_calls, context)
     if statement is not None:
         return statement.value
-    tortoise = context.tortoise_queries.get(call.id)
+    database = context.database_query(call.id)
     return (
-        f"tortoise:{tortoise.operation}"
-        if tortoise is not None and tortoise.confidence is ResolutionState.RESOLVED
+        f"{database.provider}:{database.operation}"
+        if database is not None and database.confidence is ResolutionState.RESOLVED
         else None
     )
 
@@ -296,9 +296,9 @@ class _RoleBoundaryRule:
             if transport is not None:
                 return "transport", call.ref.symbol.value if call.ref.symbol else transport.value
         elif self.mode == "query":
-            tortoise = context.tortoise_queries.get(call.id)
-            if tortoise is not None and tortoise.is_write:
-                return "write", f"tortoise:{tortoise.operation}"
+            database = context.database_query(call.id)
+            if database is not None and database.is_write:
+                return "write", f"{database.provider}:{database.operation}"
             symbol = call.ref.symbol
             if (
                 symbol is not None

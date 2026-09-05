@@ -1,0 +1,44 @@
+{
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "processor": "arm",
+  "python": "3.14.0",
+  "results": [
+    {
+      "deterministic_digest": true,
+      "fixture": "mixed-fastapi-sqlalchemy-pydantic",
+      "mode": "synthetic",
+      "repeats": [
+        {
+          "analysis_issues": 0,
+          "engine_issues": 0,
+          "modules": 32,
+          "rss_bytes": 2867200,
+          "snapshot_digest": "5d5f2f92aa035006b9d8a5d6429fc77a35f53fe0dc9999e7fcd8b2eb2cd28a4f",
+          "sources_per_second": 532.2396515417818,
+          "wall_seconds": 0.060123292030766606
+        },
+        {
+          "analysis_issues": 0,
+          "engine_issues": 0,
+          "modules": 32,
+          "rss_bytes": 671744,
+          "snapshot_digest": "5d5f2f92aa035006b9d8a5d6429fc77a35f53fe0dc9999e7fcd8b2eb2cd28a4f",
+          "sources_per_second": 454.9814295287043,
+          "wall_seconds": 0.0703325408976525
+        },
+        {
+          "analysis_issues": 0,
+          "engine_issues": 0,
+          "modules": 32,
+          "rss_bytes": 540672,
+          "snapshot_digest": "5d5f2f92aa035006b9d8a5d6429fc77a35f53fe0dc9999e7fcd8b2eb2cd28a4f",
+          "sources_per_second": 599.4347531128876,
+          "wall_seconds": 0.05338362487964332
+        }
+      ],
+      "scale": "medium",
+      "sources": 32
+    }
+  ],
+  "schema": "pytaut-performance-baseline-v1"
+}
