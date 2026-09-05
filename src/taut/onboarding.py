@@ -12,6 +12,7 @@ from typing import cast
 
 from taut.analysis.module_identity import absolute_import_base, resolve_internal_import
 from taut.configuration.assurance import BUILTIN_ASSURANCE_FEATURES
+from taut.configuration.schema import configuration_schema_payload as configuration_schema_payload
 from taut.domain.ids import ModuleId
 from taut.loading.errors import PolicyConfigError
 from taut.onboarding_architecture import architecture_policy, is_risky_edge
@@ -246,61 +247,6 @@ def write_init_configuration(project_root: Path, config_path: Path, proposal: In
     write_reviewed_configuration(project_root, config_path, proposal.status, proposal.toml)
 
 
-def configuration_schema_payload() -> dict[str, object]:
-    return {
-        "schema_version": 5,
-        "extend": {
-            "type": "path",
-            "description": "Explicit base [tool.taut] file; child tables merge and arrays replace.",
-        },
-        "workspace": {
-            "schema_version": 1,
-            "members": "non-empty unique project-relative member directories",
-            "analysis": "each member uses an isolated configuration and analysis graph",
-        },
-        "strict": {
-            "type": "boolean",
-            "default": True,
-            "description": "Enforce findings and project assurance completeness.",
-        },
-        "transaction": {
-            "owner_roles": "roles allowed to create or finish transactions",
-            "session_providers": "fully qualified context-manager call symbols",
-            "boundary_decorators": "fully qualified transaction decorator symbols",
-            "boundary_contexts": "fully qualified atomic transaction context-manager symbols",
-            "provider_item_types": "optional provider-symbol to yielded-type mapping",
-        },
-        "code_conventions": {
-            "response_mapper_name": "single project-standard Response mapper method",
-            "dto_base_symbols": "fully qualified immutable DTO base classes",
-            "exception_code_argument_names": "accepted constructor keyword names",
-            "exception_code_field_names": "accepted class field names",
-            "test_http_fixture_symbols": "approved pytest fixture symbols",
-        },
-        "size": {
-            "default_max_lines": "positive project-wide fallback",
-            "role_max_lines": "positive per-role limits no larger than the fallback",
-            "init_answer": "accept observed recommendation or provide explicit values",
-        },
-        "assurance": {
-            "features": {
-                "required_keys": BUILTIN_ASSURANCE_FEATURES,
-                "values": ("required", "absent"),
-            },
-            "max_approvals": {"type": "integer", "minimum": 0, "default": 0},
-            "max_inline_ignores": {"type": "integer", "minimum": 0, "default": 0},
-            "assertions": {
-                "fields": ("domain", "kind", "target", "state", "reason"),
-                "state": "not_applicable",
-            },
-        },
-        "exclusions": {
-            "fields": ("patterns", "reason"),
-            "description": "Reasoned Python source exclusions; stale patterns fail assurance.",
-        },
-    }
-
-
 def _answer_features(answers: dict[str, object] | None) -> dict[str, str]:
     if answers is None:
         return {}
@@ -393,14 +339,12 @@ def _render_configuration(
     lines = [
         "[tool.taut]",
         "schema_version = 5",
-        'packs = ["taut.backend"]',
         f"providers = {_toml_array(providers)}",
-        "strict = true",
         f"max_lines = {size.default_max_lines}",
-        'include = ["*.py", "**/*.py", "*.pyi", "**/*.pyi"]',
-        f"source_roots = {_toml_array(source_roots)}",
         "",
     ]
+    if source_roots != (".",):
+        lines.insert(-1, f"source_roots = {_toml_array(source_roots)}")
     for matcher in role_matchers:
         for reason in matcher.reasons:
             lines.extend(("", f"# reviewed role selector reason: {json.dumps(reason)}"))
@@ -408,6 +352,8 @@ def _render_configuration(
         lines.append(f"include = {_toml_array(matcher.include)}")
         if matcher.exclude:
             lines.append(f"exclude = {_toml_array(matcher.exclude)}")
+        if matcher.priority:
+            lines.append(f"priority = {matcher.priority}")
     lines.append("")
     lines.extend(
         f"# reviewed risky edge: {source} -> {target} = {decision}; reason: {json.dumps(reason)}"
@@ -422,7 +368,6 @@ def _render_configuration(
             lines.append(f"{name} = {_toml_array(items)}")
     lines.extend(render_policy_lines(policy_answers))
     lines.extend(render_size_lines(size))
-    lines.extend(("", "[tool.taut.assurance]", "max_approvals = 0", "max_inline_ignores = 0"))
     lines.extend(("", "[tool.taut.assurance.features]"))
     lines.extend(f'{name} = "{expectations[name]}"' for name in BUILTIN_ASSURANCE_FEATURES)
     for assertion in policy_answers.assertions:

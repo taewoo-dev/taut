@@ -113,11 +113,15 @@ def audit_project_assurance(
                     "ROLE_UNCLASSIFIED",
                     "분석된 모듈에 architecture role이 없습니다.",
                     path,
-                    "tool.taut.roles와 tool.taut.allow에 이 모듈의 역할을 선언하세요.",
+                    "선언된 역할의 위치로 코드를 배치하고 책임을 맞추세요. "
+                    "새 아키텍처를 도입할 때만 규약을 수정하세요. "
+                    + config.manifest.placement_hint(),
                 )
             )
 
-    issues.extend(semantic_role_issues(snapshot, classifications, config.policy.code))
+    issues.extend(
+        semantic_role_issues(snapshot, classifications, config.policy.code, config.manifest)
+    )
 
     framework_providers = {
         root: spec.provider_id

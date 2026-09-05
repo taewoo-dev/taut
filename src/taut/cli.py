@@ -18,9 +18,9 @@ from taut.cache.store import ReportEnvelope
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
 from taut.check_service import CheckRequest, CheckResult, run_check_request
 from taut.cli_assurance import run_audit, run_config_schema, run_init, run_rules
+from taut.cli_configuration import run_explain, run_simplify
 from taut.cli_workspace import (
     CheckOptions,
-    configuration_payload,
     run_workspace_check,
     run_workspace_config,
 )
@@ -123,6 +123,12 @@ def _parser() -> argparse.ArgumentParser:
     explain.add_argument("project_root", nargs="?", default=".")
     explain.add_argument("--config", help="설명할 별도 TOML 설정 파일입니다.")
     explain.add_argument("--format", choices=("text", "json"), default="text")
+    explain.add_argument("--path", help="프로젝트 기준 파일 경로의 역할과 분류 근거를 확인합니다.")
+    simplify = config_commands.add_parser(
+        "simplify", help="동일한 정책의 간결한 TOML을 출력합니다."
+    )
+    simplify.add_argument("project_root", nargs="?", default=".")
+    simplify.add_argument("--config", help="정리할 [tool.taut] 설정 파일입니다.")
     schema = config_commands.add_parser(
         "schema", help="AI와 도구가 읽을 수 있는 설정 계약을 보여 줍니다."
     )
@@ -308,6 +314,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             config_path = ConfigPath(namespace.config) if namespace.config is not None else None
             workspace = load_workspace(root) if config_path is None else None
             if workspace is not None:
+                if namespace.config_command == "simplify" or getattr(namespace, "path", None):
+                    raise PolicyConfigError(
+                        "select a workspace member for simplify or explain --path"
+                    )
                 return run_workspace_config(
                     workspace, namespace.config_command, getattr(namespace, "format", "text")
                 )
@@ -321,19 +331,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         Path(output).resolve(), migrated, force=bool(namespace.force)
                     )
                 return 0
+            if namespace.config_command == "simplify":
+                return run_simplify(root, config_path)
             if namespace.config_command == "explain":
-                loaded = prepare_check_runtime(root, config_path).config
-                payload = configuration_payload(loaded)
-                if namespace.format == "json":
-                    print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
-                else:
-                    print(f"스키마: v{loaded.schema_version}")
-                    print(f"규칙 팩: {', '.join(loaded.packs)}")
-                    print(f"분석 provider: {', '.join(loaded.providers) or '(없음)'}")
-                    print(f"기본 영역: {loaded.manifest.default_zone.value}")
-                    print(f"최대 파일 길이: {loaded.policy.default_max_lines}")
-                    print(f"설정 digest: {loaded.digest()}")
-                return 0
+                return run_explain(root, config_path, namespace.format, namespace.path)
             if namespace.config_command != "validate":
                 parser.error("unknown config command")
             config = prepare_check_runtime(root, config_path).config

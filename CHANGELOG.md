@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.0
+
+### Compact, inspectable configuration
+
+- Add reusable role groups in allow lists and grouped effect symbols without changing expanded
+  policy semantics or granting transitive permissions.
+- Add read-only `taut config simplify` to remove redundant defaults and patterns, group identical
+  effects, and verify semantic equivalence before printing a compact TOML proposal.
+- Expand `taut config explain` with effective policy values, inherited configuration origins, and
+  `--path` role, source-scope, priority, and allowed-import explanations.
+
+### Stable conventions for growing projects
+
+- Generate stable directory and filename role selectors during onboarding, with explicit priority
+  support and no automatically generated per-file exclusions to hide role conflicts.
+- Guide unclassified or semantically misplaced code toward declared role paths and code splitting.
+- Verify add, rename, move, and delete workflows against unchanged configuration, including
+  resident-versus-cold analysis and runtime, enum, import, and transaction enforcement.
+
 ## 0.8.0
 
 ### Faster incremental analysis

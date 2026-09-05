@@ -11,7 +11,6 @@ from taut.configuration.assurance import (
     FeatureExpectation,
     ScopeExclusion,
 )
-from taut.configuration.catalog import AccessPath, CatalogEntry, Effect, EffectCatalog
 from taut.configuration.effective_policy import EffectivePolicy, ImportBoundary
 from taut.configuration.manifest import (
     ProjectManifest,
@@ -28,7 +27,6 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, RuleId, SymbolId
 from taut.domain.location import ConfigLocation, ConfigPath, ProjectPath
 from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
-from taut.loading.builtin_catalog import builtin_catalog_entries
 from taut.loading.code_conventions import load_code_conventions
 from taut.loading.config_values import ensure_unique as _ensure_unique
 from taut.loading.config_values import integer as _integer
@@ -39,11 +37,13 @@ from taut.loading.config_values import table as _table
 from taut.loading.config_values import table_list as _table_list
 from taut.loading.configuration_document import (
     PYPROJECT_CONFIG_PATH,
+    ConfigurationDocument,
     read_configuration_document,
 )
 from taut.loading.default_configuration import (
     default_project_configuration as default_project_configuration,
 )
+from taut.loading.effect_configuration import load_catalog
 from taut.loading.errors import PolicyConfigError
 from taut.loading.policy_extensions import (
     KNOWN_ZONES,
@@ -125,9 +125,10 @@ def load_project_configuration(
     config_path: ConfigPath | None = None,
     *,
     rule_levels: Mapping[RuleId, RuleLevel] | None = None,
+    document: ConfigurationDocument | None = None,
 ) -> ProjectConfiguration:
     try:
-        return _load_project_configuration(project_root, config_path, rule_levels)
+        return _load_project_configuration(project_root, config_path, rule_levels, document)
     except ValueError as error:
         raise PolicyConfigError(f"invalid configuration value: {error}") from error
 
@@ -136,8 +137,9 @@ def _load_project_configuration(
     project_root: Path,
     config_path: ConfigPath | None,
     rule_levels: Mapping[RuleId, RuleLevel] | None,
+    document: ConfigurationDocument | None = None,
 ) -> ProjectConfiguration:
-    document = read_configuration_document(project_root, config_path)
+    document = document or read_configuration_document(project_root, config_path)
     root = document.root
     _reject_unknown(root, _ROOT_KEYS, "config")
     version = root.get("schema_version")
@@ -176,7 +178,7 @@ def _load_project_configuration(
 
     roles = _load_roles(root, location)
     zones = _load_zones(root, location)
-    catalog = _load_catalog(root)
+    catalog = load_catalog(root)
     policy = _load_policy(
         root,
         strict=document.strict,
@@ -307,28 +309,6 @@ def _load_zones(root: dict[str, object], location: ConfigLocation) -> tuple[Zone
         values.append(ZoneMatcher(zone, _strings(item.get("patterns"), "zones.patterns"), location))
     _ensure_unique((matcher.zone.value for matcher in values), "zone")
     return tuple(values)
-
-
-def _load_catalog(root: dict[str, object]) -> EffectCatalog:
-    entries = {entry.symbol: entry for entry in builtin_catalog_entries()}
-    for item in _table_list(root.get("effects", []), "effects"):
-        _reject_unknown(item, frozenset({"symbol", "effects", "access"}), "effects")
-        symbol = SymbolId(_string(item.get("symbol"), "effects.symbol"))
-        try:
-            effects = frozenset(
-                Effect(value) for value in _strings(item.get("effects"), "effects.effects")
-            )
-            access_path = AccessPath(_string(item.get("access", "direct"), "effects.access"))
-        except ValueError as error:
-            raise PolicyConfigError(
-                f"invalid effect catalog entry for {symbol.value}: {error}"
-            ) from error
-        entry = CatalogEntry(symbol, effects, access_path)
-        previous = entries.get(symbol)
-        if previous is not None and previous != entry:
-            raise PolicyConfigError(f"cannot override built-in effect: {symbol.value}")
-        entries[symbol] = entry
-    return EffectCatalog(FrozenMap(entries))
 
 
 def _load_policy(

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import re
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
@@ -8,8 +7,12 @@ from pathlib import Path
 from typing import cast
 
 from taut.configuration.manifest import Role
+from taut.configuration.path_patterns import compact_patterns
+from taut.loading.config_values import integer
 from taut.loading.errors import PolicyConfigError
 from taut.onboarding_policy import validated_patterns
+from taut.onboarding_role_evidence import InitRoleEvidence as InitRoleEvidence
+from taut.onboarding_role_evidence import semantic_role_evidence, unique_role_evidence
 from taut.project_observation import observe_path
 
 _ROLE_ALIAS_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -108,22 +111,6 @@ _FILE_ROLE_SUFFIXES = {
 
 
 @dataclass(frozen=True)
-class InitRoleEvidence:
-    role: str
-    kind: str
-    value: str
-    confidence: str
-
-    def json_payload(self) -> dict[str, str]:
-        return {
-            "role": self.role,
-            "kind": self.kind,
-            "value": self.value,
-            "confidence": self.confidence,
-        }
-
-
-@dataclass(frozen=True)
 class InitRoleObservation:
     path: str
     recommended: str
@@ -149,6 +136,7 @@ class InitRoleSelector:
     include: tuple[str, ...]
     exclude: tuple[str, ...]
     reason: str
+    priority: int = 0
 
     def matches(self, path: str) -> bool:
         return any(fnmatchcase(path, pattern) for pattern in self.include) and not any(
@@ -162,6 +150,7 @@ class InitRoleMatcher:
     include: tuple[str, ...]
     exclude: tuple[str, ...]
     reasons: tuple[str, ...] = ()
+    priority: int = 0
 
 
 def answer_role_aliases(answers: dict[str, object] | None) -> dict[str, str]:
@@ -217,7 +206,7 @@ def answer_role_selectors(
         if not all(isinstance(key, str) for key in raw_item):
             raise PolicyConfigError(f"init role_selectors[{index}] must be an object")
         item = cast(dict[str, object], value)
-        unknown = set(item).difference({"role", "include", "exclude", "reason"})
+        unknown = set(item).difference({"role", "include", "exclude", "reason", "priority"})
         if unknown:
             raise PolicyConfigError(
                 f"unknown init role selector keys: {', '.join(sorted(unknown))}"
@@ -230,14 +219,19 @@ def answer_role_selectors(
         reason = item.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             raise PolicyConfigError("init role selector requires a non-empty reason")
-        selector = InitRoleSelector(role, include, exclude, reason.strip())
+        priority = integer(item.get("priority", 0), f"role_selectors[{index}].priority")
+        if any(old.role == role and old.priority != priority for old in selectors):
+            raise PolicyConfigError("init selectors for one role must have the same priority")
+        selector = InitRoleSelector(role, include, exclude, reason.strip(), priority)
         if not any(selector.matches(path) for path in paths):
             raise PolicyConfigError(
                 f"init role selector matches no discovered Python file: {include!r}"
             )
         selectors.append(selector)
     for path in paths:
-        matches = {selector.role for selector in selectors if selector.matches(path)}
+        matching = [selector for selector in selectors if selector.matches(path)]
+        highest = max((selector.priority for selector in matching), default=None)
+        matches = {selector.role for selector in matching if selector.priority == highest}
         if len(matches) > 1:
             raise PolicyConfigError(
                 f"init role selectors assign multiple roles to {path}: {', '.join(sorted(matches))}"
@@ -258,7 +252,11 @@ def observe_roles(
             path,
             aliases,
             overrides.get(path),
-            next((item for item in selectors if item.matches(path)), None),
+            max(
+                (item for item in selectors if item.matches(path)),
+                key=lambda item: item.priority,
+                default=None,
+            ),
         )
         for path in paths
     )
@@ -293,23 +291,15 @@ def synthesize_role_matchers(
             role_includes.update(structural)
         elif observation.confidence != "low":
             role_includes.add(observation.path)
-    for observation in observations:
-        matching = {
-            role
-            for role, patterns in includes.items()
-            if any(fnmatchcase(observation.path, pattern) for pattern in patterns)
-        }
-        if observation.recommended not in matching and observation.confidence != "low":
-            includes.setdefault(observation.recommended, set()).add(observation.path)
-            matching.add(observation.recommended)
-        for role in matching.difference({observation.recommended}):
-            excludes.setdefault(role, set()).add(observation.path)
+    # Do not generate per-file exclusions to make a mixed directory pass. The
+    # preflight reports conflicts; move/split code or review a stable selector.
     return tuple(
         InitRoleMatcher(
             role,
-            tuple(sorted(patterns)),
-            tuple(sorted(excludes.get(role, ()))),
+            compact_patterns(tuple(sorted(patterns))),
+            compact_patterns(tuple(sorted(excludes.get(role, ())))),
             tuple(sorted(reasons.get(role, ()))),
+            next((item.priority for item in selectors if item.role == role), 0),
         )
         for role, patterns in sorted(includes.items())
         if patterns
@@ -376,8 +366,8 @@ def _observe_role(
         content = (root / path).read_text(errors="replace")
     except OSError:
         content = ""
-    signals.extend(_semantic_role_evidence(content))
-    signals = _unique_role_evidence(signals)
+    signals.extend(semantic_role_evidence(content))
+    signals = unique_role_evidence(signals)
     if not signals:
         fallback = InitRoleEvidence("application", "fallback", "no stronger role evidence", "low")
         return InitRoleObservation(path, "application", ("application",), "low", True, (fallback,))
@@ -417,56 +407,6 @@ def _single_role_observation(path: str, role: str, kind: str, value: str) -> Ini
     return InitRoleObservation(path, role, (role,), "high", False, evidence)
 
 
-def _semantic_role_evidence(content: str) -> list[InitRoleEvidence]:
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return []
-    aliases: dict[str, str] = {}
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            for item in node.names:
-                aliases[item.asname or item.name.split(".", 1)[0]] = item.name
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            for item in node.names:
-                aliases[item.asname or item.name] = f"{node.module}.{item.name}"
-
-    result: list[InitRoleEvidence] = []
-    for descendant in ast.walk(tree):
-        if isinstance(descendant, ast.ClassDef):
-            for base in descendant.bases:
-                symbol = _resolved_expression_name(base, aliases)
-                if symbol == "tortoise.models.Model":
-                    result.append(InitRoleEvidence("model", "inherits", symbol, "high"))
-                elif symbol in {"pydantic.BaseModel", "pydantic.main.BaseModel"}:
-                    result.append(InitRoleEvidence("schema", "inherits", symbol, "high"))
-        elif isinstance(descendant, ast.Call):
-            symbol = _resolved_expression_name(descendant.func, aliases)
-            if symbol in {"fastapi.APIRouter", "fastapi.routing.APIRouter"}:
-                result.append(InitRoleEvidence("router", "constructs", symbol, "high"))
-    return result
-
-
-def _resolved_expression_name(node: ast.expr, aliases: dict[str, str]) -> str | None:
-    if isinstance(node, ast.Name):
-        return aliases.get(node.id, node.id)
-    if isinstance(node, ast.Attribute):
-        parent = _resolved_expression_name(node.value, aliases)
-        return f"{parent}.{node.attr}" if parent is not None else None
-    return None
-
-
-def _unique_role_evidence(values: list[InitRoleEvidence]) -> list[InitRoleEvidence]:
-    seen: set[tuple[str, str, str, str]] = set()
-    result: list[InitRoleEvidence] = []
-    for item in values:
-        key = (item.role, item.kind, item.value, item.confidence)
-        if key not in seen:
-            seen.add(key)
-            result.append(item)
-    return result
-
-
 def _structural_patterns(observation: InitRoleObservation) -> tuple[str, ...]:
     source = Path(observation.path)
     directories = tuple(part.lower() for part in source.parts[:-1])
@@ -488,11 +428,14 @@ def _structural_patterns(observation: InitRoleObservation) -> tuple[str, ...]:
             if indexes:
                 roots.append(Path(*source.parts[: indexes[0] + 1]).as_posix())
     if not roots:
+        for evidence in observation.evidence:
+            if evidence.kind == "filename_suffix" and evidence.role == observation.recommended:
+                parent = source.parent.as_posix()
+                prefix = "" if parent == "." else f"{parent}/"
+                return (f"{prefix}*{evidence.value}.py", f"{prefix}*{evidence.value}.pyi")
         return ()
     root = min(roots, key=lambda item: (len(Path(item).parts), item))
     return (
         f"{root}/*.py",
-        f"{root}/**/*.py",
         f"{root}/*.pyi",
-        f"{root}/**/*.pyi",
     )

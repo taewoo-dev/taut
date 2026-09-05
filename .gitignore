@@ -17,3 +17,4 @@ dist/
 !/docs/plugins.md
 !/docs/getting-started.md
 !/docs/performance-roadmap.md
+!/docs/configuration-conventions.md

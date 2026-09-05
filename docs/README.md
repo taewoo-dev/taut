@@ -5,6 +5,8 @@
 
 ## 현재 구현 기준
 
+- [`configuration-conventions.md`](configuration-conventions.md): 신규 파일 자동 분류, 역할 규약, 설정 간소화와 정책 준수 전환
+
 - [`architecture/taut-system-architecture.html`](architecture/taut-system-architecture.html): 핵심 구조·계층·판정 흐름 인터랙티브 맵
 - [`getting-started.md`](getting-started.md): 신규 설치부터 AI 보정, audit/check 반복, CI 적용까지의 사용자 가이드
 - [`performance.md`](performance.md): disk cache와 resident daemon의 재현 가능한 성능 계약
