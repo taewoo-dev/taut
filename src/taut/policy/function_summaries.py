@@ -85,12 +85,19 @@ def build_function_summary_state(
     modules: dict[SymbolId, ModuleId] = {}
     graph: dict[SymbolId, frozenset[SymbolId]] = {}
     direct: dict[SymbolId, FunctionSemanticSummary] = {}
+    summary_values: dict[FunctionSemanticSummary, FunctionSemanticSummary] = {}
+
+    def canonical_summary(summary: FunctionSemanticSummary) -> FunctionSemanticSummary:
+        # Full immutable values, including uncertainty and access paths, define equality.
+        # The pool belongs to this build and does not retain previous revisions globally.
+        return summary_values.setdefault(summary, summary)
+
     reused_functions = 0
     if prior is not None:
         for symbol, module_id in prior.modules.items():
             if module_id in current_modules and module_id not in invalidated:
                 modules[symbol] = module_id
-                direct[symbol] = prior.direct[symbol]
+                direct[symbol] = canonical_summary(prior.direct[symbol])
                 graph[symbol] = frozenset(prior.graph[symbol])
                 reused_functions += 1
 
@@ -151,11 +158,13 @@ def build_function_summary_state(
                 bulk_operations.add(operation)
 
         graph[symbol] = frozenset(owned_callees)
-        direct[symbol] = FunctionSemanticSummary(
-            FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
-            frozenset(providers),
-            frozenset(bulk_operations),
-            frozenset(uncertain_effects),
+        direct[symbol] = canonical_summary(
+            FunctionSemanticSummary(
+                FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
+                frozenset(providers),
+                frozenset(bulk_operations),
+                frozenset(uncertain_effects),
+            )
         )
 
     changed_symbols = set(functions)
@@ -236,7 +245,7 @@ def build_function_summary_state(
             for target in sorted(outgoing[component_index]):
                 summary = _merge_summary(summary, component_summaries[target])
             recomputed_components += 1
-        component_summaries[component_index] = summary
+        component_summaries[component_index] = canonical_summary(summary)
         for dependent in sorted(dependents[component_index]):
             remaining[dependent] -= 1
             if remaining[dependent] == 0:

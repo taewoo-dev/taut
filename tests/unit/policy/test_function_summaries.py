@@ -10,6 +10,41 @@ from taut.policy.context import PolicyContext
 from taut.policy.function_summaries import strongly_connected_components
 
 
+def test_equal_summary_values_share_without_merging_access_paths() -> None:
+    context = make_context(
+        analyze(
+            make_source("vendor.py", "def send(): pass\ndef wrapped(): pass\n"),
+            make_source(
+                "app/service.py",
+                "from vendor import send, wrapped\n"
+                "def first(): send()\n"
+                "def second(): send()\n"
+                "def approved(): wrapped()\n",
+            ),
+        ),
+        roles={"service": ("app/**", "vendor.py")},
+        extra_catalog_entries=(
+            CatalogEntry(
+                SymbolId("vendor.send"), frozenset({Effect.EXTERNAL_CALL}), AccessPath.DIRECT
+            ),
+            CatalogEntry(
+                SymbolId("vendor.wrapped"),
+                frozenset({Effect.EXTERNAL_CALL}),
+                AccessPath.APPROVED_WRAPPER,
+            ),
+        ),
+    )
+    first = context.function_summary(SymbolId("app.service.first"))
+    second = context.function_summary(SymbolId("app.service.second"))
+    approved = context.function_summary(SymbolId("app.service.approved"))
+    assert first is not None and approved is not None
+    assert first is second
+    assert first.effects == approved.effects
+    assert first is not approved
+    assert first.effect_access[Effect.EXTERNAL_CALL] is AccessPath.DIRECT
+    assert approved.effect_access[Effect.EXTERNAL_CALL] is AccessPath.APPROVED_WRAPPER
+
+
 def test_recursive_component_shares_transitive_effects() -> None:
     snapshot = analyze(
         make_source("vendor.py", "def send(): pass\n"),
