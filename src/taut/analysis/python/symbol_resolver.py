@@ -61,6 +61,8 @@ class PythonSymbolResolver(PythonScopeFlow):
         self._type_checking_depth = 0
         self._type_resolution_depth = 0
         self._locations: dict[ast.AST, SourceRange] = {}
+        self._location_values: dict[SourceRange, SourceRange] = {}
+        self._provenance_values: dict[SourceRange, Provenance] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
         self._resolutions: dict[ast.AST, SymbolRef] = {}
@@ -247,17 +249,23 @@ class PythonSymbolResolver(PythonScopeFlow):
 
     def _location(self, node: ast.AST) -> SourceRange:
         if node not in self._locations:
-            self._locations[node] = node_range(self.source, node)
+            location = node_range(self.source, node)
+            self._locations[node] = self._location_values.setdefault(location, location)
         return self._locations[node]
 
     def _provenance(self, node: ast.AST) -> Provenance:
         if node not in self._provenances:
-            self._provenances[node] = Provenance(
-                PYTHON_AST_IDENTITY.name,
-                PYTHON_AST_IDENTITY.version,
-                self.source.content_hash,
-                self._location(node),
-            )
+            location = self._location(node)
+            value = self._provenance_values.get(location)
+            if value is None:
+                value = Provenance(
+                    PYTHON_AST_IDENTITY.name,
+                    PYTHON_AST_IDENTITY.version,
+                    self.source.content_hash,
+                    location,
+                )
+                self._provenance_values[location] = value
+            self._provenances[node] = value
         return self._provenances[node]
 
     def _written_name(self, node: ast.AST) -> str:
