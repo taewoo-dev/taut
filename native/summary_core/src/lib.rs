@@ -217,7 +217,7 @@ fn calculate(
             .and_then(|p| p.summaries.get(&names[components[i][0]]));
         let value = if let Some(v) = cached {
             reused += 1;
-            Arc::clone(v)
+            Arc::clone(pool.entry((**v).clone()).or_insert_with(|| Arc::clone(v)))
         } else {
             recomputed += 1;
             let mut v = Summary::default();
@@ -345,6 +345,26 @@ mod tests {
         assert_eq!(new.summaries["a"].effects, 0);
         assert_eq!(old.summaries["a"].effects, 1);
         assert!(calculate(Some(&old), vec![], vec![row("a", &[], 0)]).is_err());
+    }
+    #[test]
+    fn changed_and_reused_equal_values_share() {
+        let old = calculate(
+            None,
+            vec![],
+            vec![
+                ("a.f".into(), "a".into(), vec![], (0, 0, vec![], vec![], 0)),
+                ("b.f".into(), "b".into(), vec![], (1, 1, vec![], vec![], 0)),
+            ],
+        )
+        .unwrap();
+        let new = calculate(
+            Some(&old),
+            vec!["b".into()],
+            vec![("b.f".into(), "b".into(), vec![], (0, 0, vec![], vec![], 0))],
+        )
+        .unwrap();
+        assert_eq!(new.stats().3, 1);
+        assert_eq!(old.stats().3, 2);
     }
     #[test]
     fn deep_chain_is_iterative() {
