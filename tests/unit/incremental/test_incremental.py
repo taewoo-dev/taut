@@ -18,6 +18,7 @@ from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId
 from taut.domain.location import ProjectPath
 from taut.incremental import ChangeSet, IncrementalProjectAnalyzer
+from taut.incremental.project_assembly import ProjectAssemblyState
 
 
 def _request(value: str) -> AnalysisRequest:
@@ -269,3 +270,36 @@ def test_module_addition_resolves_previously_unresolved_import() -> None:
     assert second == ProjectAnalyzer(PythonAstAdapter()).analyze(_request_many(values))
     del values["app/missing.py"]
     assert analyzer.analyze(_request_many(values)) == first
+
+
+def test_failed_assembly_does_not_publish_new_source_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    original_snapshot = analyzer.analyze(_request("value = 1"))
+    original = ProjectAssemblyState.build
+
+    def fail(*args: object, **kwargs: object) -> ProjectAssemblyState:
+        raise ValueError("injected assembly failure")
+
+    monkeypatch.setattr(ProjectAssemblyState, "build", staticmethod(fail))
+    with pytest.raises(ValueError, match="injected"):
+        analyzer.analyze(_request("value = 2"))
+    assert analyzer.assembly_state is not None
+    assert analyzer.assembly_state.snapshot is original_snapshot
+    monkeypatch.setattr(ProjectAssemblyState, "build", original)
+    recovered = analyzer.analyze(_request("value = 2"))
+    assert recovered == ProjectAnalyzer(PythonAstAdapter()).analyze(_request("value = 2"))
+    assert recovered != original_snapshot
+
+
+def test_incompatible_assembly_state_rebuilds_all_contributions() -> None:
+    request = _request("value = 1")
+    adapter = PythonAstAdapter()
+    results = adapter.analyze_modules(request.sources, request.resolver, 1)
+    prior = replace(ProjectAssemblyState.build(request, results), schema_version=0)
+    current = ProjectAssemblyState.build(request, results, prior)
+    assert current.schema_version == 1
+    assert current.recomputed_modules == 1
+    assert not current.reused_project_index
+    assert current.snapshot == ProjectAnalyzer.assemble(request, results)

@@ -92,13 +92,13 @@ class IncrementalProjectAnalyzer:
         if module_cache is not None:
             module_cache.put_many(tuple(zip(pending, fresh, strict=True)))
         old_index = self._snapshot.project if self._snapshot is not None else None
-        self._sources = request.sources
-        self._request_identity = identity
         assembled = ProjectAssemblyState.build(
             request,
             tuple(self._results[source.module_id] for source in request.sources),
             self.assembly_state if reusable else None,
         )
+        self._sources = request.sources
+        self._request_identity = identity
         self.assembly_state = assembled
         self._snapshot = assembled.snapshot
         self.last_impact = ImpactGraph.from_indexes(changes, old_index, self._snapshot.project)

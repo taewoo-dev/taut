@@ -67,6 +67,7 @@ class ProjectAssemblyState:
     contributions: FrozenMap[ModuleId, ModuleContribution]
     recomputed_modules: int
     reused_project_index: bool
+    schema_version: int = 1
 
     @classmethod
     def build(
@@ -75,6 +76,8 @@ class ProjectAssemblyState:
         results: tuple[ModuleAnalysisResult, ...],
         prior: ProjectAssemblyState | None = None,
     ) -> ProjectAssemblyState:
+        if prior is not None and prior.schema_version != 1:
+            prior = None
         if tuple(source.module_id for source in request.sources) != tuple(
             result.facts.module.id for result in results
         ):
