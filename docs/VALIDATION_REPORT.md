@@ -1,5 +1,18 @@
 # pytaut validation report
 
+## Unreleased callback forwarding — 2026-09-05
+
+The follow-up based on `5698c7b` passed `bash scripts/test.sh` on Python 3.14.0:
+1,363 tests, 90.42% total coverage with branch measurement, conventions, Ruff, strict
+mypy/Pyright, strict self-policy, package builds, and installed-wheel smoke checks.
+New regression cases cover positional/keyword multi-hop forwarding, reverse definition order,
+cycles with and without guarded invocation, safe storage/offloading/reassignment, and transitive
+cross-module edits with resident/fresh parity. No package was published.
+
+The same temporary anti-monitor snapshot passed, and an injected multi-hop blocking callback
+produced ASYNC001 with resident/fresh parity. Current stage timings and the scope of the Rust
+decision are recorded in [the native revisit](quality/native-revisit.md).
+
 ## Unreleased follow-up — 2026-09-05
 
 The follow-up based on `0dea529` passed `bash scripts/test.sh` on Python 3.14.0:

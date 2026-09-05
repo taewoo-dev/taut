@@ -20,7 +20,7 @@ from taut.policy.rules.helpers import (
 )
 
 RULE_ID = RuleId("ASYNC001")
-RULE_VERSION = 3
+RULE_VERSION = 4
 _ALL_ZONES = frozenset({Zone("prod"), Zone("test"), Zone("migration"), Zone("script")})
 
 

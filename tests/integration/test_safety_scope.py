@@ -228,3 +228,117 @@ def test_lambda_edit_sequence_preserves_resident_cold_parity(tmp_path: Path) -> 
         fresh = run_check_request(request)
         assert resident.exit_code == fresh.exit_code == code
         assert resident.stdout == fresh.stdout
+
+
+@pytest.mark.parametrize(
+    "forward",
+    [
+        "invoke(fn)",
+        "invoke(fn=fn)",
+        "middle(fn)",
+    ],
+)
+def test_forwarded_callback_is_blocking(tmp_path: Path, forward: str) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef invoke(fn):\n    fn(1)\n"
+            "def middle(fn):\n    invoke(fn)\n"
+            f"def outer(fn):\n    {forward}\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 1
+    assert any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "return fn",
+        "asyncio.to_thread(invoke, fn)",
+        "fn = str\n    invoke(fn)",
+        "invoke(str)",
+        "invoke(fn, fn=fn)",
+    ],
+)
+def test_forwarding_safe_controls(tmp_path: Path, body: str) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\nimport asyncio\ndef invoke(fn):\n    fn(1)\n"
+            f"def outer(fn):\n    {body}\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 0
+
+
+def test_guarded_forwarding_remains_uncertain(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef invoke(fn):\n    fn(1)\n"
+            "def outer(fn, enabled):\n    if enabled:\n        invoke(fn)\n"
+            "async def work():\n    outer(time.sleep, True)\n",
+        )
+    )
+    assert result.exit_code == 2
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cycle_without_invocation_is_not_blocking(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef first(fn):\n    second(fn)\n"
+            "def second(fn):\n    first(fn)\n"
+            "async def work():\n    first(time.sleep)\n",
+        )
+    )
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cross_module_edit_parity(tmp_path: Path) -> None:
+    request = _project(
+        tmp_path,
+        "import time\nfrom app.helper import outer\nasync def work():\n    outer(time.sleep)\n",
+    )
+    (tmp_path / "app/helper.py").write_text(
+        "from app.leaf import invoke\ndef outer(fn):\n    invoke(fn)\n"
+    )
+    with ResidentCheckSession(tmp_path) as session:
+        for body, expected in [("return fn", 0), ("fn(1)", 1), ("return fn", 0)]:
+            (tmp_path / "app/leaf.py").write_text(f"def invoke(fn):\n    {body}\n")
+            resident = session.check(request)
+            cold = run_check_request(request)
+            assert resident.exit_code == cold.exit_code == expected
+            assert (resident.stdout, resident.stderr) == (cold.stdout, cold.stderr)
+
+
+def test_forwarding_reaches_fixed_point_in_reverse_definition_order(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef outer(fn):\n    middle(fn)\n"
+            "def middle(fn):\n    invoke(fn)\n"
+            "def invoke(fn):\n    fn(1)\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 1
+    assert any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cycle_with_guarded_invocation_is_uncertain(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef first(fn, enabled):\n    second(fn, enabled)\n"
+            "def second(fn, enabled):\n    if enabled:\n        fn(1)\n"
+            "    else:\n        first(fn, enabled)\n"
+            "async def work():\n    first(time.sleep, True)\n",
+        )
+    )
+    assert result.exit_code == 2
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Track known callback effects across multiple synchronous helper calls and module boundaries,
+  preserving uncertainty on guarded paths and excluding storage, offloading, and reassignment.
+  Validate transitive helper edits against fresh analysis and revisit native acceleration using
+  current anti-monitor stage timings.
+
 - Model immediately invoked and locally assigned lambdas as callable facts while preserving
   deferred/offloaded lambda behavior. Specialize valid direct synchronous callback invocations;
   guarded/context-managed callback paths remain indeterminate.

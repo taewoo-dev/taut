@@ -36,6 +36,13 @@ positional-only, and default arguments are supported. Guarded or context-managed
 remain `callback_effect` uncertainty. Attribute arguments must resolve to one symbol chain;
 merely containing a catalog symbol inside an expression is insufficient.
 
+Known callback effects also propagate through multiple undecorated synchronous helpers,
+including helpers in other modules. Parameter-to-parameter forwarding reuses the same argument
+binding checks. Invocation sets converge to a fixed point; a recursive forwarding cycle with
+no callback invocation does not manufacture an effect. A guard or context boundary anywhere
+on a forwarding path prevents that path from establishing definite synchronous execution.
+Reassigned parameters, callable storage, and thread-offload calls do not establish forwarding.
+
 Immediately invoked and locally assigned lambdas now have function facts and resolved call
 identities. Their effects propagate only through actual calls. Storing a lambda, returning an
 uninvoked lambda, `asyncio.to_thread(lambda: ...)`, and `run_in_executor(None, lambda: ...)` do
@@ -43,7 +50,7 @@ not inherit those effects merely because a lambda exists. A lambda parameter can
 known callback. Default argument expressions still execute when the lambda is created.
 
 These improvements are bounded. Method/decorator-based callback dispatch, starred argument
-binding, callback forwarding through arbitrary higher-order chains, reassigned parameters, and
+binding, arbitrary higher-order transformations beyond exact parameter forwarding, reassigned parameters, and
 effects outside the catalog are not exhaustively modeled. Passing a first-party callable as an
 argument does not automatically specialize its effect summary. These limitations can still yield
 exit 0, and the small labeled corpus does not exhaust these cases.

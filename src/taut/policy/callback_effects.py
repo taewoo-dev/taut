@@ -13,7 +13,7 @@ from taut.domain.ids import SymbolId
 class CallbackEffectIndex:
     """Specialize exact callbacks invoked by bounded first-party synchronous helpers.
 
-    Bounded to direct parameter calls in undecorated module-level functions.
+    Bounded to parameter calls and forwarding through undecorated synchronous helpers.
     Merely accepting or returning a callable does not make a function an invoker.
     """
 
@@ -26,9 +26,12 @@ class CallbackEffectIndex:
         functions: dict[SymbolId, FunctionFact] = {}
         invoked: dict[SymbolId, frozenset[str]] = {}
         synchronous: dict[SymbolId, frozenset[str]] = {}
+        owned_calls: dict[SymbolId, tuple[CallFact, ...]] = {}
+        reassigned_by_owner: dict[SymbolId, set[SymbolId]] = {}
         for module_id in model.modules():
             module = model.module(module_id)
             calls: dict[SymbolId, set[SymbolId]] = {}
+            call_facts: dict[SymbolId, list[CallFact]] = {}
             direct: dict[SymbolId, set[SymbolId]] = {}
             reassigned: set[SymbolId] = set()
             for binding in module.bindings:
@@ -37,6 +40,7 @@ class CallbackEffectIndex:
             for call in module.calls:
                 if call.enclosing_symbol is not None and call.ref.symbol is not None:
                     calls.setdefault(call.enclosing_symbol, set()).add(call.ref.symbol)
+                    call_facts.setdefault(call.enclosing_symbol, []).append(call)
                     if (
                         call.context.guard is GuardKind.UNCONDITIONAL
                         and not call.enclosing_contexts
@@ -54,19 +58,27 @@ class CallbackEffectIndex:
                     if SymbolId(f"{function.symbol_id.value}.{parameter.name}")
                     in calls.get(function.symbol_id, set()) - reassigned
                 )
-                if names:
-                    functions[symbol] = function
-                    invoked[symbol] = names
-                    synchronous[symbol] = frozenset(
-                        name
-                        for name in names
-                        if SymbolId(f"{function.symbol_id.value}.{name}")
-                        in direct.get(function.symbol_id, set())
-                    )
+                if function.is_async:
+                    continue
+                functions[symbol] = function
+                owned_calls[symbol] = tuple(call_facts.get(function.symbol_id, ()))
+                reassigned_by_owner[symbol] = reassigned
+                invoked[symbol] = names
+                synchronous[symbol] = frozenset(
+                    name
+                    for name in names
+                    if SymbolId(f"{function.symbol_id.value}.{name}")
+                    in direct.get(function.symbol_id, set())
+                )
+        _propagate_forwarding(
+            model, functions, owned_calls, reassigned_by_owner, invoked, synchronous
+        )
         return cls(
-            FrozenMap(sorted(functions.items())),
-            FrozenMap(sorted(invoked.items())),
-            FrozenMap(sorted(synchronous.items())),
+            FrozenMap(sorted((symbol, functions[symbol]) for symbol in invoked if invoked[symbol])),
+            FrozenMap(sorted((symbol, names) for symbol, names in invoked.items() if names)),
+            FrozenMap(
+                sorted((symbol, synchronous[symbol]) for symbol in invoked if invoked[symbol])
+            ),
         )
 
     def effects(
@@ -81,38 +93,8 @@ class CallbackEffectIndex:
             return frozenset()
         symbol = model.canonical_symbol(call.ref.symbol)
         function = self.functions.get(symbol)
-        if function is None or function.is_async or call.has_keyword_unpack:
-            return frozenset()
-        if any(argument.value.kind == "Starred" for argument in call.arguments):
-            return frozenset()
-        positional = tuple(
-            parameter
-            for parameter in function.parameters
-            if parameter.kind in {"positional_only", "positional_or_keyword"}
-        )
-        parameters = {parameter.name: parameter for parameter in function.parameters}
-        values = {parameter.name: parameter.default_expression for parameter in function.parameters}
-        supplied: set[str] = set()
-        for argument in call.arguments:
-            if argument.name is not None:
-                parameter = parameters.get(argument.name)
-                if parameter is None or parameter.kind in {"positional_only", "var_keyword"}:
-                    return frozenset()
-                name = argument.name
-            elif argument.position < len(positional):
-                name = positional[argument.position].name
-            else:
-                return frozenset()
-            if name in supplied:
-                return frozenset()
-            values[name] = argument.value
-            supplied.add(name)
-        if any(
-            not parameter.has_default
-            and parameter.kind not in {"var_positional", "var_keyword"}
-            and parameter.name not in supplied
-            for parameter in function.parameters
-        ):
+        values = bind_arguments(call, function) if function is not None else None
+        if values is None:
             return frozenset()
         effects: set[Effect] = set()
         names = self.synchronous[symbol] if definite else self.invoked[symbol]
@@ -123,6 +105,90 @@ class CallbackEffectIndex:
             if entry is not None and entry.access_path is AccessPath.DIRECT:
                 effects.update(entry.effects)
         return frozenset(effects)
+
+
+def _propagate_forwarding(
+    model: SemanticModel,
+    functions: dict[SymbolId, FunctionFact],
+    owned_calls: dict[SymbolId, tuple[CallFact, ...]],
+    reassigned_by_owner: dict[SymbolId, set[SymbolId]],
+    invoked: dict[SymbolId, frozenset[str]],
+    synchronous: dict[SymbolId, frozenset[str]],
+) -> None:
+    # Monotone finite sets reach a fixed point even for mutually recursive helpers.
+    changed = True
+    while changed:
+        changed = False
+        for owner, function in functions.items():
+            parameters = {
+                SymbolId(f"{function.symbol_id.value}.{parameter.name}"): parameter.name
+                for parameter in function.parameters
+                if SymbolId(f"{function.symbol_id.value}.{parameter.name}")
+                not in reassigned_by_owner[owner]
+            }
+            if not parameters:
+                continue
+            for call in owned_calls[owner]:
+                if call.ref.state is not ResolutionState.RESOLVED or call.ref.symbol is None:
+                    continue
+                target = model.canonical_symbol(call.ref.symbol)
+                callee = functions.get(target)
+                values = bind_arguments(call, callee) if callee is not None else None
+                if values is None:
+                    continue
+                for definite, index in ((False, invoked), (True, synchronous)):
+                    if definite and (
+                        call.context.guard is not GuardKind.UNCONDITIONAL or call.enclosing_contexts
+                    ):
+                        continue
+                    forwarded = frozenset(
+                        parameters[candidate]
+                        for name in index[target]
+                        if (candidate := argument_symbol(values.get(name), model)) in parameters
+                    )
+                    updated = index[owner] | forwarded
+                    if updated != index[owner]:
+                        index[owner] = updated
+                        changed = True
+
+
+def bind_arguments(
+    call: CallFact, function: FunctionFact
+) -> dict[str, ExpressionSummary | None] | None:
+    if function.is_async or call.has_keyword_unpack:
+        return None
+    if any(argument.value.kind == "Starred" for argument in call.arguments):
+        return None
+    positional = tuple(
+        parameter
+        for parameter in function.parameters
+        if parameter.kind in {"positional_only", "positional_or_keyword"}
+    )
+    parameters = {parameter.name: parameter for parameter in function.parameters}
+    values = {parameter.name: parameter.default_expression for parameter in function.parameters}
+    supplied: set[str] = set()
+    for argument in call.arguments:
+        if argument.name is not None:
+            parameter = parameters.get(argument.name)
+            if parameter is None or parameter.kind in {"positional_only", "var_keyword"}:
+                return None
+            name = argument.name
+        elif argument.position < len(positional):
+            name = positional[argument.position].name
+        else:
+            return None
+        if name in supplied:
+            return None
+        values[name] = argument.value
+        supplied.add(name)
+    if any(
+        not parameter.has_default
+        and parameter.kind not in {"var_positional", "var_keyword"}
+        and parameter.name not in supplied
+        for parameter in function.parameters
+    ):
+        return None
+    return values
 
 
 def argument_symbol(value: ExpressionSummary | None, model: SemanticModel) -> SymbolId | None:

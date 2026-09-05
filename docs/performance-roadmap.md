@@ -315,6 +315,14 @@ reversible slices:
 
 Status: measured; native implementation deferred.
 
+The callback-forwarding follow-up remeasured the same boundary on a newer 1,224-source
+anti-monitor snapshot. Analysis accounted for 49.9% of sampled cold wall and 20.9% of
+ordinary-edit wall; a hypothetical 3x analysis kernel yields about 1.50x and 1.16x overall.
+This still does not justify a rewrite to meet edit-latency goals. These are stage timings,
+not a Rust implementation benchmark; see [the current revisit](quality/native-revisit.md)
+for raw samples, the slower observed edit latency, and decision limits. The earlier detailed
+profile below remains historical evidence from its original 1,213-source checkout.
+
 ### Option A: selective mypyc
 
 Candidate modules are pure, typed computation with limited dynamic extension:
