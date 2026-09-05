@@ -299,7 +299,7 @@ def test_incompatible_assembly_state_rebuilds_all_contributions() -> None:
     results = adapter.analyze_modules(request.sources, request.resolver, 1)
     prior = replace(ProjectAssemblyState.build(request, results), schema_version=0)
     current = ProjectAssemblyState.build(request, results, prior)
-    assert current.schema_version == 1
+    assert current.schema_version == 2
     assert current.recomputed_modules == 1
     assert not current.reused_project_index
     assert current.snapshot == ProjectAnalyzer.assemble(request, results)

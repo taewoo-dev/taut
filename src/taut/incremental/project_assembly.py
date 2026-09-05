@@ -43,7 +43,6 @@ def _index_input(module: ModuleFacts) -> tuple[object, ...]:
 @dataclass(frozen=True)
 class ModuleContribution:
     result: ModuleAnalysisResult
-    index_input: tuple[object, ...]
     relations: ProjectRelations
     calls: ResolutionCoverage
     references: ResolutionCoverage
@@ -54,7 +53,6 @@ class ModuleContribution:
         relations = result.relations
         return cls(
             result,
-            _index_input(facts),
             ProjectRelations(relations.bindings, (), relations.use_edges),
             resolution_coverage(tuple(call.ref.state for call in facts.calls)),
             resolution_coverage(tuple(ref.ref.state for ref in facts.references)),
@@ -67,7 +65,7 @@ class ProjectAssemblyState:
     contributions: FrozenMap[ModuleId, ModuleContribution]
     recomputed_modules: int
     reused_project_index: bool
-    schema_version: int = 1
+    schema_version: int = 2
 
     @classmethod
     def build(
@@ -76,7 +74,7 @@ class ProjectAssemblyState:
         results: tuple[ModuleAnalysisResult, ...],
         prior: ProjectAssemblyState | None = None,
     ) -> ProjectAssemblyState:
-        if prior is not None and prior.schema_version != 1:
+        if prior is not None and prior.schema_version != 2:
             prior = None
         if tuple(source.module_id for source in request.sources) != tuple(
             result.facts.module.id for result in results
@@ -98,7 +96,9 @@ class ProjectAssemblyState:
             prior is not None
             and contributions.keys() == prior.contributions.keys()
             and all(
-                part.index_input == prior.contributions[module_id].index_input
+                part is prior.contributions[module_id]
+                or _index_input(part.result.facts)
+                == _index_input(prior.contributions[module_id].result.facts)
                 for module_id, part in contributions.items()
             )
         )

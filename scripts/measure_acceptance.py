@@ -69,6 +69,7 @@ def main() -> None:
     parser.add_argument("--memory-checks", type=int, default=200)
     parser.add_argument("--mixed-checks", type=int, default=100)
     parser.add_argument("--probe-checks", type=int, default=30)
+    parser.add_argument("--memory-warmup-cycles", type=int, default=0)
     args = parser.parse_args()
     if (
         min(
@@ -81,6 +82,8 @@ def main() -> None:
         < 1
     ):
         parser.error("all counts must be positive")
+    if args.memory_warmup_cycles < 0:
+        parser.error("memory warmup cycles cannot be negative")
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="taut-acceptance-") as temporary:
@@ -118,7 +121,8 @@ def main() -> None:
             output.write_text(
                 json.dumps(
                     {
-                        "harness_version": 2,
+                        "harness_version": 3,
+                        "memory_warmup_cycles": args.memory_warmup_cycles,
                         "mixed_edit_mode": "semantic-cycle/json-oracle",
                         "completed": completed,
                         "daemon_stopped": stopped,
@@ -190,6 +194,10 @@ def main() -> None:
                     check(phase)
                 save()
                 print(phase, summarize(rows[phase]), flush=True)
+            for index in range(args.memory_warmup_cycles * len(cases)):
+                probe_check(index, fresh_each=False, phase="memory_warmup")
+            if args.memory_warmup_cycles:
+                print("memory warmup complete; all five JSON oracles primed", flush=True)
             for kind, count in (("unchanged", args.memory_checks), ("mixed", args.mixed_checks)):
                 for index in range(count):
                     if kind == "mixed":

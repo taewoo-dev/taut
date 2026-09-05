@@ -41,11 +41,11 @@ class FeatureEvidenceCache:
 def module_feature_evidence(
     config: ProjectConfiguration, module: ModuleFacts, classification: ModuleClassification | None
 ) -> dict[str, set[AssuranceEvidence]]:
-    values = {name: set[AssuranceEvidence]() for name in config.assurance.features}
+    values: dict[str, set[AssuranceEvidence]] = {}
 
     def add(domain: str, kind: str, target: str, path: str) -> None:
-        if domain in values:
-            values[domain].add(AssuranceEvidence(domain, kind, target, path))
+        if domain in config.assurance.features:
+            values.setdefault(domain, set()).add(AssuranceEvidence(domain, kind, target, path))
 
     code = config.policy.code
     path = module.module.path.value

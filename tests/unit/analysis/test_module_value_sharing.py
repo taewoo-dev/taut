@@ -35,7 +35,11 @@ def test_pool_lifetime_does_not_mix_source_versions_and_survives_pickle() -> Non
     )
     left, right = first.facts.calls
     assert left.context is right.context
+    assert left.ref.symbol is right.ref.symbol
+    assert left.ref.symbol == second.facts.calls[0].ref.symbol
+    assert left.ref.symbol is not second.facts.calls[0].ref.symbol
     assert left.provenance.source_hash != second.facts.calls[0].provenance.source_hash
     restored = pickle.loads(pickle.dumps(first))
     assert restored == first
     assert restored.facts.calls[0].context is restored.facts.calls[1].context
+    assert restored.facts.calls[0].ref.symbol is restored.facts.calls[1].ref.symbol
