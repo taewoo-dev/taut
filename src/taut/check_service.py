@@ -138,7 +138,6 @@ class ResidentCheckSession:
 
     @property
     def summary_timings(self) -> tuple[float, ...]:
-        """Last built native revision: prepare, encode, FFI, compute, restore, total seconds."""
         context = self._prior_policy_context
         if context is None or "function_summary_state" not in context.__dict__:
             return ()
@@ -146,7 +145,6 @@ class ResidentCheckSession:
 
     @property
     def summary_statistics(self) -> tuple[int, ...]:
-        """Native functions, forward/reverse edges, and distinct retained summary values."""
         context = self._prior_policy_context
         if context is None or "function_summary_state" not in context.__dict__:
             return ()

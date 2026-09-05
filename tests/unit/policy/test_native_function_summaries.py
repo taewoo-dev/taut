@@ -333,3 +333,42 @@ def test_native_effect_contract_round_trip(effect: Effect, access: AccessPath) -
     )
     summary = context.function_summaries[SymbolId("m.f")]
     assert decode_summary(encode_summary(summary)) == summary
+
+
+@native
+def test_cross_module_effect_and_call_removal() -> None:
+    prior: FunctionSummaryState | None = None
+    for body in ("pass", "time.sleep(0)", "pass", "time.sleep(0)"):
+        context = make_context(
+            analyze(
+                make_source("a.py", "from b import callee\ndef caller(): callee()\n"),
+                make_source("b.py", f"import time\ndef callee(): {body}\n"),
+            )
+        )
+        state = replace(
+            context,
+            summary_backend="rust",
+            prior_function_summary_state=prior,
+            function_summary_invalidated_modules=frozenset({ModuleId("b")}),
+        ).function_summary_state
+        assert state.summaries == context.function_summaries
+        assert state.summaries[SymbolId("a.caller")].effects == (
+            frozenset() if body == "pass" else frozenset({Effect.IO_BLOCKING})
+        )
+        prior = state
+    context = make_context(
+        analyze(
+            make_source("a.py", "def caller(): pass\n"),
+            make_source("b.py", "import time\ndef callee(): time.sleep(0)\n"),
+        )
+    )
+    state = replace(
+        context,
+        summary_backend="rust",
+        prior_function_summary_state=prior,
+        function_summary_invalidated_modules=frozenset({ModuleId("a")}),
+    ).function_summary_state
+    assert state.summaries == context.function_summaries
+    assert not state.summaries[SymbolId("a.caller")].effects
+    assert prior is not None
+    assert prior.summaries[SymbolId("a.caller")].effects == frozenset({Effect.IO_BLOCKING})
