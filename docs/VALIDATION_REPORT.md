@@ -1,5 +1,14 @@
 # pytaut validation report
 
+## Performance investigation at 77dce3e — 2026-09-05
+
+The unchanged engine passed the full gate again: 1,363 tests and 90.42% coverage with branch
+measurement. The anti-monitor daemon benchmark passed fresh-output parity, restart/concurrent
+checks, and 30-check memory stability. Separate ordinary/shared edit profiles also matched
+fresh JSON results. Project assembly and broad shared-edit policy/provider recomputation are
+the next measured optimization candidates. See [the test report](quality/performance-investigation.md)
+for timings, profiles, memory, and limits; engine code was not changed in this test pass.
+
 ## Unreleased callback forwarding — 2026-09-05
 
 The follow-up based on `5698c7b` passed `bash scripts/test.sh` on Python 3.14.0:
