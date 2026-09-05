@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from heapq import heappop, heappush
 from itertools import chain
 from typing import Protocol
@@ -57,12 +57,14 @@ class WriteContribution:
 @dataclass(frozen=True)
 class AtomicitySummaryState:
     summaries: FrozenMap[SymbolId, WriteRange]
-    contributions: FrozenMap[SymbolId, tuple[WriteContribution, ...]]
+    contributions: Mapping[SymbolId, tuple[WriteContribution, ...]]
     functions: FrozenMap[SymbolId, FunctionFact]
     modules: FrozenMap[SymbolId, ModuleId]
     reused_functions: int
     recomputed_functions: int
     processed_functions: int
+    native_handle: object | None = field(default=None, repr=False, compare=False)
+    native_modules: frozenset[ModuleId] = field(default=frozenset(), repr=False, compare=False)
 
 
 class AtomicitySummaryContext(Protocol):
@@ -188,7 +190,7 @@ def build_atomicity_summary_state(
             continue
         summaries[symbol] = summary
         for caller in sorted(reverse.get(symbol, ())):
-            if caller in affected and caller not in queued:
+            if caller in functions and caller in affected and caller not in queued:
                 heappush(queue, caller)
                 queued.add(caller)
 

@@ -18,6 +18,7 @@ from taut.configuration.catalog import AccessPath, CatalogEntry, Effect
 from taut.domain.ids import ModuleId, SymbolId
 from taut.policy.function_summaries import FunctionSummaryState
 from taut.policy.native_function_summaries import (
+    NativeBatch,
     NativeDirectView,
     NativeGraphView,
     NativeRow,
@@ -272,6 +273,17 @@ class RecordedNative:
         self.changed: list[str] = []
         self.exports = 0
 
+    def build_batch(self, batch: NativeBatch) -> NativeState:
+        functions, calls, _ = batch
+        assert list(zip(*calls, strict=True)) == [("m.f", "m", "time.sleep", "time.sleep", 2, 2, 0)]
+        return self.build(
+            [(canonical, module, [], (2, 2, [], [], 0)) for canonical, _, module in functions]
+        )
+
+    def advance_batch(self, changed: list[str], batch: NativeBatch) -> NativeState:
+        self.changed = changed
+        return self.build_batch(batch)
+
     def build(self, rows: list[NativeRow]) -> NativeState:
         self.rows = rows
         return self
@@ -372,3 +384,14 @@ def test_cross_module_effect_and_call_removal() -> None:
     assert not state.summaries[SymbolId("a.caller")].effects
     assert prior is not None
     assert prior.summaries[SymbolId("a.caller")].effects == frozenset({Effect.IO_BLOCKING})
+
+
+@native
+def test_bad_columns_leave_previous_function_state_usable() -> None:
+    initial: NativeBatch = ([("m.f", "m.f", "m")], ([], [], [], [], [], [], []), [])
+    old = native_factory().build_batch(initial)
+    broken: NativeBatch = ([], (["m.f"], [], [], [], [], [], []), [])
+    with pytest.raises(ValueError, match="column lengths"):
+        old.advance_batch(["m"], broken)
+    assert old.export()[0][0] == "m.f"
+    assert old.advance_batch(["m"], initial).export() == old.export()

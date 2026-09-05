@@ -1,3 +1,5 @@
+mod atomicity;
+mod batches;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -255,6 +257,20 @@ fn calculate(
 #[pymethods]
 impl State {
     #[staticmethod]
+    fn build_batch(py: Python<'_>, batch: batches::Batch) -> PyResult<Self> {
+        py.detach(move || batches::summarize(None, vec![], batch))
+            .map_err(PyValueError::new_err)
+    }
+    fn advance_batch(
+        &self,
+        py: Python<'_>,
+        changed: Vec<String>,
+        batch: batches::Batch,
+    ) -> PyResult<Self> {
+        py.detach(move || batches::summarize(Some(self), changed, batch))
+            .map_err(PyValueError::new_err)
+    }
+    #[staticmethod]
     fn build(py: Python<'_>, rows: Vec<Row>) -> PyResult<Self> {
         py.detach(move || calculate(None, vec![], rows))
             .map_err(PyValueError::new_err)
@@ -323,7 +339,9 @@ impl State {
 #[pymodule]
 fn _taut_summary_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CONTRACT_VERSION", 1)?;
+    m.add("BATCH_VERSION", 2)?;
     m.add_class::<State>()?;
+    m.add_class::<atomicity::AtomicState>()?;
     Ok(())
 }
 #[cfg(test)]

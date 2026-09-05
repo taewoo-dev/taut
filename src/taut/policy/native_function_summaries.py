@@ -7,7 +7,7 @@ from types import ModuleType
 from typing import Literal, Protocol, cast
 
 from taut.configuration.catalog import AccessPath, Effect, EffectResolutionState
-from taut.domain.facts import CallFact, FunctionFact, ResolutionState
+from taut.domain.facts import ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import ModuleId, SymbolId
 from taut.policy.function_summaries import (
@@ -26,6 +26,11 @@ else:
 SummaryBackend = Literal["python", "rust"]
 NativeValue = tuple[int, int, list[str], list[str], int]
 NativeRow = tuple[str, str, list[str], NativeValue]
+NativeFunction = tuple[str, str, str]
+NativeCalls = tuple[
+    list[str], list[str], list[str | None], list[str], list[int], list[int], list[int]
+]
+NativeBatch = tuple[list[NativeFunction], NativeCalls, list[tuple[str, str]]]
 # Contract v1 bit order; changes require a coordinated contract bump.
 _EFFECTS = (
     Effect.EXTERNAL_CALL,
@@ -44,6 +49,7 @@ class NativeState(Protocol):
     recomputed_components: int
     compute_seconds: float
 
+    def advance_batch(self, changed: list[str], batch: NativeBatch) -> NativeState: ...
     def advance(self, changed_modules: list[str], rows: list[NativeRow]) -> NativeState: ...
     def export(self) -> list[tuple[str, NativeValue]]: ...
     def export_compact(self) -> tuple[list[NativeValue], list[tuple[str, int]]]: ...
@@ -53,15 +59,22 @@ class NativeState(Protocol):
 
 
 class NativeFactory(Protocol):
+    def build_batch(self, batch: NativeBatch) -> NativeState: ...
     def build(self, rows: list[NativeRow]) -> NativeState: ...
 
 
-def native_factory() -> NativeFactory:
+def native_extension() -> ModuleType:
     if _extension is None:
         raise RuntimeError("Rust summary backend requires the taut-summary-core wheel")
     if getattr(_extension, "CONTRACT_VERSION", None) != 1:
         raise RuntimeError("incompatible Rust summary backend contract (expected 1)")
-    return cast(NativeFactory, _extension.State)
+    if getattr(_extension, "BATCH_VERSION", None) != 2:
+        raise RuntimeError("Rust summary backend requires the 0.2 columnar batch extension")
+    return _extension
+
+
+def native_factory() -> NativeFactory:
+    return cast(NativeFactory, native_extension().State)
 
 
 def validate_summary_backend(backend: SummaryBackend) -> None:
@@ -113,111 +126,71 @@ def build_native_function_summary_state(
     module_ids = model.modules()
     current_modules = frozenset(module_ids)
     invalidated = current_modules if invalidated_modules is None else invalidated_modules
-    functions: dict[SymbolId, FunctionFact] = {}
-    calls_by_owner: dict[tuple[ModuleId, SymbolId], list[CallFact]] = {}
-    modules: dict[SymbolId, ModuleId] = {}
-    graph: dict[SymbolId, frozenset[SymbolId]] = {}
-    direct: dict[SymbolId, FunctionSemanticSummary] = {}
-    summary_values: dict[FunctionSemanticSummary, FunctionSemanticSummary] = {}
-
-    def canonical_summary(summary: FunctionSemanticSummary) -> FunctionSemanticSummary:
-        # Full immutable values, including uncertainty and access paths, define equality.
-        # The pool belongs to this build and does not retain previous revisions globally.
-        return summary_values.setdefault(summary, summary)
-
-    # Rust retains unchanged inputs; Python only reconstructs the changed batch.
-    for module_id in module_ids:
-        for function in model.module(module_id).functions:
-            modules[model.canonical_symbol(function.symbol_id)] = module_id
-    reused_functions = sum(module not in invalidated for module in modules.values()) if prior else 0
-
+    modules = (
+        {symbol: module for symbol, module in prior.modules.items() if module not in invalidated}
+        if prior is not None
+        else {}
+    )
+    reused_functions = len(modules)
+    functions: list[NativeFunction] = []
+    calls: NativeCalls = ([], [], [], [], [], [], [])
+    evaluated_calls = 0
+    bits = {effect: 1 << i for i, effect in enumerate(_EFFECTS)}
     for module_id in module_ids:
         if prior is not None and module_id not in invalidated:
             continue
         module = model.module(module_id)
+        owners = {function.symbol_id for function in module.functions}
         for function in module.functions:
             symbol = model.canonical_symbol(function.symbol_id)
-            functions[symbol] = function
             modules[symbol] = module_id
+            functions.append((symbol.value, function.symbol_id.value, module_id.value))
         for call in module.calls:
-            if call.enclosing_symbol is not None:
-                calls_by_owner.setdefault((module_id, call.enclosing_symbol), []).append(call)
-    all_symbols = frozenset(modules)
-    graph = {
-        symbol: frozenset(callee for callee in callees if callee in all_symbols)
-        for symbol, callees in graph.items()
-    }
-    evaluated_calls = 0
-    for symbol in sorted(functions):
-        module_id = modules[symbol]
-        effect_access: dict[Effect, AccessPath] = {}
-        providers: set[SymbolId] = set()
-        uncertain_effects: set[Effect] = set()
-        bulk_operations: set[str] = set()
-        owned_callees: set[SymbolId] = set()
-        function = functions[symbol]
-        for call in calls_by_owner.get((module_id, function.symbol_id), ()):
+            if call.enclosing_symbol is None or call.enclosing_symbol not in owners:
+                continue
             evaluated_calls += 1
             synchronous = context.synchronous_callback_effects(call)
-            uncertain_effects.update(context.callback_effects(call) - synchronous)
-            for effect in synchronous:
-                _merge_access(effect_access, effect, AccessPath.DIRECT)
+            uncertain = context.callback_effects(call) - synchronous
             resolution = context.effect_of(call)
+            effects = sum(bits[effect] for effect in synchronous)
+            direct = effects
             if resolution.state is EffectResolutionState.MATCHED:
-                assert resolution.access_path is not None
-                for effect in resolution.effects:
-                    _merge_access(effect_access, effect, resolution.access_path)
-
+                matched = sum(bits[effect] for effect in resolution.effects)
+                effects |= matched
+                if resolution.access_path is AccessPath.DIRECT:
+                    direct |= matched
             called = (
-                model.canonical_symbol(call.ref.symbol)
+                model.canonical_symbol(call.ref.symbol).value
                 if call.ref.state is ResolutionState.RESOLVED and call.ref.symbol is not None
                 else None
             )
-            if called is not None:
-                provider = context.matching_symbol(
-                    called,
-                    context.policy.transaction_session_providers,
-                )
-                if provider is not None:
-                    providers.add(model.canonical_symbol(provider))
-                if called in all_symbols:
-                    owned_callees.add(called)
-
-            operation = _bulk_mapping_operation(call.ref.symbol, call.ref.written_name)
-            if operation is not None:
-                bulk_operations.add(operation)
-
-        graph[symbol] = frozenset(owned_callees)
-        direct[symbol] = canonical_summary(
-            FunctionSemanticSummary(
-                FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
-                frozenset(providers),
-                frozenset(bulk_operations),
-                frozenset(uncertain_effects),
+            calls[0].append(call.enclosing_symbol.value)
+            calls[1].append(module_id.value)
+            calls[2].append(called)
+            calls[3].append(
+                call.ref.symbol.value if call.ref.symbol is not None else call.ref.written_name
             )
-        )
-
-    prepared = perf_counter()
-    rows: list[NativeRow] = [
-        (
-            symbol.value,
-            modules[symbol].value,
-            sorted(callee.value for callee in graph[symbol]),
-            encode_summary(direct[symbol]),
-        )
-        for symbol in sorted(functions)
+            calls[4].append(effects)
+            calls[5].append(direct)
+            calls[6].append(sum(bits[effect] for effect in uncertain))
+    providers = [
+        (candidate.value, model.canonical_symbol(candidate).value)
+        for candidate in context.policy.transaction_session_providers
     ]
+    prepared = perf_counter()
+    batch = (functions, calls, providers)
     encoded = perf_counter()
-    if prior is None:
-        native = native_factory().build(rows)
-    else:
-        native = cast(NativeState, prior.native_handle).advance(
-            sorted(module.value for module in invalidated), rows
+    native = (
+        native_factory().build_batch(batch)
+        if prior is None
+        else cast(NativeState, prior.native_handle).advance_batch(
+            [module.value for module in invalidated], batch
         )
+    )
     computed = perf_counter()
     summaries: dict[SymbolId, FunctionSemanticSummary] = {}
     values, bindings = native.export_compact()
-    decoded_values = [canonical_summary(decode_summary(value)) for value in values]
+    decoded_values = [decode_summary(value) for value in values]
     for name, index in bindings:
         summaries[SymbolId(name)] = decoded_values[index]
     restored = perf_counter()
@@ -227,7 +200,7 @@ def build_native_function_summary_state(
         NativeGraphView(native),
         FrozenMap(sorted(modules.items())),
         reused_functions,
-        len(functions),
+        len({canonical for canonical, _, _ in functions}),
         evaluated_calls,
         native.reused_components,
         native.recomputed_components,
@@ -241,21 +214,6 @@ def build_native_function_summary_state(
             restored - computed,
             restored - started,
         ),
-    )
-
-
-def _merge_access(values: dict[Effect, AccessPath], effect: Effect, access: AccessPath) -> None:
-    previous = values.get(effect)
-    if previous is None or access is AccessPath.DIRECT:
-        values[effect] = access
-
-
-def _bulk_mapping_operation(symbol: SymbolId | None, written_name: str) -> str | None:
-    operation = (symbol.value if symbol is not None else written_name).rsplit(".", maxsplit=1)[-1]
-    return (
-        operation
-        if operation in {"asdict", "dict", "model_dump", "model_validate", "vars"}
-        else None
     )
 
 

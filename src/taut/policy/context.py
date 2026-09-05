@@ -34,6 +34,7 @@ from taut.policy.function_summaries import (
     build_function_summary_state,
 )
 from taut.policy.indexes import PolicyIndexes
+from taut.policy.native_atomicity_summaries import build_native_atomicity_summary_state
 from taut.policy.native_function_summaries import (
     SummaryBackend,
     build_native_function_summary_state,
@@ -140,7 +141,12 @@ class PolicyContext:
 
     @cached_property
     def atomicity_summary_state(self) -> AtomicitySummaryState:
-        return build_atomicity_summary_state(
+        builder = (
+            build_native_atomicity_summary_state
+            if self.summary_backend == "rust"
+            else build_atomicity_summary_state
+        )
+        return builder(
             self,
             self.prior_atomicity_summary_state,
             self.atomicity_summary_invalidated_modules,
