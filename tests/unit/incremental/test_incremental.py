@@ -232,3 +232,40 @@ def test_add_remove_each_matches_fresh_and_exact_counts() -> None:
     removed = _request_many({"app/a.py": "value=1"})
     assert analyzer.analyze(removed) == ProjectAnalyzer(PythonAstAdapter()).analyze(removed)
     assert analyzer.reparsed_modules == 0
+
+
+def test_assembly_reuses_index_for_body_but_not_import_or_location_edits() -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    values = {
+        "app/a.py": "from app.b import run\ndef work():\n    run()\n",
+        "app/b.py": "def run():\n    return 1\n",
+    }
+    analyzer.analyze(_request_many(values))
+    values["app/b.py"] = "def run():\n    return 2\n"
+    changed = analyzer.analyze(_request_many(values))
+    assert analyzer.assembly_state is not None
+    assert analyzer.assembly_state.reused_project_index
+    assert analyzer.assembly_state.recomputed_modules == 1
+    assert changed == ProjectAnalyzer(PythonAstAdapter()).analyze(_request_many(values))
+    values["app/a.py"] = "\n" + values["app/a.py"]
+    moved = analyzer.analyze(_request_many(values))
+    assert not analyzer.assembly_state.reused_project_index
+    assert moved == ProjectAnalyzer(PythonAstAdapter()).analyze(_request_many(values))
+    values["app/c.py"] = "def run():\n    return 3\n"
+    values["app/a.py"] = "from app.c import run\n"
+    changed_import = analyzer.analyze(_request_many(values))
+    assert not analyzer.assembly_state.reused_project_index
+    assert changed_import == ProjectAnalyzer(PythonAstAdapter()).analyze(_request_many(values))
+
+
+def test_module_addition_resolves_previously_unresolved_import() -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    values = {"app/a.py": "from app.missing import item\n"}
+    first = analyzer.analyze(_request_many(values))
+    assert first.project.unresolved_imports
+    values["app/missing.py"] = "item = 1\n"
+    second = analyzer.analyze(_request_many(values))
+    assert not second.project.unresolved_imports
+    assert second == ProjectAnalyzer(PythonAstAdapter()).analyze(_request_many(values))
+    del values["app/missing.py"]
+    assert analyzer.analyze(_request_many(values)) == first
