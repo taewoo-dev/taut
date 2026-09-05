@@ -11,6 +11,7 @@ from scripts.benchmark_performance import (
     benchmark_revision,
     compare,
     measure,
+    memory_plateau,
     process_rss_bytes,
     real_checkout,
     request_for,
@@ -66,6 +67,16 @@ def test_rss_conversion_is_platform_correct() -> None:
 
 def test_current_process_rss_is_available() -> None:
     assert process_rss_bytes(os.getpid()) > 0
+
+
+def test_memory_plateau_distinguishes_noise_from_retained_growth() -> None:
+    mebibyte = 1 << 20
+
+    stable = memory_plateau(tuple((400 + value) * mebibyte for value in (0, 4, 2, 5, 3, 4)))
+    growing = memory_plateau(tuple((400 + value) * mebibyte for value in range(0, 60, 10)))
+
+    assert stable["stable"] is True
+    assert growing["stable"] is False
 
 
 def test_benchmark_revision_changes_only_fixed_width_marker() -> None:

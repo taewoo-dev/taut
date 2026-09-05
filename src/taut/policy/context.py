@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 from types import MappingProxyType
 
@@ -21,12 +21,21 @@ from taut.configuration.manifest import ClassificationIndex
 from taut.domain.facts import CallFact, ResolutionState
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import FactId, ModuleId, RuleId, SymbolId
+from taut.policy.atomicity_summaries import (
+    AtomicitySummaryState,
+    build_atomicity_summary_state,
+)
 from taut.policy.function_summaries import (
     FunctionSemanticSummary,
-    build_function_semantic_summaries,
+    FunctionSummaryState,
+    build_function_summary_state,
 )
 from taut.policy.indexes import PolicyIndexes
 from taut.policy.symbol_contracts import SymbolContractIndex
+
+
+def _effect_resolution_cache() -> dict[FactId, EffectResolution]:
+    return {}
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,21 @@ class PolicyContext:
     effects: EffectResolver
     catalog: EffectCatalog
     policy: EffectivePolicy
+    prior_function_summary_state: FunctionSummaryState | None = field(
+        default=None, repr=False, compare=False
+    )
+    function_summary_invalidated_modules: frozenset[ModuleId] | None = field(
+        default=None, repr=False, compare=False
+    )
+    prior_atomicity_summary_state: AtomicitySummaryState | None = field(
+        default=None, repr=False, compare=False
+    )
+    atomicity_summary_invalidated_modules: frozenset[ModuleId] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _effect_resolution_cache: dict[FactId, EffectResolution] = field(
+        default_factory=_effect_resolution_cache, init=False, repr=False, compare=False
+    )
 
     @cached_property
     def indexes(self) -> PolicyIndexes:
@@ -43,20 +67,21 @@ class PolicyContext:
 
     @cached_property
     def symbol_contracts(self) -> SymbolContractIndex:
-        return SymbolContractIndex.build(self.model, self.classification, self.policy)
+        return SymbolContractIndex.build(self.model, self.classification, self.policy, self.indexes)
 
     @cached_property
     def effect_resolutions(self) -> Mapping[FactId, EffectResolution]:
-        """Resolve each call at most once during one policy run."""
-        resolved = {
-            call.id: self.effects.resolve(self._canonical_call(call), self.canonical_catalog)
-            for module_id in self.model.modules()
-            for call in self.model.module(module_id).calls
-        }
-        return MappingProxyType(resolved)
+        """Resolve all calls while retaining the lazy per-revision cache."""
+        for module_id in self.model.modules():
+            for call in self.model.module(module_id).calls:
+                self.effect_of(call)
+        return MappingProxyType(self._effect_resolution_cache)
 
     def effect_of(self, call: CallFact) -> EffectResolution:
-        resolution = self.effect_resolutions[call.id]
+        resolution = self._effect_resolution_cache.get(call.id)
+        if resolution is None:
+            resolution = self.effects.resolve(self._canonical_call(call), self.canonical_catalog)
+            self._effect_resolution_cache[call.id] = resolution
         transaction = self.tortoise_transactions.get(call.id)
         if (
             resolution.state is EffectResolutionState.NO_MATCH
@@ -74,8 +99,28 @@ class PolicyContext:
         return resolution
 
     @cached_property
+    def function_summary_state(self) -> FunctionSummaryState:
+        return build_function_summary_state(
+            self,
+            self.prior_function_summary_state,
+            self.function_summary_invalidated_modules,
+        )
+
+    @property
     def function_summaries(self) -> Mapping[SymbolId, FunctionSemanticSummary]:
-        return MappingProxyType(dict(build_function_semantic_summaries(self).items()))
+        return self.function_summary_state.summaries
+
+    @cached_property
+    def atomicity_summary_state(self) -> AtomicitySummaryState:
+        return build_atomicity_summary_state(
+            self,
+            self.prior_atomicity_summary_state,
+            self.atomicity_summary_invalidated_modules,
+        )
+
+    def cached_atomicity_summary_state(self) -> AtomicitySummaryState | None:
+        value = self.__dict__.get("atomicity_summary_state")
+        return value if isinstance(value, AtomicitySummaryState) else None
 
     def transitive_effect_of(self, call: CallFact) -> EffectResolution:
         """Resolve configured effects or effects derived from project-owned callees."""
@@ -116,6 +161,9 @@ class PolicyContext:
             }
         )
 
+    def tortoise_query(self, fact_id: FactId) -> TortoiseQueryFact | None:
+        return self.tortoise_queries.get(fact_id)
+
     @cached_property
     def tortoise_transactions(self) -> Mapping[FactId, TortoiseTransactionFact]:
         return MappingProxyType(
@@ -152,37 +200,18 @@ class PolicyContext:
         if symbol is None:
             return False
         canonical = self.model.canonical_symbol(symbol)
-        return any(self.model.canonical_symbol(candidate) == canonical for candidate in candidates)
+        return canonical in self.indexes.canonical_set(self.model, candidates)
 
     def symbol_in_or_inherits(
         self, symbol: SymbolId | None, candidates: frozenset[SymbolId]
     ) -> bool:
         if symbol is None:
             return False
-        wanted = frozenset(self.model.canonical_symbol(item) for item in candidates)
+        wanted = self.indexes.canonical_set(self.model, candidates)
         current = self.model.canonical_symbol(symbol)
-        classes = {
-            self.model.canonical_symbol(class_fact.symbol_id): class_fact
-            for module_id in self.model.modules()
-            for class_fact in self.model.module(module_id).classes
-        }
-        pending = [current]
-        visited: set[SymbolId] = set()
-        while pending:
-            candidate = pending.pop()
-            if candidate in wanted:
-                return True
-            if candidate in visited:
-                continue
-            visited.add(candidate)
-            class_fact = classes.get(candidate)
-            if class_fact is not None:
-                pending.extend(
-                    self.model.canonical_symbol(parent)
-                    for base in class_fact.bases
-                    for parent in base.symbols
-                )
-        return False
+        return current in wanted or not self.indexes.class_ancestors.get(
+            current, frozenset()
+        ).isdisjoint(wanted)
 
     def matching_symbol(
         self, symbol: SymbolId | None, candidates: tuple[SymbolId, ...] | frozenset[SymbolId]
@@ -193,13 +222,10 @@ class PolicyContext:
         return next(
             (
                 candidate
-                for candidate in candidates
-                if (
-                    canonical == self.model.canonical_symbol(candidate)
-                    or canonical.value.startswith(
-                        f"{self.model.canonical_symbol(candidate).value}."
-                    )
+                for candidate, expected, prefix in self.indexes.candidate_matchers(
+                    self.model, candidates
                 )
+                if canonical == expected or canonical.value.startswith(prefix)
             ),
             None,
         )

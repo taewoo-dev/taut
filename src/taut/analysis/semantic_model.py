@@ -56,6 +56,12 @@ class SnapshotSemanticModel:
         self._calls = {
             call.id: call for module in snapshot.modules.values() for call in module.calls
         }
+        import_edges_by_module: dict[ModuleId, list[ImportEdge]] = {}
+        for edge in snapshot.project.import_edges:
+            import_edges_by_module.setdefault(edge.importer, []).append(edge)
+        self._import_edges_by_module = {
+            module_id: tuple(edges) for module_id, edges in import_edges_by_module.items()
+        }
         self._bindings_by_module = snapshot.relations.bindings_by_module
         self._uses_by_module = snapshot.relations.use_edges_by_module
         self._canonical_by_value = {
@@ -78,9 +84,7 @@ class SnapshotSemanticModel:
         return self._snapshot.project.imports[module_id]
 
     def import_edges_of(self, module_id: ModuleId) -> tuple[ImportEdge, ...]:
-        return tuple(
-            edge for edge in self._snapshot.project.import_edges if edge.importer == module_id
-        )
+        return self._import_edges_by_module.get(module_id, ())
 
     def imported_by(self, module_id: ModuleId) -> tuple[ModuleId, ...]:
         return self._snapshot.project.imported_by[module_id]

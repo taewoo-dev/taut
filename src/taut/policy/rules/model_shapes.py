@@ -116,23 +116,14 @@ class ImmutableDtoRule:
         )
         if not candidates:
             return RuleEvaluation(DTO_RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
-        classes = {
-            context.model.canonical_symbol(item.symbol_id): item
-            for module_id in context.model.modules()
-            for item in context.model.module(module_id).classes
-        }
+        classes = context.indexes.classes_by_symbol
         relevant_symbols = {context.model.canonical_symbol(item.symbol_id) for item in candidates}
-        pending = list(relevant_symbols)
-        while pending:
-            class_fact = classes.get(pending.pop())
-            if class_fact is None:
-                continue
-            for base in class_fact.bases:
-                for symbol in base.symbols:
-                    canonical = context.model.canonical_symbol(symbol)
-                    if canonical in classes and canonical not in relevant_symbols:
-                        relevant_symbols.add(canonical)
-                        pending.append(canonical)
+        relevant_symbols.update(
+            ancestor
+            for symbol in tuple(relevant_symbols)
+            for ancestor in context.indexes.class_ancestors.get(symbol, frozenset())
+            if ancestor in classes
+        )
         requires_pydantic = any(
             _decorator(module.decorators, item, SymbolId("dataclasses.dataclass")) is None
             for item in candidates

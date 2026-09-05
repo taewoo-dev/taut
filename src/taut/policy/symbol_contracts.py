@@ -12,6 +12,7 @@ from taut.domain.facts import ClassFact
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import SymbolId
 from taut.domain.symbol_contracts import ContractKind
+from taut.policy.indexes import PolicyIndexes
 
 
 @dataclass(frozen=True)
@@ -26,34 +27,16 @@ class SymbolContractIndex:
         model: SemanticModel,
         classification: ClassificationIndex,
         policy: EffectivePolicy,
+        indexes: PolicyIndexes,
     ) -> SymbolContractIndex:
-        classes = {
-            model.canonical_symbol(item.symbol_id): item
-            for module_id in model.modules()
-            for item in model.module(module_id).classes
-        }
-        bases = {
-            symbol: frozenset(
-                model.canonical_symbol(base_symbol)
-                for base in item.bases
-                for base_symbol in base.symbols
-            )
-            for symbol, item in classes.items()
-        }
+        classes = indexes.classes_by_symbol
 
         def inherits(
             symbol: SymbolId,
             wanted: frozenset[SymbolId],
-            visiting: frozenset[SymbolId] = frozenset(),
         ) -> bool:
-            canonical_wanted = frozenset(model.canonical_symbol(item) for item in wanted)
-            if bases.get(symbol, frozenset()).intersection(canonical_wanted):
-                return True
-            if symbol in visiting:
-                return False
-            return any(
-                parent in classes and inherits(parent, wanted, visiting | {symbol})
-                for parent in bases.get(symbol, frozenset())
+            return not indexes.class_ancestors.get(symbol, frozenset()).isdisjoint(
+                indexes.canonical_set(model, wanted)
             )
 
         enum_bases = frozenset(

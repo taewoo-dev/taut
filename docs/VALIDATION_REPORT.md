@@ -1,5 +1,19 @@
 # pytaut validation report
 
+## 0.8.0 release candidate — 2026-09-05
+
+`bash scripts/test.sh` passed on Python 3.14 with repository conventions, Ruff, mypy strict,
+Pyright strict, the repository's own strict Taut policy, 1,284 tests, 90.36% branch coverage,
+sdist/wheel builds, and an isolated installed-wheel smoke test.
+
+The resident benchmark used anti-monitor commit `72279e5e5556ed4bc8c80d567878953b4dc40ae9`
+with 1,213 Python sources. Against the Phase 4 baseline, median cold, ordinary-edit, shared-edit,
+and restart wall times improved from 11.616, 2.349, 3.604, and 11.926 seconds to 10.991, 1.706,
+3.302, and 11.414 seconds. Every timed stdout, stderr, and exit-code digest matched the fresh
+oracle. Thirty consecutive unchanged resident checks held RSS at 858.6 MiB after the first sample.
+The detailed methodology, rejected experiments, profiles, and native-acceleration decision are in
+[`performance-roadmap.md`](performance-roadmap.md).
+
 ## 0.5.0 release candidate — 2026-09-02
 
 `bash scripts/test.sh` passed on Python 3.14 with repository conventions, Ruff, mypy strict,

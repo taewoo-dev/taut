@@ -202,16 +202,7 @@ def _router_findings(target: RuleTargetRef, context: PolicyContext) -> tuple[Fin
 
 
 def _class_for_symbol(symbol: SymbolId, context: PolicyContext) -> ClassFact | None:
-    canonical = context.model.canonical_symbol(symbol)
-    return next(
-        (
-            class_fact
-            for module_id in context.model.modules()
-            for class_fact in context.model.module(module_id).classes
-            if context.model.canonical_symbol(class_fact.symbol_id) == canonical
-        ),
-        None,
-    )
+    return context.indexes.class_for(context.model, symbol)
 
 
 def response_mapping_rule_definition() -> RuleDefinition:

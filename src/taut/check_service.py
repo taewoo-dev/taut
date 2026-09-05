@@ -1,5 +1,3 @@
-"""Canonical check pipeline shared by the CLI and the local daemon."""
-
 from __future__ import annotations
 
 import hashlib
@@ -55,8 +53,7 @@ from taut.reporting.text import render_text
 
 _ASYNC_SESSION_TYPE = SymbolId("sqlalchemy.ext.asyncio.AsyncSession")
 _TORTOISE_CONNECTION_TYPE = SymbolId("tortoise.backends.base.client.TransactionalDBClient")
-_MINIMUM_PARALLEL_SOURCES = 100
-_MAXIMUM_ANALYSIS_WORKERS = 4
+_MINIMUM_PARALLEL_SOURCES, _MAXIMUM_ANALYSIS_WORKERS = 100, 4
 
 
 @dataclass(frozen=True)
@@ -132,6 +129,10 @@ class ResidentCheckSession:
         if identity != self._identity:
             self._configure(prepared, identity)
         return self._run(request, prepared.config)
+
+    @property
+    def retained_revision_count(self) -> int:
+        return int(self._prior_provider_snapshot is not None)
 
     def reset(self) -> None:
         self._identity = None
@@ -249,12 +250,26 @@ class ResidentCheckSession:
         started = time.perf_counter()
         classifications = config.manifest.classify(snapshot)
         validate_classification_for_policy(classifications, config.policy)
+        prior_summary_state = (
+            self._prior_policy_context.function_summary_state
+            if self._prior_policy_context is not None and changes.touched
+            else None
+        )
+        prior_atomicity_state = (
+            self._prior_policy_context.cached_atomicity_summary_state()
+            if self._prior_policy_context is not None and changes.touched
+            else None
+        )
         context = PolicyContext(
             model=SnapshotSemanticModel(snapshot),
             classification=classifications,
             effects=EffectResolver(),
             catalog=config.catalog,
             policy=config.policy,
+            prior_function_summary_state=prior_summary_state,
+            function_summary_invalidated_modules=impact.impacted,
+            prior_atomicity_summary_state=prior_atomicity_state,
+            atomicity_summary_invalidated_modules=impact.impacted,
         )
         if self._engine is None or self._registry is None:
             raise RuntimeError("resident check session is not configured")
@@ -474,10 +489,9 @@ def _timed(values: list[StageTiming], name: str, started: float) -> None:
 
 
 def _analysis_workers(source_count: int) -> int:
-    if source_count < _MINIMUM_PARALLEL_SOURCES:
-        return 1
     available = os.cpu_count() or 1
-    return max(1, min(available, _MAXIMUM_ANALYSIS_WORKERS, source_count))
+    maximum = max(1, min(available, _MAXIMUM_ANALYSIS_WORKERS, source_count))
+    return 1 if source_count < _MINIMUM_PARALLEL_SOURCES else maximum
 
 
 def _context_manager_item_type(symbol: SymbolId) -> SymbolId:
