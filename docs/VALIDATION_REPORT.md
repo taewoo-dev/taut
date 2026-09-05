@@ -1,5 +1,26 @@
 # pytaut validation report
 
+## Unreleased memory follow-up at 29c6edc — 2026-09-05
+
+`bash scripts/test.sh` passed on Python 3.14.0: 1,383 tests, 90.55% total coverage with branch
+measurement, repository conventions, Ruff, strict mypy/Pyright, strict self-policy, wheel/sdist
+builds, and installed-wheel smoke checks. Module-local symbol sharing and per-build function
+summary sharing preserve distinct source revisions and direct/approved-wrapper access paths.
+The extractor is released without waiting for cyclic GC on both success and injected failure.
+The existing three seeds of 100 synthetic edits continue to match fresh JSON and release
+obsolete snapshots.
+
+The session-object census shows 16,156 → 74 function summaries and 184,857 → 115,258 symbol
+IDs without changing their distinct values. Shallow-size sums decrease 343.18 → 308.63 MiB from
+the preceding implementation; this is not an RSS measurement. The separate [memory follow-up](quality/memory-followup.md)
+records the warmed RSS protocol, raw results, and remaining limits while preserving the earlier
+failed memory acceptance report. No package was published.
+
+Under the explicit 50-edit warmup protocol, both 200 unchanged and 100 mixed-edit RSS series
+pass the full plateau criterion. Median RSS is 756.45 → 773.20 MiB unchanged and
+851.05 → 773.63 MiB mixed. The 10% reduction target remains unmet: unchanged RSS increases
+2.21%, while mixed RSS decreases 9.10%. These are shared-machine observations.
+
 ## Unreleased performance implementation at 9aac0ad — 2026-09-05
 
 The final `bash scripts/test.sh` gate passed on Python 3.14.0: 1,380 tests, 90.55% total

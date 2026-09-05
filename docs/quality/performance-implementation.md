@@ -3,6 +3,9 @@
 Date: 2026-09-05. Baseline: `452c5be`; candidate engine: `9aac0ad`.
 Package version remains 0.9.0; these are unreleased changes.
 
+The subsequent [memory follow-up](memory-followup.md) investigates retained objects and repeats
+RSS measurements under an explicitly warmed protocol. The original results below are preserved.
+
 ## Implemented scope
 
 1. **Project assembly:** retain one validated contribution per current module. Reuse unchanged

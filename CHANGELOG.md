@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reduce retained memory by eliminating duplicate index-comparison tuples and empty module
+  assurance evidence; share module-local symbol IDs and equal immutable function summaries.
+  Release extractor callback cycles on success and failure without forcing global GC.
+  Add a reproducible session-object census and explicitly warmed RSS measurements; preserve
+  the earlier failed memory acceptance evidence in the [memory follow-up](docs/quality/memory-followup.md).
+
 - Reuse validated module contributions and project indexes when their exact inputs are unchanged;
   publish new incremental identities only after successful assembly.
 - Bound built-in FastAPI/SQLAlchemy propagation by unchanged exports, reuse audited async/time

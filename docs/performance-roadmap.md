@@ -7,6 +7,11 @@ output.
 
 ## Implementation update — 2026-09-05
 
+The subsequent [memory follow-up](quality/memory-followup.md) removes retained comparison
+tuples and empty evidence, shares resolver-local symbol IDs and immutable function summaries,
+and measures both reachable object counts and warmed RSS. The original memory failures remain
+recorded separately; object-size reductions must not be reported as RSS reductions.
+
 The follow-up to `452c5be` implements module-contribution assembly, exact-input project-index
 reuse, unchanged-export propagation for two built-in framework providers, conservative semantic
 equality for async/time policy reuse, assurance/exception evidence caches, and module-local
