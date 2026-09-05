@@ -1,5 +1,22 @@
 # pytaut validation report
 
+## Unreleased performance implementation at 9aac0ad — 2026-09-05
+
+The final `bash scripts/test.sh` gate passed on Python 3.14.0: 1,380 tests, 90.55% total
+coverage with branch measurement, repository conventions, Ruff, strict mypy/Pyright,
+strict self-policy, wheel/sdist builds, and installed-wheel smoke checks.
+
+On the isolated 1,224-source anti-monitor snapshot, 20 samples per edit scenario show median
+ordinary latency 1.86 → 1.33 seconds and shared latency 4.57 → 2.49 seconds. Five fresh daemon
+starts show 11.63 → 11.39 seconds. The edit-median targets and cold/p95 regression limits pass.
+Two hundred unchanged checks, 100 semantic edits, 30 additional per-edit fresh JSON comparisons,
+and three seeds of 100 synthetic edits preserve the applicable fresh outputs.
+
+**Memory acceptance remains unmet:** RSS medians decrease 6.65%/2.25% in unchanged/mixed runs,
+below the 10% target; both baseline and candidate fail the full-series plateau criterion.
+This shared-machine observation is not proof of a leak. All raw data and limitations remain
+in the [acceptance report](quality/performance-implementation.md). No package was published.
+
 ## Performance investigation at 77dce3e — 2026-09-05
 
 The unchanged engine passed the full gate again: 1,363 tests and 90.42% coverage with branch

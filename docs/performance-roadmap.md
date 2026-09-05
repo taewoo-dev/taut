@@ -5,6 +5,21 @@ pytaut. The objective is not a benchmark-only speedup. Every optimization must
 preserve deterministic findings, coverage, engine issues, exit codes, and rendered
 output.
 
+## Implementation update — 2026-09-05
+
+The follow-up to `452c5be` implements module-contribution assembly, exact-input project-index
+reuse, unchanged-export propagation for two built-in framework providers, conservative semantic
+equality for async/time policy reuse, assurance/exception evidence caches, and module-local
+immutable sharing. Failed assembly does not publish new source identities; incompatible internal
+assembly schemas rebuild safely. Fresh analysis remains the correctness oracle.
+
+These are bounded optimizations rather than a general fine-grained query system. Flat global
+outputs and conservative invalidation on semantic changes remain. The [implementation and
+acceptance report](quality/performance-implementation.md) records the 20-sample edit timings,
+five cold starts, 200 unchanged checks, 100 semantic edits, and 30 per-edit fresh comparisons,
+including any unmet memory goals. Native/Rust work remains deferred; acceptance results must
+not be interpreted as general detection-accuracy or adoption evidence.
+
 ## Direction
 
 Successful Python tools use several layers together:

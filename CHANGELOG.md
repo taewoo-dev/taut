@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Reuse validated module contributions and project indexes when their exact inputs are unchanged;
+  publish new incremental identities only after successful assembly.
+- Bound built-in FastAPI/SQLAlchemy propagation by unchanged exports, reuse audited async/time
+  policy results under conservative semantic equality, and cache module assurance/exception evidence.
+- Share immutable Python extraction values within a module, discard stale revision evidence,
+  and add reproducible paired timing, semantic-edit parity, and retention acceptance runs.
+  See [performance acceptance](docs/quality/performance-implementation.md) for measured results
+  and memory acceptance limits.
+
 - Track known callback effects across multiple synchronous helper calls and module boundaries,
   preserving uncertainty on guarded paths and excluding storage, offloading, and reassignment.
   Validate transitive helper edits against fresh analysis and revisit native acceleration using
