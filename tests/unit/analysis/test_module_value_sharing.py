@@ -1,13 +1,52 @@
 from __future__ import annotations
 
+import ast
+import gc
 import pickle
+import weakref
 
+import pytest
 from tests.utils.builders import make_source
 
+from taut.analysis.contracts import ResolverSettings, SourceInput
+from taut.analysis.python import language_adapter
+from taut.analysis.python.adapter import PythonFactExtractor
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.python.syntax_context import SyntaxContextStack
-from taut.domain.facts import ExecutionPhase, GuardKind, ScopeKind
+from taut.domain.facts import ExecutionPhase, GuardKind, ModuleFacts, ScopeKind
 from taut.domain.ids import SymbolId
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_adapter_releases_extractor_without_waiting_for_cycle_collection(
+    monkeypatch: pytest.MonkeyPatch, fails: bool
+) -> None:
+    references: list[weakref.ReferenceType[PythonFactExtractor]] = []
+
+    def capture(source: SourceInput, resolver: ResolverSettings) -> PythonFactExtractor:
+        extractor = PythonFactExtractor(source, resolver)
+        references.append(weakref.ref(extractor))
+        return extractor
+
+    def fail_extract(_self: PythonFactExtractor, _tree: ast.Module) -> ModuleFacts:
+        raise RuntimeError("injected extractor failure")
+
+    monkeypatch.setattr(language_adapter, "PythonFactExtractor", capture)
+    if fails:
+        monkeypatch.setattr(PythonFactExtractor, "extract", fail_extract)
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        result = PythonAstAdapter().analyze_module(
+            make_source("app/a.py", "def run():\n    print(1)\n")
+        )
+        assert bool(result.issues) is fails
+        assert len(references) == 1 and references[0]() is None
+        if not fails:
+            assert result.facts.calls[0].ref.symbol == SymbolId("builtins.print")
+    finally:
+        if enabled:
+            gc.enable()
 
 
 def test_context_sharing_preserves_every_guard_and_scope() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import closing
 from itertools import repeat
 
 from taut.analysis.contracts import (
@@ -35,9 +36,9 @@ class PythonAstAdapter:
             lifecycle.advance(AnalysisStage.PARSED)
             lifecycle.advance(AnalysisStage.INDEXED)
             lifecycle.advance(AnalysisStage.RESOLVED)
-            extractor = PythonFactExtractor(source, resolver_settings)
-            facts = extractor.extract(tree)
-            relations = extractor.relations(facts)
+            with closing(PythonFactExtractor(source, resolver_settings)) as extractor:
+                facts = extractor.extract(tree)
+                relations = extractor.relations(facts)
             lifecycle.advance(AnalysisStage.FACTS_READY)
             return ModuleAnalysisResult(facts=facts, issues=(), relations=relations)
         except SyntaxError as error:
