@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
 from itertools import chain
@@ -32,14 +33,17 @@ class FunctionSemanticSummary:
 @dataclass(frozen=True)
 class FunctionSummaryState:
     summaries: FrozenMap[SymbolId, FunctionSemanticSummary]
-    direct: FrozenMap[SymbolId, FunctionSemanticSummary]
-    graph: FrozenMap[SymbolId, tuple[SymbolId, ...]]
+    direct: Mapping[SymbolId, FunctionSemanticSummary]
+    graph: Mapping[SymbolId, tuple[SymbolId, ...]]
     modules: FrozenMap[SymbolId, ModuleId]
     reused_functions: int
     recomputed_functions: int
     evaluated_calls: int
     reused_components: int
     recomputed_components: int
+    native_handle: object | None = field(default=None, repr=False, compare=False)
+    native_modules: frozenset[ModuleId] = field(default=frozenset(), repr=False, compare=False)
+    native_timings: tuple[float, ...] = field(default=(), repr=False, compare=False)
 
 
 class FunctionSummaryContext(Protocol):

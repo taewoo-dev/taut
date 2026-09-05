@@ -89,7 +89,7 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 explicit_package_bases = true
-mypy_path = ["src"]
+mypy_path = ["src", "typings"]
 files = ["src", "tests", "scripts"]
 exclude = ["^tests/fixtures/"]
 
@@ -312,3 +312,7 @@ kind = "symbol"
 target = "taut.loading.errors.PolicyConfigError"
 state = "not_applicable"
 reason = "The configuration parser error is not an application exception registry."
+
+[[tool.taut.exclusions]]
+patterns = ["typings/**/*.pyi"]
+reason = "Type declarations for the optional separately built native extension; checked by mypy and Pyright."

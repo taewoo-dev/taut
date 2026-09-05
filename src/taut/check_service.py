@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
+from typing import cast
 
 from taut import __version__
 from taut.analysis.contracts import (
@@ -47,6 +48,11 @@ from taut.loading.source_discovery import SourceDiscoveryResult, discover_source
 from taut.policy.context import PolicyContext
 from taut.policy.decision_digest import build_decision_digest
 from taut.policy.engine import IncrementalPolicyResult, PolicyEngine
+from taut.policy.native_function_summaries import (
+    NativeState,
+    SummaryBackend,
+    validate_summary_backend,
+)
 from taut.policy.packs import RulePackV1
 from taut.policy.registry import RuleRegistry
 from taut.reporting.json import render_json
@@ -105,7 +111,15 @@ class CheckResult:
 class ResidentCheckSession:
     """Incremental state for exactly one canonical project root."""
 
-    def __init__(self, project_root: Path, module_store: CacheStore | None = None) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        module_store: CacheStore | None = None,
+        *,
+        summary_backend: SummaryBackend = "python",
+    ) -> None:
+        validate_summary_backend(summary_backend)
+        self._summary_backend: SummaryBackend = summary_backend
         self.project_root = project_root.resolve()
         self._module_store = module_store
         self._closed = False
@@ -121,6 +135,23 @@ class ResidentCheckSession:
         self._prior_policy_context: PolicyContext | None = None
         self._prior_policy_result: IncrementalPolicyResult | None = None
         self._evidence_cache = FeatureEvidenceCache()
+
+    @property
+    def summary_timings(self) -> tuple[float, ...]:
+        """Last built native revision: prepare, encode, FFI, compute, restore, total seconds."""
+        context = self._prior_policy_context
+        if context is None or "function_summary_state" not in context.__dict__:
+            return ()
+        return context.function_summary_state.native_timings
+
+    @property
+    def summary_statistics(self) -> tuple[int, ...]:
+        """Native functions, forward/reverse edges, and distinct retained summary values."""
+        context = self._prior_policy_context
+        if context is None or "function_summary_state" not in context.__dict__:
+            return ()
+        handle = context.function_summary_state.native_handle
+        return () if handle is None else cast(NativeState, handle).stats()
 
     def check(self, request: CheckRequest, runtime: CheckRuntime | None = None) -> CheckResult:
         if self._closed:
@@ -346,6 +377,7 @@ class ResidentCheckSession:
             effects=EffectResolver(),
             catalog=config.catalog,
             policy=config.policy,
+            summary_backend=self._summary_backend,
             prior_function_summary_state=prior_summary_state,
             function_summary_invalidated_modules=impact.impacted,
             prior_atomicity_summary_state=prior_atomicity_state,
@@ -444,9 +476,13 @@ def run_check_request(
     request: CheckRequest,
     module_store: CacheStore | None = None,
     runtime: CheckRuntime | None = None,
+    *,
+    summary_backend: SummaryBackend = "python",
 ) -> CheckResult:
     """Run a single check through the same pipeline used by resident sessions."""
-    with ResidentCheckSession(request.project_root, module_store) as session:
+    with ResidentCheckSession(
+        request.project_root, module_store, summary_backend=summary_backend
+    ) as session:
         return session.check(request, runtime)
 
 

@@ -20,3 +20,7 @@ dist/
 !/docs/configuration-conventions.md
 !/docs/detection-quality.md
 !/docs/quality/
+
+# Optional native summary PoC
+native/**/target/
+native/**/.venv/

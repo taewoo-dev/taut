@@ -34,6 +34,10 @@ from taut.policy.function_summaries import (
     build_function_summary_state,
 )
 from taut.policy.indexes import PolicyIndexes
+from taut.policy.native_function_summaries import (
+    SummaryBackend,
+    build_native_function_summary_state,
+)
 from taut.policy.symbol_contracts import SymbolContractIndex
 
 
@@ -63,6 +67,8 @@ class PolicyContext:
     _effect_resolution_cache: dict[FactId, EffectResolution] = field(
         default_factory=_effect_resolution_cache, init=False, repr=False, compare=False
     )
+
+    summary_backend: SummaryBackend = field(default="python", repr=False, compare=False)
 
     exception_evidence_cache: ExceptionEvidenceCache = field(
         default_factory=ExceptionEvidenceCache, repr=False, compare=False
@@ -117,7 +123,12 @@ class PolicyContext:
 
     @cached_property
     def function_summary_state(self) -> FunctionSummaryState:
-        return build_function_summary_state(
+        builder = (
+            build_native_function_summary_state
+            if self.summary_backend == "rust"
+            else build_function_summary_state
+        )
+        return builder(
             self,
             self.prior_function_summary_state,
             self.function_summary_invalidated_modules,
