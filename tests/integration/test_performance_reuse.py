@@ -163,3 +163,47 @@ def test_hundred_mixed_edits_match_fresh_and_release_modules(tmp_path: Path, see
                 assert old_ref() is None
         session.reset()
         assert not session._evidence_cache.entries  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    ("provider", "before", "after"),
+    [
+        (
+            FastAPIProvider(),
+            "from fastapi import APIRouter\nrouter = APIRouter()\n",
+            "from fastapi import APIRouter\nother = APIRouter()\n",
+        ),
+        (
+            SQLAlchemyProvider(),
+            "from sqlalchemy.orm import DeclarativeBase\nclass Base(DeclarativeBase): pass\n",
+            "class Base: pass\n",
+        ),
+        (
+            SQLAlchemyProvider(),
+            "from sqlalchemy.orm import declarative_base\nBase = declarative_base()\n",
+            "from sqlalchemy.orm import declarative_base\nBase = declarative_base()\n# changed\n",
+        ),
+    ],
+)
+def test_export_change_or_factory_requires_broad_invalidation(
+    provider: IncrementalFactProviderV1, before: str, after: str
+) -> None:
+    analyzer = IncrementalProjectAnalyzer(PythonAstAdapter())
+    values = {"app/base.py": before, "app/consumer.py": "import app.base\nvalue = 1\n"}
+    previous = apply_fact_providers(analyzer.analyze(_request_many(values)), (provider,))
+    values["app/base.py"] = after
+    current = analyzer.analyze(_request_many(values))
+    assert (
+        local_provider_result(
+            provider, current, previous, previous.capabilities, analyzer.last_impact.impacted
+        )
+        is None
+    )
+    optimized = apply_fact_providers_incremental(
+        current,
+        (provider,),
+        previous,
+        analyzer.last_impact.impacted,
+        reuse_selector=local_provider_result,
+    )
+    assert optimized.capabilities == provider.analyze(current)
