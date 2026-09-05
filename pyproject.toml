@@ -129,6 +129,7 @@ composition = [
   "src/taut/check_runtime.py",
   "src/taut/check_service.py",
   "src/taut/assurance.py",
+  "src/taut/assurance_evidence.py",
   "src/taut/assurance_roles.py",
   "src/taut/assurance_symbols.py",
   "src/taut/cli.py",

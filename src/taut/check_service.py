@@ -4,6 +4,7 @@ import hashlib
 import os
 import time
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 
 from taut import __version__
@@ -15,6 +16,7 @@ from taut.analysis.contracts import (
     ResolverSettings,
     SourceInput,
 )
+from taut.analysis.provider_reuse import ProviderReuseCounters, local_provider_result
 from taut.analysis.providers import (
     FactProviderV1,
     apply_fact_providers,
@@ -23,6 +25,7 @@ from taut.analysis.providers import (
 from taut.analysis.python.language_adapter import PythonAstAdapter
 from taut.analysis.semantic_model import SnapshotSemanticModel
 from taut.assurance import audit_project_assurance
+from taut.assurance_evidence import FeatureEvidenceCache
 from taut.cache import CacheStore
 from taut.cache.module_results import DiskModuleCache
 from taut.check_runtime import CheckRuntime, prepare_check_runtime
@@ -80,6 +83,10 @@ class CheckCounters:
     recomputed_evaluations: int = 0
     reused_evaluations: int = 0
     full_policy_rerun: bool = False
+    recomputed_assembly_modules: int = 0
+    reused_project_index: bool = False
+    provider_recomputed_modules: tuple[tuple[str, int], ...] = ()
+    provider_reused_exports: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,6 +120,7 @@ class ResidentCheckSession:
         self._prior_provider_snapshot: AnalysisSnapshot | None = None
         self._prior_policy_context: PolicyContext | None = None
         self._prior_policy_result: IncrementalPolicyResult | None = None
+        self._evidence_cache = FeatureEvidenceCache()
 
     def check(self, request: CheckRequest, runtime: CheckRuntime | None = None) -> CheckResult:
         if self._closed:
@@ -144,6 +152,7 @@ class ResidentCheckSession:
         self._prior_provider_snapshot = None
         self._prior_policy_context = None
         self._prior_policy_result = None
+        self._evidence_cache = FeatureEvidenceCache()
 
     def close(self) -> None:
         self.reset()
@@ -187,6 +196,7 @@ class ResidentCheckSession:
         impact = self._analyzer.last_impact
 
         started = time.perf_counter()
+        provider_counters = ProviderReuseCounters()
         prior_snapshot = self._prior_provider_snapshot
         if prior_snapshot is not None and not changes.touched and prior_snapshot.id == snapshot.id:
             snapshot = prior_snapshot
@@ -198,7 +208,11 @@ class ResidentCheckSession:
             reused_providers = 0
         else:
             snapshot = apply_fact_providers_incremental(
-                snapshot, self._providers, prior_snapshot, impact.impacted
+                snapshot,
+                self._providers,
+                prior_snapshot,
+                impact.impacted,
+                reuse_selector=partial(local_provider_result, counters=provider_counters),
             )
             recomputed_providers = len(self._providers)
             reused_providers = 0
@@ -234,6 +248,18 @@ class ResidentCheckSession:
             recomputed_evaluations=policy_result.state.evaluated_evaluations,
             reused_evaluations=policy_result.state.reused_evaluations,
             full_policy_rerun=policy_result.state.full_rerun,
+            recomputed_assembly_modules=(
+                self._analyzer.assembly_state.recomputed_modules
+                if self._analyzer.assembly_state is not None and changes.touched
+                else 0
+            ),
+            reused_project_index=(
+                self._analyzer.assembly_state.reused_project_index
+                if self._analyzer.assembly_state is not None
+                else False
+            ),
+            provider_recomputed_modules=tuple(sorted(provider_counters.recomputed_modules.items())),
+            provider_reused_exports=tuple(sorted(provider_counters.reused_exports)),
         )
         return CheckResult(
             stdout=(rendered + "\n").encode(),
@@ -325,6 +351,12 @@ class ResidentCheckSession:
             prior_atomicity_summary_state=prior_atomicity_state,
             atomicity_summary_invalidated_modules=impact.impacted,
         )
+        if self._prior_policy_context is not None:
+            context = replace(
+                context,
+                exception_evidence_cache=self._prior_policy_context.exception_evidence_cache.fork(),
+            )
+        context.exception_evidence_cache.prepare(context)
         if self._engine is None or self._registry is None:
             raise RuntimeError("resident check session is not configured")
         if self._prior_policy_context is None or self._prior_policy_result is None:
@@ -373,6 +405,7 @@ class ResidentCheckSession:
             used_approvals=len(processing.approval_audit.used),
             used_ignores=len(processing.ignore_audit.used),
             unused_approvals=processing.approval_audit.unused,
+            evidence_cache=self._evidence_cache,
         )
         extension_assurance = tuple(
             issue

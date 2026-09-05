@@ -167,24 +167,18 @@ class ExceptionRegistryRule:
         fields: list[FieldFact] = []
         calls_by_enclosing: dict[SymbolId, list[CallFact]] = defaultdict(list)
         referenced_codes: set[SymbolId] = set()
+        context.exception_evidence_cache.prepare(context)
         for module_id in context.model.modules():
             if context.classification.get(module_id).zone != Zone("prod"):
                 continue
             module = context.model.module(module_id)
-            classes.update(
-                (context.model.canonical_symbol(class_fact.symbol_id), class_fact)
-                for class_fact in module.classes
-            )
+            evidence = context.exception_evidence_cache.collect(context, module)
+            classes.update(evidence.classes)
+            referenced_codes.update(evidence.referenced_codes)
             fields.extend(module.fields)
             for call in module.calls:
                 if call.enclosing_symbol is not None:
                     calls_by_enclosing[call.enclosing_symbol].append(call)
-            for reference in module.references:
-                symbol = reference.ref.symbol
-                if symbol is not None and context.matching_symbol(
-                    symbol, context.policy.code.error_code_enum_symbols
-                ):
-                    referenced_codes.add(context.model.canonical_symbol(symbol))
         policy = context.policy.code
         uncertain_calls = tuple(
             call

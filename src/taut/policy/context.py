@@ -27,6 +27,7 @@ from taut.policy.atomicity_summaries import (
     build_atomicity_summary_state,
 )
 from taut.policy.callback_effects import CallbackEffectIndex
+from taut.policy.exception_evidence import ExceptionEvidenceCache
 from taut.policy.function_summaries import (
     FunctionSemanticSummary,
     FunctionSummaryState,
@@ -61,6 +62,10 @@ class PolicyContext:
     )
     _effect_resolution_cache: dict[FactId, EffectResolution] = field(
         default_factory=_effect_resolution_cache, init=False, repr=False, compare=False
+    )
+
+    exception_evidence_cache: ExceptionEvidenceCache = field(
+        default_factory=ExceptionEvidenceCache, repr=False, compare=False
     )
 
     @cached_property

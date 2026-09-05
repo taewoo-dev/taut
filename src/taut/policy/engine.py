@@ -19,6 +19,7 @@ from taut.domain.ids import ModuleId, RuleId
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.reports import CoverageIssue, CoverageReport
 from taut.policy.context import PolicyContext
+from taut.policy.effect_reuse import equivalent_effect_modules, supports_effect_reuse
 from taut.policy.registry import RuleRegistry
 from taut.policy.rule import RuleEvaluation, RuleRequirements
 from taut.policy.scheduler import RuleScheduler
@@ -126,6 +127,18 @@ class PolicyEngine:
                     identity,
                 ),
             )
+        effect_rules = frozenset(
+            rule_id
+            for rule_id, definition in self._registry.definitions.items()
+            if supports_effect_reuse(definition)
+        )
+        equivalent: frozenset[ModuleId] = (
+            equivalent_effect_modules(
+                context, prior_context, impact_graph.impacted - changes.touched
+            )
+            if effect_rules
+            else frozenset()
+        )
         reuse_by_rule: dict[RuleId, list[RuleEvaluation]] = {}
         for evaluation in previous.evaluations:
             definition = self._registry.definitions[evaluation.rule_id]
@@ -137,6 +150,8 @@ class PolicyEngine:
                 if definition.change_impact is ChangeImpact.SELF
                 else impact_graph.impacted
             )
+            if evaluation.rule_id in effect_rules:
+                invalidated = invalidated - equivalent
             if module not in invalidated:
                 reuse_by_rule.setdefault(evaluation.rule_id, []).append(evaluation)
         target_modules = {
@@ -147,6 +162,7 @@ class PolicyEngine:
                     changes.touched
                     if definition.change_impact is ChangeImpact.SELF
                     else impact_graph.impacted
+                    - (equivalent if rule_id in effect_rules else frozenset())
                 )
             )
             for rule_id, definition in self._registry.definitions.items()

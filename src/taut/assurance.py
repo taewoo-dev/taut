@@ -19,6 +19,7 @@ from taut.analysis.framework.tortoise import (
     TORTOISE_RAW_SQL,
     TORTOISE_TRANSACTIONS,
 )
+from taut.assurance_evidence import FeatureEvidenceCache
 from taut.assurance_roles import semantic_role_issues
 from taut.assurance_symbols import policy_symbol_issues, same_symbol
 from taut.configuration.assurance import FeatureExpectation
@@ -46,6 +47,7 @@ def audit_project_assurance(
     used_approvals: int,
     used_ignores: int,
     unused_approvals: tuple[str, ...] = (),
+    evidence_cache: FeatureEvidenceCache | None = None,
 ) -> AssuranceReport:
     all_python = _project_python_files(project_root, config.force_include)
     analyzed = frozenset(source.path.value for source in discovery.sources)
@@ -149,7 +151,7 @@ def audit_project_assurance(
                 )
             )
 
-    raw_evidence = _feature_evidence(config, snapshot, classifications)
+    raw_evidence = _feature_evidence(config, snapshot, classifications, evidence_cache)
     issues.extend(policy_symbol_issues(config, snapshot))
     filtered, used_assertions = _apply_assertions(raw_evidence, config)
     feature_reports: list[FeatureAssurance] = []
@@ -252,6 +254,7 @@ def _feature_evidence(
     config: ProjectConfiguration,
     snapshot: AnalysisSnapshot,
     classifications: ClassificationIndex,
+    evidence_cache: FeatureEvidenceCache | None = None,
 ) -> dict[str, set[AssuranceEvidence]]:
     values = {name: set[AssuranceEvidence]() for name in config.assurance.features}
 
@@ -293,73 +296,14 @@ def _feature_evidence(
                 path = snapshot.modules[module_id].module.path.value
                 add("transaction", "path", path, path)
 
-    code = config.policy.code
+    current_cache = evidence_cache if evidence_cache is not None else FeatureEvidenceCache()
+    for module_id in tuple(current_cache.entries):
+        if module_id not in snapshot.modules:
+            del current_cache.entries[module_id]
     for module_id, module in snapshot.modules.items():
-        path = module.module.path.value
-        classification = classifications.modules.get(module_id)
-        role = classification.role if classification is not None else None
-        zone = classification.zone.value if classification is not None else "prod"
-        if zone == "test":
-            add("tests", "path", path, path)
-        elif zone == "migration":
-            add("migrations", "path", path, path)
-        elif zone == "script":
-            add("scripts", "path", path, path)
-        if module.classes and role in code.dto_roles:
-            add("dto", "path", path, path)
-        if module.classes and role in code.snapshot_roles:
-            add("snapshot", "path", path, path)
-        if module.classes and role in code.model_roles:
-            add("database", "path", path, path)
-        for class_fact in module.classes:
-            bases = {
-                value
-                for base in class_fact.bases
-                for value in (base.written, *(symbol.value for symbol in base.symbols))
-            }
-            symbol = class_fact.symbol_id.value
-            if any(base in {"pydantic.BaseModel", "pydantic.main.BaseModel"} for base in bases):
-                add("schema", "symbol", symbol, path)
-            if "Snapshot" in class_fact.name and any(
-                base in {"pydantic.BaseModel", "pydantic.main.BaseModel"} for base in bases
-            ):
-                add("snapshot", "symbol", symbol, path)
-            if any(base.endswith("Exception") or base.endswith("Error") for base in bases):
-                add("exception_registry", "symbol", symbol, path)
-            if class_fact.symbol_id in (code.exception_base_symbols | code.error_code_enum_symbols):
-                add("exception_registry", "symbol", symbol, path)
-            if any(base.endswith(".Enum") or base.endswith(".StrEnum") for base in bases):
-                add("enum", "symbol", symbol, path)
-        for decorator in module.decorators:
-            decorator_symbol = decorator.ref.symbol
-            if decorator_symbol is not None and decorator_symbol.value == "dataclasses.dataclass":
-                owner = decorator.decorated_symbol.value
-                if owner.endswith(("Data", "Result", "Row")):
-                    add("dto", "symbol", owner, path)
-        for call in module.calls:
-            call_symbol = (
-                call.ref.symbol.value if call.ref.symbol is not None else call.ref.written_name
-            )
-            if call_symbol.endswith((".commit", ".rollback", ".begin")):
-                add("transaction", "symbol", call_symbol, path)
-            if any(
-                call_symbol == prefix.value or call_symbol.startswith(f"{prefix.value}.")
-                for prefix in config.policy.boundaries.external_modules
-            ):
-                add("external_calls", "symbol", call_symbol, path)
-            if call_symbol in {"os.getenv", "os.environ.get"} or any(
-                call_symbol.startswith(prefix)
-                for prefix in config.policy.security.risky_symbol_prefixes
-            ):
-                add("security", "symbol", call_symbol, path)
-        for reference in module.references:
-            reference_symbol = (
-                reference.ref.symbol.value
-                if reference.ref.symbol is not None
-                else reference.ref.written_name
-            )
-            if reference_symbol in {"os.environ", "os.getenv"}:
-                add("security", "symbol", reference_symbol, path)
+        evidence = current_cache.collect(config, module, classifications.modules.get(module_id))
+        for name, items in evidence.items():
+            values[name].update(items)
     return values
 
 
