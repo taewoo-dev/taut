@@ -183,10 +183,13 @@ All 13 feature keys are required. `required` says the capability belongs in the 
 must have real code evidence plus active policy configuration. `absent` says matching evidence is
 an error.
 
-`roles` keys are exact discovered Python paths. Use them for isolated conflicts and exceptions.
+`roles` keys are exact discovered Python paths. Prefer conventions for ordinary files and move
+or split code when responsibilities conflict with the intended policy.
 Use `role_selectors` for a reviewed directory convention: every selector needs include patterns and
-a durable reason; optional excludes preserve exact exceptions. Empty, stale, or overlapping
-selectors are rejected. `role_aliases` keys are exact custom directory names. Built-in
+a durable reason. Optional `priority` selects a narrower reviewed responsibility; ties across
+different roles, empty selectors, and stale selectors fail. Init does not invent per-file exclusions.
+See [stable configuration](configuration-conventions.md) for growth and migration examples.
+`role_aliases` keys are exact custom directory names. Built-in
 singular/plural aliases cannot be redefined, and Taut does not use linguistic singularization.
 Generated TOML preserves reviewed selector reasons as comments.
 

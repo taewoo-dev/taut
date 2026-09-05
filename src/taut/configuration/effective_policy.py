@@ -249,7 +249,12 @@ class EffectivePolicy:
         )
 
     def digest(self) -> str:
-        payload = {
+        encoded = json.dumps(self.payload(), sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def payload(self) -> dict[str, object]:
+        """Fully expanded policy, shared by diagnostics and the semantic digest."""
+        return {
             "rules": [
                 {
                     "id": rule_id.value,
@@ -456,5 +461,3 @@ class EffectivePolicy:
                 "risky_symbol_prefixes": list(self.security.risky_symbol_prefixes),
             },
         }
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        return hashlib.sha256(encoded).hexdigest()

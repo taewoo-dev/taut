@@ -51,6 +51,10 @@ accident.
 
 ## Start a new project
 
+For conventions that keep working as files are added, policy groups, and read-only
+`taut config simplify` / `taut config explain --path`, see
+[stable configuration](docs/configuration-conventions.md).
+
 `taut init` does not produce a finished policy automatically. It observes the repository and
 creates a safe starting proposal. An AI or developer confirms the high-level decisions, writes the
 proposal, completes repository-specific settings, and proves the result with `audit`.
@@ -159,9 +163,10 @@ metadata; it does not contain repository-specific package names.
 Use `required` only when that capability belongs in this repository, and `absent` only when it
 must not exist. Do not use `absent` to hide configuration work.
 
-`roles` keys must exactly match discovered Python paths. Use them for isolated exceptions.
+`roles` keys must exactly match discovered Python paths. Prefer stable conventions for ordinary files.
 `role_selectors` are reasoned include/exclude globs for a verified directory convention; selectors
-that match nothing or assign two roles are rejected. `role_aliases` maps one exact custom directory
+that match nothing or tie at the highest `priority` are rejected. Init does not generate per-file
+exclusions to hide mixed responsibilities; move or split the code. `role_aliases` maps one exact custom directory
 name to a role and cannot redefine a built-in alias. Taut never guesses singular forms by stripping
 `s`. Generated TOML preserves reviewed selector reasons as comments.
 

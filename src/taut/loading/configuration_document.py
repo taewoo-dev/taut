@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from taut.configuration.manifest import Role
 from taut.domain.location import ConfigPath
 from taut.domain.provider_ids import BUILTIN_BACKEND_PROVIDER_IDS
+from taut.loading.config_values import strings
 from taut.loading.errors import PolicyConfigError
 
 PYPROJECT_CONFIG_PATH = ConfigPath("pyproject.toml")
@@ -29,6 +31,7 @@ _TOOL_KEYS = frozenset(
         "roles",
         "zones",
         "allow",
+        "role_groups",
         "effects",
         "rules",
         "rule_zones",
@@ -102,20 +105,27 @@ def read_configuration_document(
     project_root: Path,
     requested_path: ConfigPath | None,
 ) -> ConfigurationDocument:
+    raw, path = read_configuration_values(project_root, requested_path)
+    return parse_configuration_document(raw, path)
+
+
+def read_configuration_values(
+    project_root: Path, requested_path: ConfigPath | None
+) -> tuple[dict[str, object], ConfigPath]:
     if requested_path is not None:
         absolute = _absolute_config_path(project_root, requested_path)
         raw = _read_toml_path(absolute, requested_path.value)
-        return _document_from_raw(_resolve_extends(raw, absolute, ()), requested_path)
+        return _resolve_extends(raw, absolute, ()), requested_path
 
     pyproject = project_root / PYPROJECT_CONFIG_PATH.value
     if pyproject.is_file():
         raw = _read_toml(project_root, PYPROJECT_CONFIG_PATH)
         if _tool_section(raw) is not None:
-            return _document_from_raw(_resolve_extends(raw, pyproject, ()), PYPROJECT_CONFIG_PATH)
+            return _resolve_extends(raw, pyproject, ()), PYPROJECT_CONFIG_PATH
 
     legacy = project_root / LEGACY_CONFIG_PATH.value
     if legacy.is_file():
-        return _document_from_raw(_read_toml(project_root, LEGACY_CONFIG_PATH), LEGACY_CONFIG_PATH)
+        return _read_toml(project_root, LEGACY_CONFIG_PATH), LEGACY_CONFIG_PATH
     raise PolicyConfigError("configuration is missing: add [tool.taut] to pyproject.toml")
 
 
@@ -171,6 +181,42 @@ def _resolve_extends(
     return merged
 
 
+def configuration_origins(project_root: Path, requested: ConfigPath | None) -> dict[str, str]:
+    """Report the declaring file for each explicit leaf, including inherited values."""
+    _, path = read_configuration_values(project_root, requested)
+
+    def collect(file: Path) -> dict[tuple[str, ...], str]:
+        raw = _read_toml_path(file, str(file))
+        section = _tool_section(raw)
+        values = section if section is not None else raw
+        origins: dict[tuple[str, ...], str] = {}
+        if section is not None and "extend" in section:
+            base = Path(str(section["extend"]))
+            origins = collect((file.parent / base).resolve())
+
+        def visit(table_value: dict[str, object], prefix: tuple[str, ...]) -> None:
+            for key, value in table_value.items():
+                if key == "extend" and not prefix:
+                    continue
+                parts = (*prefix, key)
+                if isinstance(value, dict):
+                    origins.pop(parts, None)
+                    visit(_table(cast(object, value), key), parts)
+                else:
+                    for old in tuple(origins):
+                        if old[: len(parts)] == parts:
+                            del origins[old]
+                    origins[parts] = str(file)
+
+        visit(values, ())
+        return origins
+
+    return {
+        ".".join(key): value
+        for key, value in collect(_absolute_config_path(project_root, path).resolve()).items()
+    }
+
+
 def _deep_merge(base: dict[str, object], child: dict[str, object]) -> dict[str, object]:
     merged = dict(base)
     for key, value in child.items():
@@ -188,7 +234,7 @@ def _deep_merge(base: dict[str, object], child: dict[str, object]) -> dict[str, 
     return merged
 
 
-def _document_from_raw(raw: dict[str, object], path: ConfigPath) -> ConfigurationDocument:
+def parse_configuration_document(raw: dict[str, object], path: ConfigPath) -> ConfigurationDocument:
     section = _tool_section(raw)
     if section is None:
         return ConfigurationDocument(raw, path, _boolean(raw.get("strict", True), "strict"))
@@ -230,7 +276,7 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     root["zones"] = [{"name": name, "patterns": patterns} for name, patterns in zones.items()]
 
     allow = _table(section.get("allow", {}), "tool.taut.allow")
-    root["architecture"] = {"allow": allow}
+    root["architecture"] = {"allow": _expand_role_groups(section, roles, allow)}
 
     if "effects" in section:
         root["effects"] = section["effects"]
@@ -273,6 +319,33 @@ def _normalize_tool_section(section: dict[str, object]) -> dict[str, object]:
     if conventions:
         root["code_conventions"] = conventions
     return root
+
+
+def _expand_role_groups(
+    section: dict[str, object], roles: dict[str, object], allow: dict[str, object]
+) -> dict[str, object]:
+    groups: dict[str, tuple[str, ...]] = {}
+    for name, value in _table(section.get("role_groups", {}), "role_groups").items():
+        Role(name)
+        members = strings(value, f"role_groups.{name}")
+        if not members or any(member not in roles for member in members):
+            raise PolicyConfigError(
+                f"role_groups.{name} requires declared role names; nested groups are not supported"
+            )
+        groups[name] = members
+    expanded: dict[str, object] = {}
+    for role, value in allow.items():
+        targets: list[str] = []
+        for target in strings(value, f"allow.{role}"):
+            if target.startswith("@"):
+                name = target[1:]
+                if name not in groups:
+                    raise PolicyConfigError(f"unknown role group: {target}")
+                targets.extend(groups[name])
+            else:
+                targets.append(target)
+        expanded[role] = list(dict.fromkeys(targets))
+    return expanded
 
 
 def _normalized_role(name: str, value: object) -> dict[str, object]:

@@ -52,7 +52,8 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "architecture.accept_observed",
-                "위험하지 않은 현재 import 관계를 초기 allow 그래프로 사용할까요?",
+                "현재 import 관계가 의도한 정책에 맞는지 검토하세요. "
+                "위반은 코드를 먼저 수정하세요.",
                 ("accept", "review"),
                 "review",
                 paths,
@@ -93,9 +94,10 @@ def build_init_questions(
             InitQuestion(
                 f"role_group.{parent}",
                 f"{parent} 아래 파일의 역할 근거가 부족합니다. "
-                "role_selectors 또는 exact roles로 분류하세요.",
+                "기존 역할에 맞게 코드를 배치하세요. "
+                "새 구조라면 지속 적용할 role_selectors를 검토하세요.",
                 ("provide_role_selector", "provide_exact_roles"),
-                "provide_role_selector" if len(observations) > 1 else "provide_exact_roles",
+                "provide_role_selector",
                 (selector, *(item.path for item in observations)),
             )
         )
@@ -142,7 +144,8 @@ def build_init_questions(
 def _role_question(observation: InitRoleObservation) -> InitQuestion:
     return InitQuestion(
         f"role.{observation.path}",
-        f"{observation.path}의 역할 근거가 충돌합니다. 정확한 역할을 선택하세요.",
+        f"{observation.path}의 역할 근거가 충돌합니다. "
+        "책임을 분리하거나 역할에 맞는 위치로 옮기세요.",
         observation.candidates,
         observation.recommended,
         tuple(

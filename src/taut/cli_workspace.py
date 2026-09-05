@@ -13,6 +13,7 @@ from taut.check_runtime import prepare_check_runtime
 from taut.check_service import CheckResult
 from taut.configuration.model import ProjectConfiguration
 from taut.domain.location import ConfigPath
+from taut.loading.configuration_document import configuration_origins
 from taut.loading.errors import PolicyConfigError
 from taut.workspace import TautWorkspace, unlisted_workspace_projects
 
@@ -111,7 +112,12 @@ def run_workspace_config(workspace: TautWorkspace, command: str, output_format: 
     if command != "explain":
         raise PolicyConfigError(f"unsupported workspace config command: {command}")
     members = [
-        {"path": path, **configuration_payload(configured)} for path, configured in loaded_members
+        {
+            "path": path,
+            **configuration_payload(configured),
+            "origins": configuration_origins(workspace.root / path, None),
+        }
+        for path, configured in loaded_members
     ]
     payload = {"workspace_schema_version": 1, "members": members}
     if output_format == "json":
@@ -132,6 +138,20 @@ def configuration_payload(config: ProjectConfiguration) -> dict[str, object]:
         "packs": config.packs,
         "providers": config.providers,
         "source_roots": tuple(path.value for path in config.source_roots),
+        "include": config.include,
+        "exclude": config.exclude,
+        "force_include": config.force_include,
+        "strict": config.strict,
+        "cache": {"enabled": config.cache_enabled, "directory": config.cache_directory.value},
+        "zones": {matcher.zone.value: matcher.patterns for matcher in config.manifest.zones},
+        "effects": [
+            {
+                "symbol": symbol.value,
+                "effects": sorted(effect.value for effect in entry.effects),
+                "access": entry.access_path.value,
+            }
+            for symbol, entry in config.catalog.entries.items()
+        ],
         "roles": tuple(
             {
                 "name": role.role.value,
@@ -143,4 +163,24 @@ def configuration_payload(config: ProjectConfiguration) -> dict[str, object]:
         ),
         "default_zone": config.manifest.default_zone.value,
         "default_max_lines": config.policy.default_max_lines,
+        "effective_policy": config.policy.payload(),
+        "assurance": {
+            "features": {name: value.value for name, value in config.assurance.features.items()},
+            "max_approvals": config.assurance.max_approvals,
+            "max_inline_ignores": config.assurance.max_inline_ignores,
+            "exclusions": [
+                {"patterns": item.patterns, "reason": item.reason}
+                for item in config.assurance.exclusions
+            ],
+            "assertions": [
+                {
+                    "domain": item.domain,
+                    "kind": item.kind,
+                    "target": item.target,
+                    "state": item.state,
+                    "reason": item.reason,
+                }
+                for item in config.assurance.assertions
+            ],
+        },
     }
