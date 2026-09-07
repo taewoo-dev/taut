@@ -4,11 +4,11 @@
 determine reliably. The same source and configuration always produce the same result. It does
 not hard-code the names or directory layout of any company or service.
 
-Version 0.9.0 adds compact configuration and stable role conventions on top of first-party
-helper analysis, semantic assurance, and incremental checks. It supports Python 3.12 or newer:
+Version 0.10.0 adds English output, stronger callback and lambda analysis, incremental
+reuse, and advisory rule adoption. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.9.0
+uv add --dev pytaut==0.10.0
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -439,7 +439,7 @@ every detected policy surface that must be reviewed.
 
 ## Results
 
-The current development version uses English for built-in diagnostics, remediation guidance,
+Version 0.10.0 uses English for built-in diagnostics, remediation guidance,
 CLI help, setup questions, and text/JSON report messages. User-provided paths, identifiers,
 and reasons retain their original text. Rule IDs and JSON field names are unchanged.
 Older cached reports, analysis results, and daemon status are invalidated on upgrade.
@@ -447,7 +447,7 @@ Older cached reports, analysis results, and daemon status are invalidated on upg
 A successful check means no enforced violation was found within the supported semantics and
 configured policy. It does not prove runtime safety. `assurance.complete` describes source and
 feature configuration checks; `resolved` describes symbol identity. Neither proves every possible
-execution effect, and empty `gaps` means no rule reported a gap. The current development JSON adds
+execution effect, and empty `gaps` means no rule reported a gap. The JSON report includes
 `interpretation` to make this contract explicit; the report remains schema v5 with additive fields.
 See [measured detection limits](docs/detection-quality.md) for supported cases and known misses.
 
@@ -489,7 +489,7 @@ f-strings or string concatenation.
 ## Built-in rules
 
 With the default `strict = true`, `CAT001` is advisory and the other 48 rules are enforced.
-Individual rules cannot be disabled. In the current development version, stage selected rules as
+Individual rules cannot be disabled. Stage selected rules as
 advisory while preserving strict assurance and enforcing every other rule:
 
 ```toml
@@ -500,8 +500,8 @@ ASYNC001 = "advisory"
 The rule still runs and reports findings and uncertainty. Remove the entry to restore its default
 enforcement. `off` and promoting advisory-only rules such as `CAT001` are rejected. Use
 `strict = false` to report all findings as warnings before setup. JSON `coverage.rule_levels` and
-verbose text expose effective levels even when a rule has no findings. These changes are unreleased;
-see the [detection and adoption guide](docs/detection-quality.md).
+verbose text expose effective levels even when a rule has no findings. See the
+[detection and adoption guide](docs/detection-quality.md).
 
 | Group | Rules |
 |---|---|

@@ -1,11 +1,11 @@
 # 문서 안내
 
 릴리스 사용자는 [`../MIGRATION.md`](../MIGRATION.md)와 [`VALIDATION_REPORT.md`](VALIDATION_REPORT.md)를
-먼저 확인한다. 이 문서 세트는 pytaut 0.9.0, 설정 schema v5, Python 3.12+ 기준이다.
+먼저 확인한다. 이 문서 세트는 pytaut 0.10.0, 설정 schema v5, Python 3.12+ 기준이다.
 
 ## 현재 구현 기준
 
-- [`detection-quality.md`](detection-quality.md): 판정 범위, 미탐 평가와 점진 도입; 미출시 변경 포함
+- [`detection-quality.md`](detection-quality.md): 판정 범위, 미탐 평가와 점진 도입; 0.10.0 출시 변경
 
 - [`configuration-conventions.md`](configuration-conventions.md): 신규 파일 자동 분류, 역할 규약, 설정 간소화와 정책 준수 전환
 

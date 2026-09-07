@@ -1,8 +1,7 @@
 # Detection scope, measurement, and adoption
 
-This document describes unreleased changes on top of 0.9.0. They require a source installation
-until a new package is published. Configuration and report schemas remain v5; new report keys
-are additive.
+This document describes the detection and adoption changes released in 0.10.0.
+Configuration and report schemas remain v5; new report keys are additive.
 
 ## What a successful check establishes
 

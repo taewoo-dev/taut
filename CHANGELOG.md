@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
+
+- Standardize all built-in diagnostics, remediation, CLI help, onboarding questions, and
+  text/JSON messages in English. Preserve user-provided Unicode paths and identifiers.
+  Invalidate older report/module caches and daemon status to avoid mixed-language output.
+- Fix incremental atomicity analysis requeueing a removed caller from an old reverse graph.
+- Retain the optional Rust summary/atomicity PoC and differential tests in the source repository.
+  The published `pytaut` package uses Python by default and does not require or bundle Rust.
+  Native expansion is on hold; measured benefits and memory limits are documented in
+  [the PoC report](docs/quality/native-pipeline-poc.md).
 
 - Reduce retained memory by eliminating duplicate index-comparison tuples and empty module
   assurance evidence; share module-local symbol IDs and equal immutable function summaries.

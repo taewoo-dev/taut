@@ -1,5 +1,16 @@
 # pytaut validation report
 
+## 0.10.0 release validation — 2026-09-07
+
+`bash scripts/test.sh` passed on Python 3.14.0 after the version update: 1,405 tests,
+25 optional native skips, 90.49% coverage, repository conventions, Ruff, strict mypy/Pyright,
+self-policy, wheel/sdist builds, and installed-wheel smoke checks. The English-output
+implementation at `1ff8f73` also passed 1,430 tests with the optional native backend,
+four Rust tests, and installed native/Python report parity.
+
+The release uses Python by default; no native extension is bundled or required.
+Historical entries below retain the scope and publication status at the time they were written.
+
 ## Unreleased memory follow-up at 29c6edc — 2026-09-05
 
 `bash scripts/test.sh` passed on Python 3.14.0: 1,383 tests, 90.55% total coverage with branch
