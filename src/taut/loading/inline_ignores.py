@@ -53,7 +53,7 @@ def load_inline_ignores(
                     EngineIssue(
                         code="INVALID_INLINE_IGNORE",
                         kind=EngineIssueKind.INVALID_CONFIGURATION,
-                        message=("ignore 주석은 '# taut: ignore[RULE001]' 형식이어야 합니다."),
+                        message=("Ignore comments must use the form '# taut: ignore[RULE001]'."),
                         location=location,
                     )
                 )
@@ -64,7 +64,7 @@ def load_inline_ignores(
                     EngineIssue(
                         code="UNKNOWN_INLINE_IGNORE_RULE",
                         kind=EngineIssueKind.INVALID_CONFIGURATION,
-                        message=f"ignore 주석의 규칙 번호를 확인할 수 없습니다: {rule_id.value}",
+                        message=f"Unknown rule ID in ignore comment: {rule_id.value}",
                         location=location,
                     )
                 )

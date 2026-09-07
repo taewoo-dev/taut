@@ -19,4 +19,4 @@ def validate_classification_for_policy(
         if classification.role is None:
             continue
         if classification.role not in policy.allowed_imports:
-            raise ValueError(f"{classification.role.value}: architecture.allow 항목이 없습니다.")
+            raise ValueError(f"{classification.role.value}: missing architecture.allow entry.")

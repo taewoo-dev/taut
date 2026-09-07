@@ -81,12 +81,12 @@ def discover_sources(
             project_root.resolve()
         ):
             issues.append(_discovery_issue("SOURCE_SYMLINK_OUTSIDE", project_path.value))
-            entries.append(DiscoveryEntry(project_path, False, "프로젝트 밖 symlink"))
+            entries.append(DiscoveryEntry(project_path, False, "Symlink outside the project"))
             continue
         if _matches(project_path.value, config.exclude) and not _matches(
             project_path.value, config.force_include
         ):
-            entries.append(DiscoveryEntry(project_path, False, "exclude 패턴과 일치"))
+            entries.append(DiscoveryEntry(project_path, False, "Matches an exclude pattern"))
             continue
         folded = project_path.value.casefold()
         previous_path = seen_paths.get(folded)
@@ -134,9 +134,9 @@ def discover_sources(
                 content_hash=hashlib.sha256(content.encode()).hexdigest(),
             )
         )
-        entries.append(DiscoveryEntry(project_path, True, "검사 대상"))
+        entries.append(DiscoveryEntry(project_path, True, "Included in analysis"))
     if not sources:
-        issues.append(_discovery_issue("NO_SOURCES", "일치하는 Python 파일이 없음"))
+        issues.append(_discovery_issue("NO_SOURCES", "No matching Python files"))
     entries.extend(
         DiscoveryEntry(
             ProjectPath(path.relative_to(project_root).as_posix()), False, "shadowed_stub"
@@ -178,7 +178,7 @@ def _discovery_issue(code: str, subject: str, cause: str | None = None) -> Engin
     return EngineIssue(
         code=code,
         kind=EngineIssueKind.SOURCE_DISCOVERY_FAILURE,
-        message=f"소스 파일을 검사 대상에 포함하지 못했습니다: {subject}",
+        message=f"Could not include source file in analysis: {subject}",
         location=None,
         cause=cause,
     )

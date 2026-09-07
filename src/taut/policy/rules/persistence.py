@@ -450,29 +450,32 @@ def persistence_rule_definitions() -> tuple[RuleDefinition, ...]:
     rows = (
         (
             RELATIONSHIP_RULE_ID,
-            "관계의 숨은 DB 조회 금지",
-            "relationship은 raise_on_sql 또는 raise 로딩을 명시하세요.",
+            "No implicit relationship queries",
+            "Set relationship loading to raise_on_sql or raise.",
             RelationshipLoadingRule(),
             "relationship",
         ),
         (
             DB_ENUM_RULE_ID,
-            "DB Enum 저장 계약",
-            "DB Enum 이름, 저장 값과 native 방식을 모두 명시하세요.",
+            "DB Enum storage contract",
+            "Specify the DB Enum name, stored values, and native mode.",
             DatabaseEnumRule(),
             "db_enum",
         ),
         (
             DATETIME_RULE_ID,
-            "시간 DB Column의 timezone",
-            "시간 시점 Column에는 timezone=True를 명시하세요.",
+            "Timestamp column timezone",
+            "Set timezone=True on timestamp columns.",
             TimezoneColumnRule(),
             "database_time",
         ),
         (
             RAW_SQL_RULE_ID,
-            "Raw SQL 통제 경계",
-            "일반 코드는 ORM 표현식을 사용하고, 필요한 Raw SQL은 승인된 공용 실행 통로에 두세요.",
+            "Controlled Raw SQL boundary",
+            (
+                "Use ORM expressions in ordinary code and route necessary Raw SQL "
+                "through approved shared wrappers."
+            ),
             RawSqlRule(),
             "raw_sql",
         ),

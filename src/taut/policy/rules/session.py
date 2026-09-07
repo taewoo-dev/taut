@@ -59,7 +59,7 @@ class SessionOwnerRule:
                 target,
                 RuleVerdict.INDETERMINATE,
                 (),
-                EvaluationReason("missing_role", "파일의 role이 정해지지 않았습니다."),
+                EvaluationReason("missing_role", "No role is assigned to this file."),
             )
         if classification.role in context.policy.transaction_owner_roles:
             return RuleEvaluation(OWNER_RULE_ID, target, RuleVerdict.PASS, ())
@@ -316,8 +316,8 @@ def session_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             id=OWNER_RULE_ID,
             behavior_version=RULE_VERSION,
-            title="DB session 생성 위치 제한",
-            help="DB session은 저장소에서 정한 transaction owner 안에서만 여세요.",
+            title="DB session ownership",
+            help="Open DB sessions only within configured transaction owners.",
             target=RuleTarget.CALL,
             requirements=call_requirements,
             change_impact=ChangeImpact.SELF,
@@ -328,8 +328,8 @@ def session_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             id=NESTED_RULE_ID,
             behavior_version=RULE_VERSION,
-            title="DB session 중첩 금지",
-            help="한 session 문맥 안에서 다른 session을 열지 마세요.",
+            title="No nested DB sessions",
+            help="Do not open another session inside a session context.",
             target=RuleTarget.CALL,
             requirements=call_requirements,
             change_impact=ChangeImpact.SELF,
@@ -340,10 +340,11 @@ def session_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             id=PARAMETER_RULE_ID,
             behavior_version=PARAMETER_RULE_VERSION,
-            title="Service transaction 참여 계약",
+            title="Service transaction participation contract",
             help=(
-                "독립 Service는 transaction을 소유하고, 참여 함수는 승인된 symbol/decorator로 "
-                "표시한 뒤 session을 새로 열거나 commit/rollback하지 마세요."
+                "Standalone Services own transactions. Mark participants with "
+                "approved symbols or decorators, "
+                "and do not open new sessions or commit/rollback in participants."
             ),
             target=RuleTarget.MODULE,
             requirements=module_requirements,

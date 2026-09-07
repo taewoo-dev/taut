@@ -439,6 +439,11 @@ every detected policy surface that must be reviewed.
 
 ## Results
 
+The current development version uses English for built-in diagnostics, remediation guidance,
+CLI help, setup questions, and text/JSON report messages. User-provided paths, identifiers,
+and reasons retain their original text. Rule IDs and JSON field names are unchanged.
+Older cached reports, analysis results, and daemon status are invalidated on upgrade.
+
 A successful check means no enforced violation was found within the supported semantics and
 configured policy. It does not prove runtime safety. `assurance.complete` describes source and
 feature configuration checks; `resolved` describes symbol identity. Neither proves every possible

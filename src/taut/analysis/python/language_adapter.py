@@ -49,7 +49,7 @@ class PythonAstAdapter:
             issue = EngineIssue(
                 code="PY_PARSE_001",
                 kind=EngineIssueKind.PARSE_FAILURE,
-                message="Python 문법을 해석하지 못했습니다.",
+                message="Could not parse Python source.",
                 location=location,
                 cause=error.msg,
             )
@@ -60,7 +60,7 @@ class PythonAstAdapter:
             issue = EngineIssue(
                 code="PY_ANALYSIS_001",
                 kind=EngineIssueKind.ANALYSIS_FAILURE,
-                message=f"Python 파일 분석을 완료하지 못했습니다: {source.path.value}",
+                message=f"Could not complete Python file analysis: {source.path.value}",
                 location=SourceRange(source.path, 0, 0, 0, 0),
                 cause=f"{error.__class__.__name__}: {error}",
             )

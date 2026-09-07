@@ -155,8 +155,8 @@ def test_staging_does_not_bypass_assurance(tmp_path: Path) -> None:
     assert result.exit_code == 2
     assert result.report is not None and result.report.assurance.issues
     text = render_text(result.report, color=True)
-    assert "지원 범위 내 정책 위반 없음" not in text
-    assert "\033[31m검사 완료:" in text
+    assert "no policy violations within supported scope" not in text
+    assert "\033[31mCheck complete:" in text
 
 
 @pytest.mark.parametrize(

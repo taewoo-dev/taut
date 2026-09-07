@@ -210,7 +210,7 @@ class EndpointDocumentationRule:
                 coverage_gaps.append(
                     EvaluationReason(
                         "unresolved_mapping",
-                        f"{function.symbol_id.value}의 responses mapping을 확정하지 못했습니다.",
+                        f"Could not resolve the responses mapping for {function.symbol_id.value}.",
                     )
                 )
             response_model = _keyword_state(decorator, "response_model", context)
@@ -232,8 +232,8 @@ class EndpointDocumentationRule:
                 coverage_gaps.append(
                     EvaluationReason(
                         "unresolved_mapping",
-                        f"{function.symbol_id.value}의 response_model mapping을 "
-                        "확정하지 못했습니다.",
+                        "Could not resolve the response_model mapping for "
+                        f"{function.symbol_id.value}.",
                     )
                 )
         route_findings, route_gaps = programmatic_route_evidence(ENDPOINT_RULE_ID, target, context)
@@ -408,8 +408,8 @@ def api_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             ENDPOINT_RULE_ID,
             RULE_VERSION,
-            "HTTP Endpoint 문서",
-            "Endpoint에 docstring, responses와 정상 응답 response_model을 명시하세요.",
+            "HTTP endpoint documentation",
+            "Declare a docstring, responses, and a success response_model for each endpoint.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -420,8 +420,8 @@ def api_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             FIELD_RULE_ID,
             FIELD_RULE_VERSION,
-            "공개 API 필드 문서",
-            "공개 Schema 필드에 설명과 실제 예시를 명시하세요.",
+            "Public API field documentation",
+            "Provide descriptions and concrete examples for public Schema fields.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -432,9 +432,8 @@ def api_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             ROUTER_METADATA_RULE_ID,
             ROUTER_METADATA_RULE_VERSION,
-            "Router 태그와 Query 설명",
-            "APIRouter 또는 include_router에는 tags를, Query 매개변수에는 description을 "
-            "명시하세요.",
+            "Router tags and Query descriptions",
+            "Specify tags on APIRouter or include_router and descriptions on Query parameters.",
             RuleTarget.MODULE,
             project_requirements,
             ChangeImpact.PROJECT,

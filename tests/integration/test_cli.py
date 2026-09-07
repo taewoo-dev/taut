@@ -97,11 +97,11 @@ def test_cli_returns_one_and_text_diagnostic_for_violation(
     assert "TIME001" in output
     assert "app/service.py:2" in output
     assert "error:" in output
-    assert "검사 완료: 오류 1건, 경고 0건" in output
-    assert "판정 기준:" not in output
+    assert "Check complete: 1 error, 0 warnings" in output
+    assert "Decision digest:" not in output
 
     assert main(["check", str(tmp_path), "--verbose"]) == 1
-    assert "판정 기준:" in capsys.readouterr().out
+    assert "Decision digest:" in capsys.readouterr().out
 
     assert main(["check", str(tmp_path), "--width", "60"]) == 1
     assert "\n    " in capsys.readouterr().out
@@ -132,12 +132,12 @@ def test_cache_stats_and_clean_commands(tmp_path: Path, capsys: pytest.CaptureFi
     capsys.readouterr()
     assert main(["cache", "stats", str(tmp_path)]) == 0
     stats = capsys.readouterr().out
-    assert "모듈: 1" in stats
-    assert "리포트: 1" in stats
+    assert "Modules: 1" in stats
+    assert "Reports: 1" in stats
     assert main(["cache", "clean", str(tmp_path)]) == 0
-    assert "캐시 삭제 완료" in capsys.readouterr().out
+    assert "Cache cleared" in capsys.readouterr().out
     assert main(["cache", "stats", str(tmp_path)]) == 0
-    assert "리포트: 0" in capsys.readouterr().out
+    assert "Reports: 0" in capsys.readouterr().out
 
 
 @pytest.mark.integration
@@ -154,7 +154,7 @@ def test_cache_commands_follow_configured_directory(
     assert not (tmp_path / ".taut_cache").exists()
 
     assert main(["cache", "stats", str(tmp_path)]) == 0
-    assert "리포트: 1" in capsys.readouterr().out
+    assert "Reports: 1" in capsys.readouterr().out
 
 
 @pytest.mark.integration
@@ -165,7 +165,7 @@ def test_cache_stats_does_not_create_an_absent_cache(
 
     assert main(["cache", "stats", str(tmp_path)]) == 0
 
-    assert "리포트: 0" in capsys.readouterr().out
+    assert "Reports: 0" in capsys.readouterr().out
     assert not (tmp_path / ".taut_cache").exists()
 
 
@@ -265,7 +265,7 @@ def test_workspace_check_keeps_member_graphs_isolated_and_aggregates_exit(
     text_output = capsys.readouterr().out
     assert "== ai ==" in text_output
     assert "== backend ==" in text_output
-    assert "workspace 검사 완료" in text_output
+    assert "Workspace check complete" in text_output
 
 
 @pytest.mark.integration
@@ -340,11 +340,11 @@ def test_config_validate_and_rule_explanation(
     _write_project(tmp_path, "value = 1")
 
     assert main(["config", "validate", str(tmp_path)]) == 0
-    assert "설정 정상" in capsys.readouterr().out
+    assert "Configuration valid" in capsys.readouterr().out
     assert main(["rules", "ASYNC001"]) == 0
     explanation = capsys.readouterr().out
-    assert "강도: enforced" in explanation
-    assert "적용 영역:" in explanation
+    assert "Level: enforced" in explanation
+    assert "Applies to zones:" in explanation
 
     assert main(["config", "explain", str(tmp_path), "--format", "json"]) == 0
     config_explanation = cast(dict[str, object], json.loads(capsys.readouterr().out))
@@ -461,7 +461,7 @@ def test_cli_accepts_absolute_config_for_read_only_external_audit(
     code = main(["check", str(project), "--config", str(external_config)])
 
     assert code == 0
-    assert "검사 완료: 지원 범위 내 정책 위반 없음" in capsys.readouterr().out
+    assert "Check complete: no policy violations within supported scope" in capsys.readouterr().out
 
 
 @pytest.mark.integration
@@ -474,7 +474,7 @@ def test_exact_inline_ignore_is_allowed_but_unused_or_malformed_is_not(
         "from datetime import datetime\nvalue = datetime.now()  # taut: ignore[TIME001]",
     )
     assert main(["check", str(tmp_path), "--verbose"]) == 0
-    assert "ignore: 사용 1" in capsys.readouterr().out
+    assert "ignore: used 1" in capsys.readouterr().out
 
     (tmp_path / "app" / "service.py").write_text("value = 1  # taut: ignore[TIME001]")
     assert main(["check", str(tmp_path)]) == 1
@@ -655,7 +655,7 @@ def test_init_writes_ready_workspace_and_root_config_validate_checks_members(
 
     assert main(["init", str(tmp_path), "--write"]) == 0
     output = capsys.readouterr().out
-    assert "workspace 설정 저장 완료" in output
+    assert "Workspace configuration written" in output
     assert 'members = ["ai", "backend"]' in (tmp_path / "pyproject.toml").read_text()
 
     assert main(["config", "validate", str(tmp_path)]) == 0
@@ -675,7 +675,7 @@ def test_init_writes_ready_workspace_and_root_config_validate_checks_members(
     assert payload["kind"] == "workspace_audit"
 
     assert main(["audit", str(tmp_path)]) == 0
-    assert "workspace assurance 완료" in capsys.readouterr().out
+    assert "Workspace assurance complete" in capsys.readouterr().out
 
 
 @pytest.mark.integration

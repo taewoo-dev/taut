@@ -210,8 +210,8 @@ def enum_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         RULE_ID,
         RULE_VERSION,
-        "Enum 공개 계약",
-        "Enum 위치, 공개 범위, 자료형, 이름과 값 형식을 맞추세요.",
+        "Public Enum contract",
+        "Follow the configured Enum location, visibility, base type, naming, and value formats.",
         RuleTarget.MODULE,
         RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         ChangeImpact.SELF,

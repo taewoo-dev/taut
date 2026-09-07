@@ -58,22 +58,22 @@ def run_explain(
             if selected
             else [],
             "remediation": (
-                "선언된 역할의 경로로 배치하고 책임을 맞추세요. "
-                "새로운 아키텍처를 도입할 때만 규약을 수정하세요."
+                "Place code in a declared role path and align its responsibilities. "
+                "Change conventions only when introducing a new architecture."
                 if selected is None
-                else "역할은 경로 규약으로 결정됩니다. 코드의 정책 준수 여부는 check로 검사하세요."
+                else "Roles follow path conventions. Use check to verify code compliance."
             ),
         }
         exit_code = 0 if selected is not None and in_scope else 2
     if output_format == "json":
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
     else:
-        print(f"스키마: v{config.schema_version}")
-        print(f"규칙 팩: {', '.join(config.packs)}")
-        print(f"분석 provider: {', '.join(config.providers) or '(없음)'}")
-        print(f"기본 영역: {config.manifest.default_zone.value}")
-        print(f"최대 파일 길이: {config.policy.default_max_lines}")
-        print(f"설정 digest: {config.digest()}")
+        print(f"Schema: v{config.schema_version}")
+        print(f"Rule packs: {', '.join(config.packs)}")
+        print(f"Analysis providers: {', '.join(config.providers) or '(none)'}")
+        print(f"Default zone: {config.manifest.default_zone.value}")
+        print(f"Maximum file length: {config.policy.default_max_lines}")
+        print(f"Configuration digest: {config.digest()}")
         for key in (
             "path",
             "roles",

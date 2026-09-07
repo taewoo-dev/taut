@@ -61,18 +61,21 @@ def audit_project_assurance(
         issues.append(
             _issue(
                 "SOURCE_UNACCOUNTED",
-                "Python 파일이 분석되거나 사유 있는 제외로 등록되지 않았습니다.",
+                "Python file is neither analyzed nor covered by a reasoned exclusion.",
                 path,
-                "include/source_roots에 포함하거나 [[tool.taut.exclusions]]에 사유를 적으세요.",
+                (
+                    "Include it in include/source_roots or provide a reason in "
+                    "[[tool.taut.exclusions]]."
+                ),
             )
         )
     for pattern in unused_exclusions:
         issues.append(
             _issue(
                 "EXCLUSION_UNUSED",
-                "사유 있는 제외 패턴이 어떤 Python 파일과도 일치하지 않습니다.",
+                "Reasoned exclusion pattern matches no Python files.",
                 pattern,
-                "오래된 제외를 제거하거나 실제 경로로 수정하세요.",
+                "Remove the stale exclusion or update it to match an existing path.",
             )
         )
 
@@ -88,9 +91,9 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "ROLE_SELECTOR_UNUSED",
-                    "role 패턴이 분석된 파일을 하나도 분류하지 못했습니다.",
+                    "Role pattern matches no analyzed files.",
                     matcher.role.value,
-                    f"tool.taut.roles.{matcher.role.value} 패턴을 수정하거나 role을 제거하세요.",
+                    f"Update the tool.taut.roles.{matcher.role.value} pattern or remove the role.",
                 )
             )
     for zone_matcher in config.manifest.zones:
@@ -101,10 +104,10 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "ZONE_SELECTOR_UNUSED",
-                    "zone 패턴이 분석된 파일을 하나도 분류하지 못했습니다.",
+                    "Zone pattern matches no analyzed files.",
                     zone_matcher.zone.value,
-                    f"tool.taut.zones.{zone_matcher.zone.value} 패턴을 수정하거나 "
-                    "zone을 제거하세요.",
+                    f"Update the tool.taut.zones.{zone_matcher.zone.value} pattern or "
+                    "remove the zone.",
                 )
             )
     for module_id, classification in classifications.modules.items():
@@ -113,10 +116,10 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "ROLE_UNCLASSIFIED",
-                    "분석된 모듈에 architecture role이 없습니다.",
+                    "Analyzed module has no architecture role.",
                     path,
-                    "선언된 역할의 위치로 코드를 배치하고 책임을 맞추세요. "
-                    "새 아키텍처를 도입할 때만 규약을 수정하세요. "
+                    "Place code in the declared role location and align its responsibilities. "
+                    "Change conventions only when introducing a new architecture. "
                     + config.manifest.placement_hint(),
                 )
             )
@@ -145,9 +148,9 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "FRAMEWORK_PROVIDER_MISSING",
-                    "사용 중인 프레임워크의 semantic provider가 설정되지 않았습니다.",
+                    "No semantic provider is configured for a framework in use.",
                     framework,
-                    f"tool.taut.providers에 {provider}를 추가하세요.",
+                    f"Add {provider} to tool.taut.providers.",
                 )
             )
 
@@ -163,9 +166,10 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "FEATURE_REQUIRED_MISSING",
-                    "required로 선언한 정책 영역의 실제 코드 근거를 찾지 못했습니다.",
+                    "No source evidence was found for a feature declared required.",
                     name,
-                    f"tool.taut.assurance.features.{name} 또는 관련 역할·심볼 설정을 확인하세요.",
+                    f"Check tool.taut.assurance.features.{name} "
+                    "and the associated role and symbol settings.",
                 )
             )
         if expectation is FeatureExpectation.ABSENT and detected:
@@ -173,10 +177,10 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "FEATURE_ABSENT_DETECTED",
-                    "absent로 선언한 정책 영역의 코드 근거가 발견됐습니다.",
+                    "Source evidence was found for a feature declared absent.",
                     f"{name}:{first.target}",
-                    f"{name}을 required로 바꾸고 관련 정책을 설정하거나 "
-                    "exact assertion에 사유를 적으세요.",
+                    f"Set {name} to required and configure its policy, or "
+                    "provide a reason in an exact assertion.",
                 )
             )
         if expectation is FeatureExpectation.REQUIRED and detected:
@@ -188,36 +192,36 @@ def audit_project_assurance(
             issues.append(
                 _issue(
                     "ASSERTION_UNUSED",
-                    "assurance assertion이 더 이상 어떤 코드 근거와도 일치하지 않습니다.",
+                    "Assurance assertion no longer matches any source evidence.",
                     key,
-                    "오래된 assertion을 제거하거나 정확한 target으로 수정하세요.",
+                    "Remove the stale assertion or update it to the exact target.",
                 )
             )
     if used_approvals > config.assurance.max_approvals:
         issues.append(
             _issue(
                 "APPROVAL_BUDGET_EXCEEDED",
-                "사용된 approval 수가 strict assurance 예산을 초과했습니다.",
+                "Used approvals exceed the strict assurance budget.",
                 str(used_approvals),
-                "approval을 제거하거나 max_approvals를 의도적으로 조정하세요.",
+                "Remove approvals or explicitly adjust max_approvals.",
             )
         )
     for approval in unused_approvals:
         issues.append(
             _issue(
                 "APPROVAL_UNUSED",
-                "approval이 현재 어떤 위반이나 명시적 참여 계약에도 사용되지 않습니다.",
+                "Approval is not used by any current violation or explicit participation contract.",
                 approval,
-                "오래된 approval을 제거하거나 정확한 rule/symbol/target으로 수정하세요.",
+                "Remove the stale approval or update its exact rule, symbol, and target.",
             )
         )
     if used_ignores > config.assurance.max_inline_ignores:
         issues.append(
             _issue(
                 "IGNORE_BUDGET_EXCEEDED",
-                "사용된 inline ignore 수가 strict assurance 예산을 초과했습니다.",
+                "Used inline ignores exceed the strict assurance budget.",
                 str(used_ignores),
-                "inline ignore를 제거하거나 max_inline_ignores를 의도적으로 조정하세요.",
+                "Remove inline ignores or explicitly adjust max_inline_ignores.",
             )
         )
     return AssuranceReport(
@@ -401,10 +405,10 @@ def _activation_issues(
     return (
         _issue(
             "FEATURE_POLICY_INACTIVE",
-            "required 정책 영역의 코드 근거는 있지만 관련 역할·심볼·zone 설정이 "
-            "활성화되지 않았습니다.",
+            "A required feature has source evidence, but its role, symbol, or zone settings "
+            "are not active.",
             domain,
-            f"tool.taut.{key} 설정을 실제 코드에 연결하세요.",
+            f"Connect tool.taut.{key} settings to the actual source code.",
         ),
     )
 

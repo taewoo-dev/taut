@@ -34,10 +34,11 @@ def semantic_role_issues(
             issues.append(
                 AssuranceIssue(
                     "ROLE_SEMANTIC_MISMATCH",
-                    f"{label}의 architecture role이 semantic evidence와 맞지 않습니다.",
+                    f"The architecture role of {label} conflicts with semantic evidence.",
                     path,
-                    f"{expected} 역할의 위치로 구현을 옮기거나 혼합된 책임을 분리하세요. "
-                    "현재 코드를 통과시키기 위해 역할이나 허용 범위를 넓히지 마세요. "
+                    f"Move the implementation to the {expected} role "
+                    "or separate mixed responsibilities. "
+                    "Do not broaden roles or permissions merely to pass the current code. "
                     + (manifest.placement_hint(expected_roles) if manifest is not None else ""),
                 )
             )

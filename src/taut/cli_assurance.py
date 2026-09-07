@@ -50,18 +50,18 @@ def run_init(namespace: argparse.Namespace) -> int:
         print(json.dumps(proposal.json_payload(), ensure_ascii=False, sort_keys=True, indent=2))
     else:
         print(f"Taut init: {proposal.status}")
-        print(f"Python 파일: {len(proposal.python_files)}")
-        print(f"프로젝트 digest: {proposal.project_digest}")
+        print(f"Python files: {len(proposal.python_files)}")
+        print(f"Project digest: {proposal.project_digest}")
         if proposal.questions:
-            print("결정 필요:")
+            print("Decisions required:")
             for question in proposal.questions:
-                print(f"- {question.id}: {question.prompt} (추천: {question.recommended})")
+                print(f"- {question.id}: {question.prompt} (recommended: {question.recommended})")
         else:
             print(proposal.toml, end="")
     if namespace.write:
         write_init_configuration(root, Path(namespace.config), proposal)
         if namespace.format == "text":
-            print(f"설정 저장 완료: {namespace.config}")
+            print(f"Configuration written: {namespace.config}")
     return 0 if proposal.status == "ready" else 2
 
 
@@ -102,9 +102,9 @@ def _run_workspace_init(root: Path, members: tuple[str, ...], namespace: argpars
             )
         )
     else:
-        print("독립 Python 프로젝트를 발견했습니다: " + ", ".join(members))
+        print("Independent Python projects found: " + ", ".join(members))
         if missing:
-            print("먼저 각 멤버를 설정하세요:")
+            print("Configure each member first:")
             for command in next_commands[:-1]:
                 print(f"- {command}")
         else:
@@ -112,7 +112,7 @@ def _run_workspace_init(root: Path, members: tuple[str, ...], namespace: argpars
     if namespace.write:
         write_workspace_manifest(root, members)
         if namespace.format == "text":
-            print("workspace 설정 저장 완료: pyproject.toml")
+            print("Workspace configuration written: pyproject.toml")
     return 0 if ready else 2
 
 
@@ -139,15 +139,19 @@ def run_audit(namespace: argparse.Namespace) -> int:
             "engine_issues": check_payload["engine_issues"],
             "exit": {
                 "code": 0 if complete else 2,
-                "reasons": [] if complete else ["strict assurance 미완료"],
+                "reasons": [] if complete else ["Strict assurance incomplete"],
             },
         }
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
     else:
         for issue in assurance.issues:
             print(f"error: [assurance:{issue.code}] {issue.message} ({issue.subject})")
-            print(f"  도움: {issue.remediation}")
-        print("assurance 완료" if complete else f"assurance 미완료: {len(assurance.issues)}건")
+            print(f"  Help: {issue.remediation}")
+        print(
+            "Assurance complete"
+            if complete
+            else f"Assurance incomplete: {len(assurance.issues)} issues"
+        )
     return 0 if complete else 2
 
 
@@ -188,7 +192,7 @@ def _run_workspace_audit(workspace: TautWorkspace, output_format: str) -> int:
                     "unlisted_projects": unlisted,
                     "exit": {
                         "code": code,
-                        "reasons": [] if complete else ["workspace strict assurance 미완료"],
+                        "reasons": [] if complete else ["Workspace strict assurance incomplete"],
                     },
                 },
                 ensure_ascii=False,
@@ -198,11 +202,11 @@ def _run_workspace_audit(workspace: TautWorkspace, output_format: str) -> int:
         )
     else:
         for item in members:
-            state = "완료" if item["complete"] else "미완료"
+            state = "complete" if item["complete"] else "incomplete"
             print(f"{item['path']}: assurance {state}")
         for project in unlisted:
             print(f"error: [assurance:WORKSPACE_MEMBER_UNLISTED] {project}")
-        print("workspace assurance 완료" if complete else "workspace assurance 미완료")
+        print("Workspace assurance complete" if complete else "Workspace assurance incomplete")
     return code
 
 
@@ -243,9 +247,9 @@ def run_rules(namespace: argparse.Namespace) -> int:
         return 0
     zones = ", ".join(sorted(zone.value for zone in selected_definition.applies_to_zones))
     print(f"{selected_definition.id.value} {selected_definition.title}")
-    print(f"강도: {selected_definition.default_level.value}")
-    print(f"적용 영역: {zones}")
-    print(f"수정 방법: {selected_definition.help}")
+    print(f"Level: {selected_definition.default_level.value}")
+    print(f"Applies to zones: {zones}")
+    print(f"Remediation: {selected_definition.help}")
     return 0
 
 
@@ -254,8 +258,8 @@ def run_config_schema(output_format: str) -> int:
     if output_format == "json":
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
     else:
-        print("Taut 설정 스키마 v5")
-        print("strict=true: 규칙 위반과 assurance 완전성을 함께 강제")
-        print("기능 상태: required 또는 absent")
-        print("기능: " + ", ".join(BUILTIN_ASSURANCE_FEATURES))
+        print("Taut configuration schema v5")
+        print("strict=true: enforce rule compliance and assurance completeness")
+        print("Feature states: required or absent")
+        print("Features: " + ", ".join(BUILTIN_ASSURANCE_FEATURES))
     return 0

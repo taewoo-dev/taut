@@ -313,7 +313,7 @@ class PolicyEngine:
                             (),
                             EvaluationReason(
                                 "rule_failure",
-                                "규칙 실행 중 오류가 발생해 판단하지 못했습니다.",
+                                "An error prevented this rule from reaching a decision.",
                             ),
                         )
                     )
@@ -321,7 +321,7 @@ class PolicyEngine:
                         EngineIssue(
                             code="RULE_FAILURE",
                             kind=EngineIssueKind.RULE_FAILURE,
-                            message=f"규칙 {rule_id.value} 실행을 완료하지 못했습니다.",
+                            message=f"Could not complete rule {rule_id.value}.",
                             location=None,
                             cause=error.__class__.__name__,
                         )
@@ -363,13 +363,13 @@ class PolicyEngine:
         if missing_capabilities:
             return EvaluationReason(
                 "missing_capability",
-                "규칙에 필요한 추가 분석 자료가 없습니다: "
+                "Missing analysis capabilities required by this rule: "
                 + ", ".join(sorted(missing_capabilities)),
             )
         if requirements.needs_complete_project and not project_is_complete:
             return EvaluationReason(
                 "incomplete_project",
-                "프로젝트 전체 분석이 완성되지 않았습니다.",
+                "Whole-project analysis is incomplete.",
             )
         return None
 
@@ -384,14 +384,14 @@ class PolicyEngine:
             if _STAGE_ORDER[completeness.stage] < _STAGE_ORDER[requirements.minimum_stage]:
                 return EvaluationReason(
                     "insufficient_analysis",
-                    "규칙에 필요한 분석 단계까지 완료되지 않았습니다.",
+                    "The analysis stage required by this rule has not completed.",
                 )
         if requirements.needs_resolved_symbols and target.fact_id is not None:
             call = context.model.call(target.fact_id)
             if call.ref.state is not ResolutionState.RESOLVED:
                 return EvaluationReason(
                     "unresolved_symbol",
-                    "호출 대상을 정확히 확인하지 못했습니다.",
+                    "Could not resolve the call target.",
                 )
         return None
 

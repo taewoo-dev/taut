@@ -44,8 +44,8 @@ def ignore_audit_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="사용되지 않은 ignore 금지",
-        help="실제 위반을 숨기지 않는 ignore 주석은 제거하세요.",
+        title="No unused ignores",
+        help="Remove ignore comments that do not suppress an actual violation.",
         target=RuleTarget.PROJECT,
         requirements=RuleRequirements(frozenset(), AnalysisStage.DISCOVERED, False, False),
         change_impact=ChangeImpact.PROJECT,

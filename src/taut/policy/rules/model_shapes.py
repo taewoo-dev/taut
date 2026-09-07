@@ -429,37 +429,40 @@ def model_shape_rule_definitions() -> tuple[RuleDefinition, ...]:
     rows = (
         (
             DTO_RULE_ID,
-            "DTO 변경 방지와 mutable concrete type 노출 금지",
-            "내부 DTO는 frozen dataclass를 사용하고 list·dict·set 같은 변경 가능한 "
-            "구체 타입을 필드 계약으로 노출하지 마세요.",
+            "Immutable DTOs without mutable concrete field types",
+            "Use frozen dataclasses for internal DTOs and do not expose mutable concrete types "
+            "such as list, dict, or set in field contracts.",
             ImmutableDtoRule(),
             "dto",
         ),
         (
             DTO_NAME_RULE_ID,
-            "DTO 역할 이름",
-            "내부 DTO 이름은 Data, Result 또는 Row로 역할을 드러내세요.",
+            "DTO role naming",
+            "Use Data, Result, or Row suffixes to identify internal DTO roles.",
             DtoNameRule(),
             "dto_name",
         ),
         (
             SNAPSHOT_RULE_ID,
-            "저장 Snapshot 위치와 버전",
-            "저장 Snapshot은 전용 역할에 두고 class 이름에 버전을 표시하세요.",
+            "Stored Snapshot location and version",
+            (
+                "Place stored Snapshots in their dedicated role and include a version"
+                " in the class name."
+            ),
             SnapshotPlacementRule(),
             "snapshot",
         ),
         (
             SCHEMA_CONFIG_RULE_ID,
-            "HTTP Schema 설정",
-            "요청과 응답 Schema는 지정된 설정을 직접 선언하세요.",
+            "HTTP Schema configuration",
+            "Declare the required configuration directly on request and response Schemas.",
             SchemaConfigRule(),
             "schema_config",
         ),
         (
             SCHEMA_INHERITANCE_RULE_ID,
-            "업무 Schema 필드 상속 금지",
-            "업무 Schema는 BaseModel을 직접 상속하고 API 필드를 직접 선언하세요.",
+            "No business field inheritance in Schemas",
+            "Inherit business Schemas directly from BaseModel and declare API fields directly.",
             SchemaInheritanceRule(),
             "schema_inheritance",
         ),

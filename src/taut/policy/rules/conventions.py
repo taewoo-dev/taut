@@ -124,7 +124,7 @@ class FileSizeRule:
                 target,
                 RuleVerdict.INDETERMINATE,
                 (),
-                EvaluationReason("missing_role", "파일의 role이 정해지지 않았습니다."),
+                EvaluationReason("missing_role", "No role is assigned to this file."),
             )
         maximum = context.policy.max_lines_by_role.get(
             classification.role, context.policy.default_max_lines
@@ -156,8 +156,11 @@ def convention_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     import_rule = RuleDefinition(
         id=IMPORT_RULE_ID,
         behavior_version=IMPORT_RULE_VERSION,
-        title="import 위치 제한",
-        help="import는 파일 상단에 두고, 패키지 초기화 파일 밖에서는 절대 import를 사용하세요.",
+        title="Import placement",
+        help=(
+            "Place imports at the top of the file and use absolute imports "
+            "outside package initializers."
+        ),
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         change_impact=ChangeImpact.SELF,
@@ -169,8 +172,8 @@ def convention_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     size_rule = RuleDefinition(
         id=SIZE_RULE_ID,
         behavior_version=SIZE_RULE_VERSION,
-        title="파일 최대 줄 수",
-        help="역할별 최대 줄 수보다 큰 파일은 책임 단위로 나누세요.",
+        title="Maximum file length",
+        help="Split files that exceed the role-specific line limit by responsibility.",
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         change_impact=ChangeImpact.SELF,

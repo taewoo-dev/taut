@@ -18,7 +18,7 @@ proof of runtime safety or exhaustive detection.
 | `coverage.rule_levels` | Effective enforced/advisory levels | All rules are enforced |
 | `interpretation` | Machine-readable statement of these scope limits | An additional safety analysis |
 
-Text output says "지원 범위 내 정책 위반 없음" on an empty successful check. Non-resolved call
+Text output says "no policy violations within supported scope" on an empty successful check. Non-resolved call
 counts are visible even in compact output; verbose output explains scope and lists advisory rules.
 Assurance failures and indeterminate enforced checks no longer produce a green success summary.
 

@@ -31,7 +31,7 @@ def incomplete_module_evaluation(
         target,
         RuleVerdict.INDETERMINATE,
         (),
-        EvaluationReason("incomplete_module", "규칙에 필요한 모듈 사실이 완성되지 않았습니다."),
+        EvaluationReason("incomplete_module", "Module facts required by this rule are incomplete."),
     )
 
 
@@ -71,7 +71,7 @@ def uncertain_provider_evaluation(
                     (),
                     EvaluationReason(
                         "uncertain_provider_fact",
-                        "provider가 규칙에 필요한 사실을 확정하지 못했습니다.",
+                        "The provider could not establish the facts required by this rule.",
                     ),
                 )
     return None
@@ -153,7 +153,7 @@ def project_fact_uncertainty(
             RuleVerdict.INDETERMINATE,
             (),
             EvaluationReason(
-                "incomplete_project", "규칙에 필요한 project graph가 완성되지 않았습니다."
+                "incomplete_project", "The project graph required by this rule is incomplete."
             ),
         )
     return None
@@ -178,7 +178,7 @@ def unresolved_call_evaluation(
                 RuleVerdict.INDETERMINATE,
                 (),
                 EvaluationReason(
-                    "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
+                    "uncertain_symbol", "Could not resolve the call symbol required by this rule."
                 ),
             )
     return None
@@ -203,7 +203,7 @@ def unresolved_target_call_evaluation(
             RuleVerdict.INDETERMINATE,
             (),
             EvaluationReason(
-                "uncertain_symbol", "규칙에 필요한 call symbol을 확정하지 못했습니다."
+                "uncertain_symbol", "Could not resolve the call symbol required by this rule."
             ),
         )
     return None
@@ -237,7 +237,8 @@ def unresolved_effect_evaluation(
             RuleVerdict.INDETERMINATE,
             (),
             EvaluationReason(
-                "callback_effect", "위험 효과를 가진 콜백의 실행 방식을 확정하지 못했습니다."
+                "callback_effect",
+                "Could not determine how a callback with risky effects is executed.",
             ),
         )
     if call.ref.state is ResolutionState.RESOLVED:
@@ -254,7 +255,7 @@ def unresolved_effect_evaluation(
             RuleVerdict.INDETERMINATE,
             (),
             EvaluationReason(
-                "uncertain_effect", "규칙에 필요한 effect 대상을 확정하지 못했습니다."
+                "uncertain_effect", "Could not resolve the effect target required by this rule."
             ),
         )
     return None
@@ -279,7 +280,8 @@ def unresolved_use_evaluation(
                 RuleVerdict.INDETERMINATE,
                 (),
                 EvaluationReason(
-                    "uncertain_symbol", "규칙에 필요한 use symbol을 확정하지 못했습니다."
+                    "uncertain_symbol",
+                    "Could not resolve the referenced symbol required by this rule.",
                 ),
             )
     return None
@@ -312,7 +314,7 @@ def unresolved_import_evaluation(
                 RuleVerdict.INDETERMINATE,
                 (),
                 EvaluationReason(
-                    "uncertain_import", "규칙에 필요한 import edge를 확정하지 못했습니다."
+                    "uncertain_import", "Could not resolve the import edge required by this rule."
                 ),
             )
     return None

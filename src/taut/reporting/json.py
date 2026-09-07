@@ -190,7 +190,7 @@ def render_configuration_error_json(engine_version: str, message: str) -> str:
         "assurance": None,
         "ignores": None,
         "approvals": None,
-        "exit": {"code": 2, "reasons": ["설정 문제"]},
+        "exit": {"code": 2, "reasons": ["Configuration issue"]},
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
 

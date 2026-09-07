@@ -43,7 +43,8 @@ class RiskyCatalogCoverageRule:
                     RuleVerdict.INDETERMINATE,
                     (),
                     EvaluationReason(
-                        "uncertain_symbol", "위험 호출의 symbol을 확정하지 못했습니다."
+                        "uncertain_symbol",
+                        "Could not resolve the symbol for a potentially risky call.",
                     ),
                 )
             return RuleEvaluation(RULE_ID, target, RuleVerdict.NOT_APPLICABLE, ())
@@ -74,8 +75,8 @@ def catalog_coverage_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="위험 함수 목록 누락 표시",
-        help="호출의 위험 종류를 effect 목록에 등록하거나 안전함을 검토하세요.",
+        title="Missing effect catalog entries",
+        help="Register the call risk in the effect catalog or review its safety.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
         change_impact=ChangeImpact.SELF,

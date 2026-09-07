@@ -210,7 +210,8 @@ class ExceptionRegistryRule:
                 RuleVerdict.INDETERMINATE,
                 (),
                 EvaluationReason(
-                    "uncertain_symbol", "규칙에 필요한 exception constructor를 확정하지 못했습니다."
+                    "uncertain_symbol",
+                    "Could not resolve the exception constructor required by this rule.",
                 ),
             )
         direct_fields = {(field.owner_symbol, field.name): field for field in fields}
@@ -362,8 +363,11 @@ def exception_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         RULE_ID,
         RULE_VERSION,
-        "업무 예외와 오류 코드 등록표",
-        "업무 예외마다 고유한 등록 오류 코드를 두고 쓰지 않는 코드는 예약 목록에 적으세요.",
+        "Business exception and error code registry",
+        (
+            "Assign a unique registered error code to each business exception and"
+            " reserve unused codes."
+        ),
         RuleTarget.PROJECT,
         RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, True),
         ChangeImpact.PROJECT,

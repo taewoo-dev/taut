@@ -79,8 +79,8 @@ def async_safety_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="async 함수의 동기 호출 금지",
-        help="비동기 함수나 스레드 실행 경로를 사용해 event loop가 멈추지 않게 하세요.",
+        title="No blocking calls in async functions",
+        help="Use async functions or thread offloading to avoid blocking the event loop.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
         change_impact=ChangeImpact.DEPENDENTS,
