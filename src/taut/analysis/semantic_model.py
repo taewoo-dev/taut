@@ -71,6 +71,10 @@ class SnapshotSemanticModel:
         self._canonical_cache: dict[SymbolId, SymbolId] = {}
 
     @property
+    def canonical_symbols(self) -> tuple[tuple[SymbolId, SymbolId], ...]:
+        return self._snapshot.project.canonical_symbols.items_tuple()
+
+    @property
     def snapshot_id(self) -> SnapshotId:
         return self._snapshot.id
 

@@ -8,10 +8,10 @@ from taut.analysis.contracts import (
     ModuleAnalysisResult,
     SourceInput,
 )
-from taut.analysis.project_analyzer import ProjectAnalyzer
 from taut.domain.ids import ModuleId
 from taut.domain.snapshot import AnalysisSnapshot
 from taut.incremental.changes import ChangeSet, ImpactGraph
+from taut.incremental.project_assembly import ProjectAssemblyState
 
 
 class ModuleResultCache(Protocol):
@@ -29,6 +29,7 @@ class IncrementalProjectAnalyzer:
         self._sources: tuple[SourceInput, ...] = ()
         self._request_identity: tuple[object, ...] | None = None
         self._snapshot: AnalysisSnapshot | None = None
+        self.assembly_state: ProjectAssemblyState | None = None
         self.reparsed_modules = 0
         self.total_reparsed_modules = 0
         self.last_changes = ChangeSet(frozenset(), frozenset(), frozenset())
@@ -91,11 +92,15 @@ class IncrementalProjectAnalyzer:
         if module_cache is not None:
             module_cache.put_many(tuple(zip(pending, fresh, strict=True)))
         old_index = self._snapshot.project if self._snapshot is not None else None
+        assembled = ProjectAssemblyState.build(
+            request,
+            tuple(self._results[source.module_id] for source in request.sources),
+            self.assembly_state if reusable else None,
+        )
         self._sources = request.sources
         self._request_identity = identity
-        self._snapshot = ProjectAnalyzer.assemble(
-            request, tuple(self._results[source.module_id] for source in request.sources)
-        )
+        self.assembly_state = assembled
+        self._snapshot = assembled.snapshot
         self.last_impact = ImpactGraph.from_indexes(changes, old_index, self._snapshot.project)
         if not reusable:
             self.last_impact = ImpactGraph(

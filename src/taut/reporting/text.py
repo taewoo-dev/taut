@@ -50,13 +50,13 @@ def render_text(
                 item = related.location
                 lines.extend(
                     _wrap(
-                        f"  관련: {item.path.value}:{item.display_line}:"
+                        f"  Related: {item.path.value}:{item.display_line}:"
                         f"{item.display_column}: {related.message}",
                         width,
                     )
                 )
             if diagnostic.help:
-                lines.extend(_wrap(f"  도움: {diagnostic.help}", width))
+                lines.extend(_wrap(f"  Help: {diagnostic.help}", width))
     for issue in report.engine_issues:
         lines.extend(
             _render_issue(
@@ -70,7 +70,7 @@ def render_text(
             )
         )
         if verbose and issue.cause:
-            lines.extend(_wrap(f"  원인: {issue.cause}", width))
+            lines.extend(_wrap(f"  Cause: {issue.cause}", width))
     for assurance_issue in report.assurance.issues:
         lines.extend(
             _render_issue(
@@ -84,7 +84,7 @@ def render_text(
             )
         )
         if verbose:
-            lines.extend(_wrap(f"  도움: {assurance_issue.remediation}", width))
+            lines.extend(_wrap(f"  Help: {assurance_issue.remediation}", width))
     for skipped in report.coverage.skipped:
         target = skipped.target
         subject = target.module_id or target.symbol_id or target.fact_id or "project"
@@ -95,7 +95,7 @@ def render_text(
                 prefix="",
                 label=label,
                 label_color=label_color,
-                message=f"판단 불가: {skipped.reason.message} ({subject})",
+                message=f"Indeterminate: {skipped.reason.message} ({subject})",
                 code=skipped.rule_id.value,
                 color=color,
                 width=width,
@@ -111,7 +111,7 @@ def render_text(
                 prefix="",
                 label=label,
                 label_color=label_color,
-                message=f"분석 범위 부족: {gap.reason.message} ({subject})",
+                message=f"Coverage gap: {gap.reason.message} ({subject})",
                 code=gap.rule_id.value,
                 color=color,
                 width=width,
@@ -123,36 +123,59 @@ def render_text(
     )
     errors = sum(item.level is RuleLevel.ENFORCED for item in active)
     warnings = sum(item.level is RuleLevel.ADVISORY for item in active)
-    summary = _summary(errors, warnings, len(report.engine_issues), report.coverage.indeterminate)
-    summary_color = _RED if errors or report.engine_issues else _YELLOW if warnings else _GREEN
+    check_issues = (
+        len(report.engine_issues) + len(report.assurance.issues) + len(report.coverage.gaps)
+    )
+    summary = _summary(errors, warnings, check_issues, report.coverage.indeterminate)
+    summary_color = _RED if report.exit_decision.code else _YELLOW if warnings else _GREEN
     lines.append(_paint(summary, summary_color, color))
+
+    calls = report.analysis_coverage.calls
+    uncertain_calls = calls.total - calls.resolved
+    if uncertain_calls:
+        lines.extend(
+            _wrap(
+                f"Coverage: {uncertain_calls} unresolved call targets; use --verbose for details",
+                width,
+            )
+        )
 
     if not verbose:
         return "\n".join(lines)
 
     coverage = report.coverage
-    lines.append(
-        "상세 판정: "
-        f"통과 {coverage.passed}, 위반 {coverage.failed}, 대상 아님 {coverage.not_applicable}, "
-        f"판단 불가 {coverage.indeterminate}"
+    advisory = [rule.value for rule, level in coverage.rule_levels if level is RuleLevel.ADVISORY]
+    if advisory:
+        lines.extend(_wrap("Advisory rules (findings do not block): " + ", ".join(advisory), width))
+    lines.extend(
+        _wrap(
+            "Scope: supported semantics and configured policy. This does not prove runtime safety.",
+            width,
+        )
     )
     lines.append(
-        f"ignore: 사용 {len(report.ignore_audit.used)}, 미사용 {len(report.ignore_audit.unused)}"
+        "Decisions: "
+        f"passed {coverage.passed}, failed {coverage.failed}, "
+        f"not applicable {coverage.not_applicable}, "
+        f"indeterminate {coverage.indeterminate}"
+    )
+    lines.append(
+        f"ignore: used {len(report.ignore_audit.used)}, unused {len(report.ignore_audit.unused)}"
     )
     lines.append(
         "approval: "
-        f"사용 {len(report.approval_audit.used)}, 미사용 {len(report.approval_audit.unused)}"
+        f"used {len(report.approval_audit.used)}, unused {len(report.approval_audit.unused)}"
     )
     lines.append(
         "assurance: "
-        f"분석 {report.assurance.analyzed_python_files}/"
-        f"발견 {report.assurance.discovered_python_files}, "
-        f"제외 {report.assurance.excluded_python_files}, "
-        f"문제 {len(report.assurance.issues)}"
+        f"analyzed {report.assurance.analyzed_python_files}/"
+        f"discovered {report.assurance.discovered_python_files}, "
+        f"excluded {report.assurance.excluded_python_files}, "
+        f"issues {len(report.assurance.issues)}"
     )
-    lines.append(f"판정 기준: {report.run.decision_digest}")
+    lines.append(f"Decision digest: {report.run.decision_digest}")
     reason = f" ({', '.join(report.exit_decision.reasons)})" if report.exit_decision.reasons else ""
-    lines.append(f"종료 값: {report.exit_decision.code}{reason}")
+    lines.append(f"Exit code: {report.exit_decision.code}{reason}")
     return "\n".join(lines)
 
 
@@ -166,13 +189,16 @@ def _diagnostic_label(diagnostic: Diagnostic) -> tuple[str, str]:
 
 def _summary(errors: int, warnings: int, engine_issues: int, indeterminate: int) -> str:
     if not any((errors, warnings, engine_issues, indeterminate)):
-        return "검사 완료: 문제 없음"
-    parts = [f"오류 {errors:,}건", f"경고 {warnings:,}건"]
+        return "Check complete: no policy violations within supported scope"
+    parts = [
+        f"{errors:,} error{'s' if errors != 1 else ''}",
+        f"{warnings:,} warning{'s' if warnings != 1 else ''}",
+    ]
     if engine_issues:
-        parts.append(f"검사 문제 {engine_issues:,}건")
+        parts.append(f"{engine_issues:,} engine issue{'s' if engine_issues != 1 else ''}")
     if indeterminate:
-        parts.append(f"판단 불가 {indeterminate:,}건")
-    return f"검사 완료: {', '.join(parts)}"
+        parts.append(f"{indeterminate:,} indeterminate")
+    return f"Check complete: {', '.join(parts)}"
 
 
 def _paint(value: str, style: str, enabled: bool) -> str:

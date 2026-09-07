@@ -158,8 +158,8 @@ def test_boundary_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             TEST_LAYOUT_RULE_ID,
             RULE_VERSION,
-            "하위 conftest 금지",
-            "공유 fixture는 설정한 테스트 최상위 conftest.py 한 곳에 두세요.",
+            "No nested conftest files",
+            "Keep shared fixtures in the single conftest.py at the configured test root.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -171,8 +171,8 @@ def test_boundary_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             TEST_HTTP_RULE_ID,
             RULE_VERSION,
-            "테스트 raw HTTP client 금지",
-            "테스트는 raw HTTP client 대신 저장소가 승인한 test client를 사용하세요.",
+            "No raw HTTP clients in tests",
+            "Use an approved test client instead of a raw HTTP client in tests.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,

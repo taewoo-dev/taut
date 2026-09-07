@@ -98,7 +98,7 @@ class ProjectManifest:
             for matcher in self.roles
             if roles is None or matcher.role in roles
         ]
-        return "선언된 경로: " + "; ".join(paths)
+        return "Declared paths: " + "; ".join(paths)
 
     def role_for_path(self, path: str) -> RoleMatcher | None:
         matches = tuple(matcher for matcher in self.roles if matcher.matches(path))
@@ -106,7 +106,7 @@ class ProjectManifest:
         selected = tuple(matcher for matcher in matches if matcher.priority == highest)
         if len(selected) > 1:
             names = ", ".join(matcher.role.value for matcher in selected)
-            raise ValueError(f"{path}: 둘 이상의 role과 일치합니다: {names}")
+            raise ValueError(f"{path}: matches multiple roles: {names}")
         return selected[0] if selected else None
 
     def classify(self, snapshot: AnalysisSnapshot) -> ClassificationIndex:
@@ -121,7 +121,7 @@ class ProjectManifest:
             )
             if len(zone_matches) > 1:
                 names = ", ".join(matcher.zone.value for matcher in zone_matches)
-                raise ValueError(f"{path}: 둘 이상의 zone과 일치합니다: {names}")
+                raise ValueError(f"{path}: matches multiple zones: {names}")
             role = selected_role.role if selected_role else None
             role_source = selected_role.source if selected_role else None
             zone = zone_matches[0].zone if zone_matches else self.default_zone

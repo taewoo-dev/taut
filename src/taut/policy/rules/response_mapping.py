@@ -209,8 +209,8 @@ def response_mapping_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         RULE_ID,
         RULE_VERSION,
-        "응답 자료 변환 경계",
-        "응답 변환은 설정한 Response mapper에서 필드를 하나씩 명시하세요.",
+        "Response mapping boundary",
+        "Map response fields explicitly in the configured Response mapper.",
         RuleTarget.MODULE,
         RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         ChangeImpact.SELF,

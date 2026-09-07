@@ -99,3 +99,21 @@ def test_atomic_boundary_cuts_transitive_write_propagation() -> None:
 
     assert state.summaries[SymbolId("app.service.helper")].upper == 0
     assert state.summaries[SymbolId("app.service.run")].upper == 0
+
+
+def test_deleted_caller_is_not_requeued_by_surviving_callee() -> None:
+    prefix = "from tortoise.models import Model\nclass User(Model): pass\n"
+    before = make_context(
+        analyze(make_source("m.py", prefix + "def removed(): survivor()\ndef survivor(): pass\n")),
+        roles={"service": ("*.py",)},
+    )
+    after = make_context(
+        analyze(make_source("m.py", prefix + "def survivor(): User.create()\n")),
+        roles={"service": ("*.py",)},
+    )
+    updated = replace(
+        after,
+        prior_atomicity_summary_state=before.atomicity_summary_state,
+        atomicity_summary_invalidated_modules=frozenset({ModuleId("m")}),
+    )
+    assert updated.atomicity_summary_state.summaries == after.atomicity_summary_state.summaries

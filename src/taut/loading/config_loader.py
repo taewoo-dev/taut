@@ -327,8 +327,11 @@ def _load_policy(
         configured = rule_table.get(rule_id.value)
         if configured is not None:
             value = _string(configured, f"rules.{rule_id.value}")
-            if value != level.value:
-                raise PolicyConfigError(f"{rule_id.value} is fixed at {level.value}")
+            if value not in {level.value, RuleLevel.ADVISORY.value}:
+                raise PolicyConfigError(
+                    f"{rule_id.value} accepts {level.value} or advisory; rules cannot be disabled"
+                )
+            level = RuleLevel(value)
         effective_level = level if strict or level is RuleLevel.ADVISORY else RuleLevel.ADVISORY
         settings.append((rule_id, RuleSetting(effective_level, FrozenMap())))
     rule_zones = load_rule_zones(root, known)

@@ -19,7 +19,7 @@ from taut.policy.rules.helpers import (
 )
 
 RULE_ID = RuleId("TIME001")
-RULE_VERSION = 2
+RULE_VERSION = 3
 TIME_EFFECT = Effect.TIME_NOW
 
 
@@ -75,11 +75,11 @@ def time_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="승인된 시간 함수 사용",
-        help="직접 시간 조회 대신 저장소에서 승인한 시간 함수를 사용하세요.",
+        title="Approved clock functions",
+        help="Use approved clock functions instead of direct time access.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
-        change_impact=ChangeImpact.SELF,
+        change_impact=ChangeImpact.DEPENDENTS,
         implementation=TimeAccessRule(),
         compliant_fixtures=("tests/fixtures/rules/time/compliant.py",),
         violation_fixtures=("tests/fixtures/rules/time/violation.py",),

@@ -68,7 +68,7 @@ class PublicFieldDocumentationRule:
                 coverage_gaps.append(
                     EvaluationReason(
                         "uncertain_field_declaration",
-                        f"{field.symbol_id.value}의 Field 선언을 확정하지 못했습니다.",
+                        f"Could not resolve the Field declaration for {field.symbol_id.value}.",
                     )
                 )
                 continue

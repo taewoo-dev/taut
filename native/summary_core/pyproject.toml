@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin==1.13.0"]
+build-backend = "maturin"
+
+[project]
+name = "taut-summary-core"
+version = "0.2.0"
+requires-python = ">=3.12"
+
+[tool.maturin]
+module-name = "_taut_summary_core"
+features = ["extension-module"]

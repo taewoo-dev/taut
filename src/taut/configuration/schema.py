@@ -34,6 +34,11 @@ def configuration_schema_payload() -> dict[str, object]:
             "default": True,
             "description": "Enforce findings and project assurance completeness.",
         },
+        "rules": {
+            "type": "table of rule ID to level",
+            "values": "declared default level or advisory; off is rejected",
+            "description": "Stage advisory findings while retaining strict assurance.",
+        },
         "transaction": {
             "owner_roles": "roles allowed to create or finish transactions",
             "participant_roles": "roles joining a caller-owned transaction without committing it",

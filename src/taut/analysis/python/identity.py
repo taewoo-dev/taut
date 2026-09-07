@@ -2,4 +2,5 @@
 
 from taut.analysis.contracts import AdapterIdentity
 
-PYTHON_AST_IDENTITY = AdapterIdentity(name="python-ast", version="9")
+# Version 12 invalidates cached analysis reasons from before English diagnostics.
+PYTHON_AST_IDENTITY = AdapterIdentity(name="python-ast", version="12")

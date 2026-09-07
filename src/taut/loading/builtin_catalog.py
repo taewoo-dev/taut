@@ -25,6 +25,7 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
             Effect.TX_ROLLBACK,
         ),
         _direct("time.sleep", Effect.IO_BLOCKING),
+        _direct("builtins.open", Effect.IO_BLOCKING),
         _direct("os.getenv", Effect.SECURITY_ENVIRONMENT),
         _direct("os.environ.get", Effect.SECURITY_ENVIRONMENT),
         _direct("jwt.encode", Effect.SECURITY_TOKEN),
@@ -34,6 +35,22 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
     ]
     for name in ("run", "call", "check_call", "check_output"):
         entries.append(_direct(f"subprocess.{name}", Effect.IO_BLOCKING))
+    for owner in ("pathlib.Path", "pathlib.PosixPath", "pathlib.WindowsPath"):
+        for method in ("read_text", "read_bytes", "write_text", "write_bytes", "open", "stat"):
+            entries.append(_direct(f"{owner}.{method}", Effect.IO_BLOCKING))
+    for owner in ("requests.Session", "requests.sessions.Session"):
+        for method in (
+            "get",
+            "post",
+            "put",
+            "delete",
+            "patch",
+            "head",
+            "options",
+            "request",
+            "send",
+        ):
+            entries.append(_direct(f"{owner}.{method}", Effect.IO_BLOCKING, Effect.EXTERNAL_CALL))
     for name in ("Popen", "Popen.communicate", "Popen.wait"):
         entries.append(_direct(f"subprocess.{name}", Effect.IO_BLOCKING))
     for name in ("get", "post", "put", "delete", "patch", "head", "options", "request"):

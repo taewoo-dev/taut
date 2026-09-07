@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import tomllib
 from pathlib import Path
 from typing import cast
 
@@ -9,16 +10,12 @@ SOURCE_ROOT = PROJECT_ROOT / "src" / "taut"
 TEST_ROOT = PROJECT_ROOT / "tests"
 MAX_SOURCE_LINES = 500
 
-ALLOWED_DEPENDENCIES: dict[str, frozenset[str]] = {
-    "domain": frozenset({"domain"}),
-    "analysis": frozenset({"domain", "analysis"}),
-    "configuration": frozenset({"domain", "configuration"}),
-    "policy": frozenset({"domain", "analysis", "configuration", "policy"}),
-    "finding_processing": frozenset({"domain", "configuration", "finding_processing"}),
-    "incremental": frozenset({"domain", "analysis", "policy", "incremental"}),
-    "loading": frozenset({"domain", "analysis", "configuration", "loading"}),
-    "reporting": frozenset({"domain", "reporting"}),
-}
+
+def allowed_dependencies() -> dict[str, frozenset[str]]:
+    # Keep the independent AST checker, but share the declared architectural policy.
+    with (PROJECT_ROOT / "pyproject.toml").open("rb") as source:
+        raw = tomllib.load(source)["tool"]["taut"]["allow"]
+    return {name: frozenset(targets) for name, targets in raw.items()}
 
 
 def python_files(root: Path) -> tuple[Path, ...]:
@@ -81,12 +78,13 @@ def imported_policy_parts(tree: ast.Module) -> tuple[tuple[str, int], ...]:
 
 def check_dependency_direction(paths: tuple[Path, ...]) -> list[str]:
     failures: list[str] = []
+    dependencies = allowed_dependencies()
     for path in paths:
         relative = path.relative_to(SOURCE_ROOT)
         if len(relative.parts) < 2:
             continue
         owner = relative.parts[0]
-        allowed = ALLOWED_DEPENDENCIES.get(owner)
+        allowed = dependencies.get(owner)
         if allowed is None:
             continue
         for imported, line in imported_policy_parts(parse(path)):

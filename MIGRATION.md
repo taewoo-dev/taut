@@ -1,4 +1,18 @@
-# Migrating to pytaut 0.5.0
+# Migration guide
+
+## Upgrading from 0.9.0 to 0.10.0
+
+- Install with `uv add --dev pytaut==0.10.0` (Python 3.12 or newer).
+- Configuration and JSON report schemas remain v5; no configuration migration is required.
+- Built-in human-readable output is now English, including JSON message/help/reason values.
+  Integrations should use rule IDs and structured fields rather than matching translated text.
+- Old cached results and daemon status are invalidated. The first check rebuilds analysis.
+- Callback/lambda detection is stronger and can report violations missed in 0.9.0.
+  Review new findings; selected rules can be staged as advisory during adoption.
+- Python remains the default engine. The separate Rust PoC is not part of this release's
+  installation requirements.
+
+## Migrating legacy configuration to schema v5
 
 Version 0.5.0 requires Python 3.12+ and configuration schema v5. The legacy
 `.policy/policy.toml` location remains supported, but v1-v4 configurations must be migrated before

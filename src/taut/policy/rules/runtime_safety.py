@@ -161,8 +161,8 @@ def runtime_rule_definitions() -> tuple[RuleDefinition, RuleDefinition, RuleDefi
         RuleDefinition(
             IMPORT_RULE_ID,
             RULE_VERSION,
-            "동적 import 금지",
-            "운영 코드에서는 import_module과 __import__로 의존 관계를 숨기지 마세요.",
+            "No dynamic imports",
+            "Do not hide production dependencies with import_module or __import__.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -174,8 +174,11 @@ def runtime_rule_definitions() -> tuple[RuleDefinition, RuleDefinition, RuleDefi
         RuleDefinition(
             RUNTIME_RULE_ID,
             RULE_VERSION,
-            "실행 우회 호출 금지",
-            "asyncio.run과 설정한 축약 실행 호출 대신 승인된 실행 경로를 사용하세요.",
+            "No unapproved execution shortcuts",
+            (
+                "Use approved execution paths instead of asyncio.run or configured "
+                "execution shortcuts."
+            ),
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -187,8 +190,8 @@ def runtime_rule_definitions() -> tuple[RuleDefinition, RuleDefinition, RuleDefi
         RuleDefinition(
             TRANSACTION_RULE_ID,
             RULE_VERSION,
-            "DB 거래 중 외부 호출 금지",
-            "DB session과 transaction을 닫은 뒤 외부 시스템을 호출하세요.",
+            "No external calls during DB transactions",
+            "Close DB sessions and transactions before calling external systems.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,

@@ -1,5 +1,111 @@
 # pytaut validation report
 
+## 0.10.0 release validation — 2026-09-07
+
+`bash scripts/test.sh` passed on Python 3.14.0 after the version update: 1,405 tests,
+25 optional native skips, 90.49% coverage, repository conventions, Ruff, strict mypy/Pyright,
+self-policy, wheel/sdist builds, and installed-wheel smoke checks. The English-output
+implementation at `1ff8f73` also passed 1,430 tests with the optional native backend,
+four Rust tests, and installed native/Python report parity.
+
+The release uses Python by default; no native extension is bundled or required.
+Historical entries below retain the scope and publication status at the time they were written.
+
+## Unreleased memory follow-up at 29c6edc — 2026-09-05
+
+`bash scripts/test.sh` passed on Python 3.14.0: 1,383 tests, 90.55% total coverage with branch
+measurement, repository conventions, Ruff, strict mypy/Pyright, strict self-policy, wheel/sdist
+builds, and installed-wheel smoke checks. Module-local symbol sharing and per-build function
+summary sharing preserve distinct source revisions and direct/approved-wrapper access paths.
+The extractor is released without waiting for cyclic GC on both success and injected failure.
+The existing three seeds of 100 synthetic edits continue to match fresh JSON and release
+obsolete snapshots.
+
+The session-object census shows 16,156 → 74 function summaries and 184,857 → 115,258 symbol
+IDs without changing their distinct values. Shallow-size sums decrease 343.18 → 308.63 MiB from
+the preceding implementation; this is not an RSS measurement. The separate [memory follow-up](quality/memory-followup.md)
+records the warmed RSS protocol, raw results, and remaining limits while preserving the earlier
+failed memory acceptance report. No package was published.
+
+Under the explicit 50-edit warmup protocol, both 200 unchanged and 100 mixed-edit RSS series
+pass the full plateau criterion. Median RSS is 756.45 → 773.20 MiB unchanged and
+851.05 → 773.63 MiB mixed. The 10% reduction target remains unmet: unchanged RSS increases
+2.21%, while mixed RSS decreases 9.10%. These are shared-machine observations.
+
+## Unreleased performance implementation at 9aac0ad — 2026-09-05
+
+The final `bash scripts/test.sh` gate passed on Python 3.14.0: 1,380 tests, 90.55% total
+coverage with branch measurement, repository conventions, Ruff, strict mypy/Pyright,
+strict self-policy, wheel/sdist builds, and installed-wheel smoke checks.
+
+On the isolated 1,224-source anti-monitor snapshot, 20 samples per edit scenario show median
+ordinary latency 1.86 → 1.33 seconds and shared latency 4.57 → 2.49 seconds. Five fresh daemon
+starts show 11.63 → 11.39 seconds. The edit-median targets and cold/p95 regression limits pass.
+Two hundred unchanged checks, 100 semantic edits, 30 additional per-edit fresh JSON comparisons,
+and three seeds of 100 synthetic edits preserve the applicable fresh outputs.
+
+**Memory acceptance remains unmet:** RSS medians decrease 6.65%/2.25% in unchanged/mixed runs,
+below the 10% target; both baseline and candidate fail the full-series plateau criterion.
+This shared-machine observation is not proof of a leak. All raw data and limitations remain
+in the [acceptance report](quality/performance-implementation.md). No package was published.
+
+## Performance investigation at 77dce3e — 2026-09-05
+
+The unchanged engine passed the full gate again: 1,363 tests and 90.42% coverage with branch
+measurement. The anti-monitor daemon benchmark passed fresh-output parity, restart/concurrent
+checks, and 30-check memory stability. Separate ordinary/shared edit profiles also matched
+fresh JSON results. Project assembly and broad shared-edit policy/provider recomputation are
+the next measured optimization candidates. See [the test report](quality/performance-investigation.md)
+for timings, profiles, memory, and limits; engine code was not changed in this test pass.
+
+## Unreleased callback forwarding — 2026-09-05
+
+The follow-up based on `5698c7b` passed `bash scripts/test.sh` on Python 3.14.0:
+1,363 tests, 90.42% total coverage with branch measurement, conventions, Ruff, strict
+mypy/Pyright, strict self-policy, package builds, and installed-wheel smoke checks.
+New regression cases cover positional/keyword multi-hop forwarding, reverse definition order,
+cycles with and without guarded invocation, safe storage/offloading/reassignment, and transitive
+cross-module edits with resident/fresh parity. No package was published.
+
+The same temporary anti-monitor snapshot passed, and an injected multi-hop blocking callback
+produced ASYNC001 with resident/fresh parity. Current stage timings and the scope of the Rust
+decision are recorded in [the native revisit](quality/native-revisit.md).
+
+## Unreleased follow-up — 2026-09-05
+
+The follow-up based on `0dea529` passed `bash scripts/test.sh` on Python 3.14.0:
+conventions, Ruff, strict mypy/Pyright, strict self-policy, 1,350 tests, 90.41% total
+coverage with branch measurement, sdist/wheel builds, and an isolated installed-wheel smoke test.
+Lambda invocation and valid direct callback effects now detect the two remaining selected
+synthetic violations: six definite findings on six violations, no findings or uncertainty on
+four safe controls. This is bounded regression evidence, not general accuracy.
+
+The temporary 1,224-source anti-monitor snapshot passed its existing policy. Injected dangerous
+lambda/callback cases failed as expected and matched fresh analysis; safe offloading and removal
+restored success. Timing and memory observations, including the initially unstable memory sample
+and stable recheck, are retained in the [real-project report](quality/antimonitor-followup.md).
+Package version remains 0.9.0 and has not been published.
+
+## Unreleased review improvements — 2026-09-05
+
+The working tree based on `bfddf85` passed `bash scripts/test.sh` on Python 3.14.0:
+repository conventions, Ruff formatting/lint, mypy strict, Pyright strict, strict self-policy,
+1,331 tests, 90.36% total coverage with branch measurement, sdist/wheel builds, and an isolated
+installed-wheel smoke check. Package version remains 0.9.0; these changes have not been published.
+Other interpreter versions were not rerun locally for this review.
+
+The same labeled synthetic async corpus was executed against the baseline source extracted with
+`git archive` and the changed source. Of six dangerous snippets, definite detection increased
+from two to four; one additional case is now indeterminate and one lambda case remains a silent
+miss. Four safe controls produced neither findings nor indeterminate decisions in either version.
+This does not estimate real-project accuracy. See [detection quality](detection-quality.md) for
+raw results, metric definitions, limitations, adoption guidance, and the external pilot protocol.
+
+Regression checks cover direct filesystem and Requests session operations, callback positional/
+keyword/default binding, safe callable storage and offloading, shadowed names, preserving definite
+findings in the presence of uncertainty, helper-edit resident/cold parity, selective advisory
+adoption, promotion back to enforcement, and retention of strict assurance while staging a rule.
+
 ## 0.8.0 release candidate — 2026-09-05
 
 `bash scripts/test.sh` passed on Python 3.14 with repository conventions, Ruff, mypy strict,

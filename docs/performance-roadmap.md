@@ -5,6 +5,26 @@ pytaut. The objective is not a benchmark-only speedup. Every optimization must
 preserve deterministic findings, coverage, engine issues, exit codes, and rendered
 output.
 
+## Implementation update — 2026-09-05
+
+The subsequent [memory follow-up](quality/memory-followup.md) removes retained comparison
+tuples and empty evidence, shares resolver-local symbol IDs and immutable function summaries,
+and measures both reachable object counts and warmed RSS. The original memory failures remain
+recorded separately; object-size reductions must not be reported as RSS reductions.
+
+The follow-up to `452c5be` implements module-contribution assembly, exact-input project-index
+reuse, unchanged-export propagation for two built-in framework providers, conservative semantic
+equality for async/time policy reuse, assurance/exception evidence caches, and module-local
+immutable sharing. Failed assembly does not publish new source identities; incompatible internal
+assembly schemas rebuild safely. Fresh analysis remains the correctness oracle.
+
+These are bounded optimizations rather than a general fine-grained query system. Flat global
+outputs and conservative invalidation on semantic changes remain. The [implementation and
+acceptance report](quality/performance-implementation.md) records the 20-sample edit timings,
+five cold starts, 200 unchanged checks, 100 semantic edits, and 30 per-edit fresh comparisons,
+including any unmet memory goals. Native/Rust work remains deferred; acceptance results must
+not be interpreted as general detection-accuracy or adoption evidence.
+
 ## Direction
 
 Successful Python tools use several layers together:
@@ -314,6 +334,14 @@ reversible slices:
 ## Phase 6 — Native acceleration decision
 
 Status: measured; native implementation deferred.
+
+The callback-forwarding follow-up remeasured the same boundary on a newer 1,224-source
+anti-monitor snapshot. Analysis accounted for 49.9% of sampled cold wall and 20.9% of
+ordinary-edit wall; a hypothetical 3x analysis kernel yields about 1.50x and 1.16x overall.
+This still does not justify a rewrite to meet edit-latency goals. These are stage timings,
+not a Rust implementation benchmark; see [the current revisit](quality/native-revisit.md)
+for raw samples, the slower observed edit latency, and decision limits. The earlier detailed
+profile below remains historical evidence from its original 1,213-source checkout.
 
 ### Option A: selective mypyc
 

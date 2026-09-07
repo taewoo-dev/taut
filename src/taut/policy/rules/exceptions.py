@@ -167,24 +167,18 @@ class ExceptionRegistryRule:
         fields: list[FieldFact] = []
         calls_by_enclosing: dict[SymbolId, list[CallFact]] = defaultdict(list)
         referenced_codes: set[SymbolId] = set()
+        context.exception_evidence_cache.prepare(context)
         for module_id in context.model.modules():
             if context.classification.get(module_id).zone != Zone("prod"):
                 continue
             module = context.model.module(module_id)
-            classes.update(
-                (context.model.canonical_symbol(class_fact.symbol_id), class_fact)
-                for class_fact in module.classes
-            )
+            evidence = context.exception_evidence_cache.collect(context, module)
+            classes.update(evidence.classes)
+            referenced_codes.update(evidence.referenced_codes)
             fields.extend(module.fields)
             for call in module.calls:
                 if call.enclosing_symbol is not None:
                     calls_by_enclosing[call.enclosing_symbol].append(call)
-            for reference in module.references:
-                symbol = reference.ref.symbol
-                if symbol is not None and context.matching_symbol(
-                    symbol, context.policy.code.error_code_enum_symbols
-                ):
-                    referenced_codes.add(context.model.canonical_symbol(symbol))
         policy = context.policy.code
         uncertain_calls = tuple(
             call
@@ -216,7 +210,8 @@ class ExceptionRegistryRule:
                 RuleVerdict.INDETERMINATE,
                 (),
                 EvaluationReason(
-                    "uncertain_symbol", "규칙에 필요한 exception constructor를 확정하지 못했습니다."
+                    "uncertain_symbol",
+                    "Could not resolve the exception constructor required by this rule.",
                 ),
             )
         direct_fields = {(field.owner_symbol, field.name): field for field in fields}
@@ -368,8 +363,11 @@ def exception_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         RULE_ID,
         RULE_VERSION,
-        "업무 예외와 오류 코드 등록표",
-        "업무 예외마다 고유한 등록 오류 코드를 두고 쓰지 않는 코드는 예약 목록에 적으세요.",
+        "Business exception and error code registry",
+        (
+            "Assign a unique registered error code to each business exception and"
+            " reserve unused codes."
+        ),
         RuleTarget.PROJECT,
         RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, True),
         ChangeImpact.PROJECT,

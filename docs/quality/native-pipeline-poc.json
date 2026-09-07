@@ -1,0 +1,3262 @@
+{
+  "date": "2026-09-06",
+  "implementation_commit": "ebab348",
+  "baseline_commit": "907efe9",
+  "environment": {
+    "platform": "macOS ARM64",
+    "python": "3.14.0",
+    "msgspec": "0.21.1",
+    "rust": "1.93.1",
+    "pyo3": "0.29.2",
+    "maturin": "1.13.0"
+  },
+  "wheel_sha256": {
+    "taut_summary_core-0.1.0-cp314-cp314-macosx_11_0_arm64.whl": "9b2a88d73d64b939251fd7c6c9404f11cd5d82dfa6800b472331e2503ea3e6e3",
+    "taut_summary_core-0.2.0-cp314-cp314-macosx_11_0_arm64.whl": "08bfe78168358afb3131ae1856557b494e95d8ace67f1c14356edee699e25eb9"
+  },
+  "snapshot": {
+    "original_head": "14bf0c5efddc286db6e4127f28917b5f772f96c7",
+    "original_dirty": true,
+    "source_files": 1224,
+    "captured_source_config_files": 1225,
+    "manifest_sha256": "c8f824f1d66119e1131f4b541f637be4f92d2e71c16403d86b8ad35949cb7d63",
+    "captured_files_preserved": true
+  },
+  "final_columnar_latency": {
+    "order": [
+      [
+        "python",
+        "rust_v1",
+        "rust_v2"
+      ],
+      [
+        "rust_v2",
+        "rust_v1",
+        "python"
+      ]
+    ],
+    "executions": [
+      {
+        "round": 0,
+        "label": "python",
+        "result": {
+          "backend": "python",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.652157458011061,
+              "stages_ms": {
+                "discovery": 113.5117500089109,
+                "analysis": 5003.591374959797,
+                "providers": 1495.697292033583,
+                "policy": 3832.102332962677,
+                "reporting": 201.27537520602345
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3433521250262856,
+              "stages_ms": {
+                "discovery": 145.51191707141697,
+                "analysis": 487.0979159604758,
+                "providers": 128.38825001381338,
+                "policy": 471.5657918713987,
+                "reporting": 84.78295803070068
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.5527706670109183,
+              "stages_ms": {
+                "discovery": 108.70908317156136,
+                "analysis": 272.39179192110896,
+                "providers": 131.36304100044072,
+                "policy": 942.1648748684675,
+                "reporting": 83.41862494125962
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0170187500771135,
+              "stages_ms": {
+                "discovery": 105.52566684782505,
+                "analysis": 205.2342500537634,
+                "providers": 118.82529105059803,
+                "policy": 486.85379116795957,
+                "reporting": 85.84154094569385
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4858715841546655,
+              "stages_ms": {
+                "discovery": 109.71958399750292,
+                "analysis": 385.6379580684006,
+                "providers": 124.63350011967123,
+                "policy": 756.5157909411937,
+                "reporting": 93.34795805625618
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.1458714581094682,
+              "stages_ms": {
+                "discovery": 145.41295892558992,
+                "analysis": 214.20370903797448,
+                "providers": 110.73104199022055,
+                "policy": 577.0001660566777,
+                "reporting": 83.02904106676579
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3774362918920815,
+              "stages_ms": {
+                "discovery": 106.49070795625448,
+                "analysis": 248.74379090033472,
+                "providers": 272.56329194642603,
+                "policy": 1650.24883300066,
+                "reporting": 84.37125012278557
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6382371250074357,
+              "stages_ms": {
+                "discovery": 143.26945901848376,
+                "analysis": 537.9900829866529,
+                "providers": 259.23604192212224,
+                "policy": 1589.771332917735,
+                "reporting": 84.97416717000306
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4125745419878513,
+              "stages_ms": {
+                "discovery": 106.04816698469222,
+                "analysis": 218.19579182192683,
+                "providers": 250.0291659962386,
+                "policy": 1731.6546661313623,
+                "reporting": 84.90791590884328
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3177125838119537,
+              "stages_ms": {
+                "discovery": 108.77037490718067,
+                "analysis": 219.9027920141816,
+                "providers": 261.19274995289743,
+                "policy": 1624.6124589815736,
+                "reporting": 82.43337506428361
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.670669208979234,
+              "stages_ms": {
+                "discovery": 140.81041584722698,
+                "analysis": 560.8263330068439,
+                "providers": 259.6654170192778,
+                "policy": 1602.6069580111653,
+                "reporting": 85.84545878693461
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 0,
+        "label": "rust_v1",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.633472749963403,
+              "stages_ms": {
+                "discovery": 110.64408300444484,
+                "analysis": 5038.526666117832,
+                "providers": 1509.191834134981,
+                "policy": 3769.503124989569,
+                "reporting": 199.70958307385445
+              },
+              "native_phase_seconds": [
+                0.5230940829496831,
+                0.03955399990081787,
+                0.004028083029295682,
+                0.008768542,
+                0.005761959124356508,
+                0.5812066670041531
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3425026251934469,
+              "stages_ms": {
+                "discovery": 136.4271251950413,
+                "analysis": 471.4219579473138,
+                "providers": 131.1933749821037,
+                "policy": 489.5375841297209,
+                "reporting": 87.96495804563165
+              },
+              "native_phase_seconds": [
+                0.1103593751322478,
+                1.774984411895275e-05,
+                0.0004036671838164325,
+                0.00983375,
+                0.004316499922424555,
+                0.12493104208260775
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.2536673748400062,
+              "stages_ms": {
+                "discovery": 115.18304096534848,
+                "analysis": 227.5415421463549,
+                "providers": 131.0129591729492,
+                "policy": 678.8294159341604,
+                "reporting": 85.68604197353125
+              },
+              "native_phase_seconds": [
+                0.15595037513412535,
+                2.0124949514865875e-05,
+                0.00043133302937018933,
+                0.009617167,
+                0.029273791005834937,
+                0.19529279111884534
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.2716510000173002,
+              "stages_ms": {
+                "discovery": 134.18445806019008,
+                "analysis": 421.52337497100234,
+                "providers": 125.46779192052782,
+                "policy": 491.67699995450675,
+                "reporting": 83.78687500953674
+              },
+              "native_phase_seconds": [
+                0.11617716704495251,
+                1.9707949832081795e-05,
+                0.0003990420056624415,
+                0.009493458,
+                0.004226250108331442,
+                0.13031562510877848
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4850685419514775,
+              "stages_ms": {
+                "discovery": 106.47291713394225,
+                "analysis": 278.00441696308553,
+                "providers": 131.966375047341,
+                "policy": 867.3517080023885,
+                "reporting": 85.12616599909961
+              },
+              "native_phase_seconds": [
+                0.16026458283886313,
+                1.7709098756313324e-05,
+                0.0003889990939604047,
+                0.009261917,
+                0.027958874823525548,
+                0.1978920828551054
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.005014792084694,
+              "stages_ms": {
+                "discovery": 106.93358397111297,
+                "analysis": 215.49374982714653,
+                "providers": 107.85162495449185,
+                "policy": 476.1694581247866,
+                "reporting": 83.18824996240437
+              },
+              "native_phase_seconds": [
+                0.10580750019289553,
+                1.750001683831215e-05,
+                0.00039870780745148576,
+                0.009100375,
+                0.00413883407600224,
+                0.11946291709318757
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.38876554206945,
+              "stages_ms": {
+                "discovery": 106.13374994136393,
+                "analysis": 217.23899990320206,
+                "providers": 244.21720788814127,
+                "policy": 1722.5392500404269,
+                "reporting": 83.22950010187924
+              },
+              "native_phase_seconds": [
+                0.2980062090791762,
+                0.09867358300834894,
+                0.0029292489885005945,
+                0.012219834,
+                0.03049195883795619,
+                0.4423208339139819
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.502349958056584,
+              "stages_ms": {
+                "discovery": 105.95937515608966,
+                "analysis": 244.02320920489728,
+                "providers": 267.5640839152038,
+                "policy": 1775.1844159793109,
+                "reporting": 87.59758318774402
+              },
+              "native_phase_seconds": [
+                0.6916957499925047,
+                0.03182899998500943,
+                0.0024934580309348107,
+                0.012344417,
+                0.0041249580681324005,
+                0.7424875830765814
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6291737500578165,
+              "stages_ms": {
+                "discovery": 141.5130419190973,
+                "analysis": 476.1226670816541,
+                "providers": 262.4672499950975,
+                "policy": 1643.4885000344366,
+                "reporting": 83.63137487322092
+              },
+              "native_phase_seconds": [
+                0.28305758303031325,
+                0.030728166922926903,
+                0.0023575830038636923,
+                0.01214375,
+                0.00391379208303988,
+                0.33220087504014373
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3179676251020283,
+              "stages_ms": {
+                "discovery": 106.46812501363456,
+                "analysis": 218.36241614073515,
+                "providers": 244.8115418665111,
+                "policy": 1642.4753749743104,
+                "reporting": 83.2885408308357
+              },
+              "native_phase_seconds": [
+                0.472493042005226,
+                0.2786521250382066,
+                0.00270212498100102,
+                0.012522875,
+                0.0039742079097777605,
+                0.7703443749342114
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.8296756248455495,
+              "stages_ms": {
+                "discovery": 107.5025419704616,
+                "analysis": 423.0079581029713,
+                "providers": 246.44416710361838,
+                "policy": 1947.931458009407,
+                "reporting": 82.890042103827
+              },
+              "native_phase_seconds": [
+                0.2811690419912338,
+                0.030751332873478532,
+                0.0022720420304940935,
+                0.012062167,
+                0.0039979161228984594,
+                0.3302525000181049
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 0,
+        "label": "rust_v2",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.45299437479116,
+              "stages_ms": {
+                "discovery": 112.80062492005527,
+                "analysis": 5027.632458135486,
+                "providers": 1483.7944998871535,
+                "policy": 3634.184875059873,
+                "reporting": 188.61854216083884
+              },
+              "native_phase_seconds": [
+                0.4833265000488609,
+                1.25030055642128e-07,
+                0.04373662488504386,
+                0.029237209,
+                0.00678133312612772,
+                0.5630817920900881
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.2955981669947505,
+              "stages_ms": {
+                "discovery": 192.28125014342368,
+                "analysis": 211.01833297871053,
+                "providers": 122.10600008256733,
+                "policy": 652.9134169686586,
+                "reporting": 90.09137493558228
+              },
+              "native_phase_seconds": [
+                0.08584329206496477,
+                2.50060111284256e-07,
+                0.00018216702502334148,
+                0.011195416,
+                0.0301831248216331,
+                0.1274042499717325
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.414477291982621,
+              "stages_ms": {
+                "discovery": 415.51504214294255,
+                "analysis": 209.98466713353992,
+                "providers": 228.30141708254814,
+                "policy": 462.6959159504622,
+                "reporting": 82.55662489682436
+              },
+              "native_phase_seconds": [
+                0.06968637509271502,
+                8.405186235904694e-08,
+                0.00017220778311359888,
+                0.011338417,
+                0.003937166184186935,
+                0.08513425011187792
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.48537224996835,
+              "stages_ms": {
+                "discovery": 105.20295798778534,
+                "analysis": 277.26237499155104,
+                "providers": 122.32808279804885,
+                "policy": 882.8230409417301,
+                "reporting": 82.69279194064438
+              },
+              "native_phase_seconds": [
+                0.08045300003141165,
+                4.21423465013504e-08,
+                0.00017558294039535585,
+                0.010824417,
+                0.02771291695535183,
+                0.11916595906950533
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.011354833142832,
+              "stages_ms": {
+                "discovery": 107.87987499497831,
+                "analysis": 211.66220912709832,
+                "providers": 120.02808297984302,
+                "policy": 469.13445787504315,
+                "reporting": 87.29404211044312
+              },
+              "native_phase_seconds": [
+                0.06831525010056794,
+                8.288770914077759e-08,
+                0.0001769169513136156,
+                0.010859375,
+                0.0038073330651968718,
+                0.08315895800478756
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4248033750336617,
+              "stages_ms": {
+                "discovery": 109.71270804293454,
+                "analysis": 354.81633292511106,
+                "providers": 125.32300013117492,
+                "policy": 736.6354998666793,
+                "reporting": 82.88708399049938
+              },
+              "native_phase_seconds": [
+                0.08321812516078353,
+                8.288770914077759e-08,
+                0.00017191697648167616,
+                0.01067275,
+                0.025536708068102598,
+                0.11959958309307694
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.2465922499541193,
+              "stages_ms": {
+                "discovery": 118.83304198272526,
+                "analysis": 615.3304579202086,
+                "providers": 256.85070804320276,
+                "policy": 1154.2288749478757,
+                "reporting": 85.1017499808222
+              },
+              "native_phase_seconds": [
+                0.19792379112914205,
+                4.190951585769653e-08,
+                0.007320834079031467,
+                0.026863958,
+                0.004003040958195925,
+                0.2361116660758853
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.2766605000942945,
+              "stages_ms": {
+                "discovery": 141.9703329447657,
+                "analysis": 564.3067499622703,
+                "providers": 258.0153339076787,
+                "policy": 1207.0569170173258,
+                "reporting": 83.89062504284084
+              },
+              "native_phase_seconds": [
+                0.19810912501998246,
+                4.190951585769653e-08,
+                0.007653500165298581,
+                0.026997,
+                0.004194374894723296,
+                0.2369540419895202
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.2744077909737825,
+              "stages_ms": {
+                "discovery": 141.79720799438655,
+                "analysis": 508.5840420797467,
+                "providers": 262.6722080167383,
+                "policy": 1255.5921671446413,
+                "reporting": 84.09108314663172
+              },
+              "native_phase_seconds": [
+                0.1949775421526283,
+                1.25030055642128e-07,
+                0.007283874976649882,
+                0.02663475,
+                0.004031082848086953,
+                0.23292737500742078
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.591034125071019,
+              "stages_ms": {
+                "discovery": 132.12995906360447,
+                "analysis": 516.627750126645,
+                "providers": 247.56875005550683,
+                "policy": 1588.0955420434475,
+                "reporting": 84.42754205316305
+              },
+              "native_phase_seconds": [
+                0.19741437514312565,
+                4.998873919248581e-07,
+                0.0076224999693824055,
+                0.026367333,
+                0.004017417086288333,
+                0.23542212508618832
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3131967089138925,
+              "stages_ms": {
+                "discovery": 112.07366711460054,
+                "analysis": 236.61837517283857,
+                "providers": 246.63474992848933,
+                "policy": 1609.2442499939352,
+                "reporting": 86.9816669728607
+              },
+              "native_phase_seconds": [
+                0.1962705838959664,
+                4.0978193283081055e-08,
+                0.007523375118534445,
+                0.026246167,
+                0.003945749951526523,
+                0.23398591694422066
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "rust_v2",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.194690499920398,
+              "stages_ms": {
+                "discovery": 110.25316710583866,
+                "analysis": 4859.45808282122,
+                "providers": 1507.003708044067,
+                "policy": 3524.2629169952124,
+                "reporting": 187.9198329988867
+              },
+              "native_phase_seconds": [
+                0.4519963748753071,
+                4.21423465013504e-08,
+                0.00896041582839191,
+                0.025404125,
+                0.005943916970863938,
+                0.49230487481690943
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.2226678330916911,
+              "stages_ms": {
+                "discovery": 121.21779192239046,
+                "analysis": 212.69433293491602,
+                "providers": 125.66420808434486,
+                "policy": 654.946458991617,
+                "reporting": 83.23300001211464
+              },
+              "native_phase_seconds": [
+                0.08717612503096461,
+                1.6693957149982452e-07,
+                0.00015337502625584545,
+                0.011094875,
+                0.03494399995543063,
+                0.13336854195222259
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3129468329716474,
+              "stages_ms": {
+                "discovery": 409.0738750528544,
+                "analysis": 215.86287510581315,
+                "providers": 120.5733751412481,
+                "policy": 466.22654190286994,
+                "reporting": 86.03475010022521
+              },
+              "native_phase_seconds": [
+                0.07061375002376735,
+                1.6600824892520905e-07,
+                0.0001455420336915255,
+                0.010667958,
+                0.003901541931554675,
+                0.08532895799726248
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4721819579135627,
+              "stages_ms": {
+                "discovery": 105.73370917700231,
+                "analysis": 276.19875012896955,
+                "providers": 123.74404189176857,
+                "policy": 868.2140419259667,
+                "reporting": 83.51700007915497
+              },
+              "native_phase_seconds": [
+                0.07972558285109699,
+                4.21423465013504e-08,
+                0.0001429158212605721,
+                0.010577709,
+                0.027696416014805436,
+                0.1181426658295095
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 0.988642584066838,
+              "stages_ms": {
+                "discovery": 107.78991598635912,
+                "analysis": 205.36537491716444,
+                "providers": 125.76870899647474,
+                "policy": 452.5963340420276,
+                "reporting": 82.13354111649096
+              },
+              "native_phase_seconds": [
+                0.07087062508799136,
+                8.288770914077759e-08,
+                0.00014783306245505848,
+                0.010649875,
+                0.004011125070974231,
+                0.08567954110912979
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3979405830614269,
+              "stages_ms": {
+                "discovery": 105.60762486420572,
+                "analysis": 331.1483331490308,
+                "providers": 123.04220790974796,
+                "policy": 735.3851250372827,
+                "reporting": 87.8508749883622
+              },
+              "native_phase_seconds": [
+                0.08222087495960295,
+                0.0,
+                0.0001461239517096275,
+                0.010308334,
+                0.025381749961525202,
+                0.11805708287283778
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.315929208183661,
+              "stages_ms": {
+                "discovery": 119.26370789296925,
+                "analysis": 632.7510420233011,
+                "providers": 292.9777910467237,
+                "policy": 1171.4443329256028,
+                "reporting": 83.57179188169539
+              },
+              "native_phase_seconds": [
+                0.2073405000846833,
+                8.312053978443146e-08,
+                0.006899041834026575,
+                0.02593875,
+                0.003935707965865731,
+                0.2441140830051154
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.2282312500756234,
+              "stages_ms": {
+                "discovery": 140.59466705657542,
+                "analysis": 547.5754169747233,
+                "providers": 256.4764579292387,
+                "policy": 1178.7477501202375,
+                "reporting": 83.76404200680554
+              },
+              "native_phase_seconds": [
+                0.19945433409884572,
+                8.312053978443146e-08,
+                0.006657874785487176,
+                0.025488458,
+                0.004044542089104652,
+                0.23564529209397733
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.238633583066985,
+              "stages_ms": {
+                "discovery": 136.84416702017188,
+                "analysis": 498.06108395569026,
+                "providers": 262.1869589202106,
+                "policy": 1232.6372910756618,
+                "reporting": 86.79650002159178
+              },
+              "native_phase_seconds": [
+                0.19761279202066362,
+                8.288770914077759e-08,
+                0.006882750171095131,
+                0.02529175,
+                0.003942041890695691,
+                0.23372941697016358
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6508142908569425,
+              "stages_ms": {
+                "discovery": 138.30800005234778,
+                "analysis": 525.210415944457,
+                "providers": 249.42570901475847,
+                "policy": 1632.9480421263725,
+                "reporting": 83.7044168729335
+              },
+              "native_phase_seconds": [
+                0.20358416717499495,
+                8.288770914077759e-08,
+                0.007350708921238781,
+                0.0258965,
+                0.003997958032414317,
+                0.24082941701635718
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.327924042008817,
+              "stages_ms": {
+                "discovery": 108.3286670036614,
+                "analysis": 210.32025013118982,
+                "providers": 249.81262488290668,
+                "policy": 1652.294958010316,
+                "reporting": 85.27629193849862
+              },
+              "native_phase_seconds": [
+                0.19893141696229577,
+                8.288770914077759e-08,
+                0.0070669171154690985,
+                0.025295208,
+                0.003940624883398414,
+                0.23523424984887242
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "rust_v1",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 12.572963833110407,
+              "stages_ms": {
+                "discovery": 363.8100828975439,
+                "analysis": 6097.56266605109,
+                "providers": 1618.470458080992,
+                "policy": 4262.106999987736,
+                "reporting": 223.920457996428
+              },
+              "native_phase_seconds": [
+                0.5916818750556558,
+                0.039530792040750384,
+                0.003835999929875135,
+                0.008871125,
+                0.00581562495790422,
+                0.6497354169841856
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.953308249823749,
+              "stages_ms": {
+                "discovery": 259.4003330450505,
+                "analysis": 782.3103328701109,
+                "providers": 135.7897080015391,
+                "policy": 658.0326252151281,
+                "reporting": 88.9195001218468
+              },
+              "native_phase_seconds": [
+                0.1411610411014408,
+                2.866680733859539e-05,
+                0.0012770830366270608,
+                0.072354042,
+                0.008398292120546103,
+                0.22321912506595254
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.407622915925458,
+              "stages_ms": {
+                "discovery": 140.57924994267523,
+                "analysis": 237.0193749666214,
+                "providers": 142.48783304356039,
+                "policy": 782.5328749604523,
+                "reporting": 88.04779103957117
+              },
+              "native_phase_seconds": [
+                0.16810479201376438,
+                1.933285966515541e-05,
+                0.0004289171048806901,
+                0.009630417,
+                0.031214541057124734,
+                0.20939800003543496
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3675341249909252,
+              "stages_ms": {
+                "discovery": 155.06841707974672,
+                "analysis": 478.4254578407854,
+                "providers": 132.2167080361396,
+                "policy": 501.7430419102311,
+                "reporting": 84.00654117576778
+              },
+              "native_phase_seconds": [
+                0.11492058401927352,
+                2.1750107407569885e-05,
+                0.0004140409567611209,
+                0.009655042,
+                0.004262874834239483,
+                0.1292742919176817
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.7204017920885235,
+              "stages_ms": {
+                "discovery": 244.80050010606647,
+                "analysis": 314.2163341399282,
+                "providers": 135.3234169073403,
+                "policy": 924.9013748485595,
+                "reporting": 85.21654200740159
+              },
+              "native_phase_seconds": [
+                0.15543220797553658,
+                1.7750076949596405e-05,
+                0.00038983292580711815,
+                0.009239917,
+                0.036410250002518296,
+                0.2014899579808116
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0065262499265373,
+              "stages_ms": {
+                "discovery": 109.51441712677479,
+                "analysis": 216.77762502804399,
+                "providers": 106.55999998562038,
+                "policy": 473.01900014281273,
+                "reporting": 85.37091594189405
+              },
+              "native_phase_seconds": [
+                0.10594612499698997,
+                1.8832972273230553e-05,
+                0.00041895797752904834,
+                0.009274917,
+                0.004496000008657575,
+                0.12015483295544982
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.473370249848813,
+              "stages_ms": {
+                "discovery": 105.82729196175933,
+                "analysis": 222.32666588388383,
+                "providers": 261.6144169587642,
+                "policy": 1783.8324171025306,
+                "reporting": 84.38599994406104
+              },
+              "native_phase_seconds": [
+                0.32876774994656444,
+                0.10027262498624623,
+                0.0028152078934162855,
+                0.012069125,
+                0.0291639999486506,
+                0.47308870777487755
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4768192081246525,
+              "stages_ms": {
+                "discovery": 109.76670798845589,
+                "analysis": 242.03795799985528,
+                "providers": 257.84874986857176,
+                "policy": 1755.0329158548266,
+                "reporting": 86.96308406069875
+              },
+              "native_phase_seconds": [
+                0.7036409168504179,
+                0.03135591605678201,
+                0.0024355009294685127,
+                0.012007291,
+                0.004008208168670535,
+                0.7534478330053389
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.784606416011229,
+              "stages_ms": {
+                "discovery": 149.60045786574483,
+                "analysis": 508.28916602768004,
+                "providers": 264.4478748552501,
+                "policy": 1746.348291868344,
+                "reporting": 92.3134998884052
+              },
+              "native_phase_seconds": [
+                0.28005479206331074,
+                0.030103416880592704,
+                0.002423083103999496,
+                0.011957625,
+                0.0040278329979628325,
+                0.3285667500458658
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.312082333024591,
+              "stages_ms": {
+                "discovery": 113.39629208669066,
+                "analysis": 224.45483319461346,
+                "providers": 243.9375421963632,
+                "policy": 1625.7135418709368,
+                "reporting": 83.0217080656439
+              },
+              "native_phase_seconds": [
+                0.4587493340950459,
+                0.2893122499808669,
+                0.002642208046600222,
+                0.01248775,
+                0.0038185829762369394,
+                0.76701012509875
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.8668032919522375,
+              "stages_ms": {
+                "discovery": 106.3195001333952,
+                "analysis": 387.61937501840293,
+                "providers": 258.0533749423921,
+                "policy": 1993.3274169452488,
+                "reporting": 94.97733297757804
+              },
+              "native_phase_seconds": [
+                0.5226459999103099,
+                0.029737084172666073,
+                0.0021576239250408417,
+                0.011870417,
+                0.003926916979253292,
+                0.5703380419872701
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "python",
+        "result": {
+          "backend": "python",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.729455125052482,
+              "stages_ms": {
+                "discovery": 109.72224990837276,
+                "analysis": 4920.464042108506,
+                "providers": 1535.9040000475943,
+                "policy": 3927.5439579505473,
+                "reporting": 229.95675005950034
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4999051671475172,
+              "stages_ms": {
+                "discovery": 247.94362485408783,
+                "analysis": 492.3288749996573,
+                "providers": 140.6877909321338,
+                "policy": 501.7787078395486,
+                "reporting": 88.81691587157547
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.6648287500720471,
+              "stages_ms": {
+                "discovery": 128.01116704940796,
+                "analysis": 275.80391615629196,
+                "providers": 138.57845799066126,
+                "policy": 1016.5399159304798,
+                "reporting": 90.2415830641985
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0913642081432045,
+              "stages_ms": {
+                "discovery": 123.78241587430239,
+                "analysis": 222.88366593420506,
+                "providers": 128.38441599160433,
+                "policy": 515.7124169636518,
+                "reporting": 85.83791693672538
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4812296670861542,
+              "stages_ms": {
+                "discovery": 115.82295806147158,
+                "analysis": 412.6818748190999,
+                "providers": 118.88029193505645,
+                "policy": 736.1122909933329,
+                "reporting": 83.29408406279981
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.1181676250416785,
+              "stages_ms": {
+                "discovery": 110.87675020098686,
+                "analysis": 223.52604195475578,
+                "providers": 105.71004217490554,
+                "policy": 578.6172919906676,
+                "reporting": 84.56637500785291
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.749161707935855,
+              "stages_ms": {
+                "discovery": 122.93879105709493,
+                "analysis": 274.8889580834657,
+                "providers": 292.54279215820134,
+                "policy": 1938.4774169884622,
+                "reporting": 100.89399991557002
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 4.863976707914844,
+              "stages_ms": {
+                "discovery": 292.11495793424547,
+                "analysis": 704.5036251656711,
+                "providers": 537.4057909939438,
+                "policy": 3186.916874954477,
+                "reporting": 110.02029199153185
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 4.97395179211162,
+              "stages_ms": {
+                "discovery": 171.92874988541007,
+                "analysis": 283.5590001195669,
+                "providers": 411.89562482759356,
+                "policy": 3880.241291830316,
+                "reporting": 184.37154195271432
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.70912062516436,
+              "stages_ms": {
+                "discovery": 534.5301248598844,
+                "analysis": 359.26324990577996,
+                "providers": 367.38108308054507,
+                "policy": 2309.862666996196,
+                "reporting": 99.37750012613833
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.9401153749786317,
+              "stages_ms": {
+                "discovery": 197.87416607141495,
+                "analysis": 779.357833089307,
+                "providers": 424.02637493796647,
+                "policy": 2405.001541832462,
+                "reporting": 105.86033295840025
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      }
+    ],
+    "medians_seconds": {
+      "python": {
+        "first": 10.690806291531771,
+        "ordinary": 1.41229089605622,
+        "shared": 2.7099154584575444
+      },
+      "rust_v1": {
+        "first": 11.603218291536905,
+        "ordinary": 1.355018375092186,
+        "shared": 2.4895845830906183
+      },
+      "rust_v2": {
+        "first": 10.323842437355779,
+        "ordinary": 1.3554437080165371,
+        "shared": 2.2949286045040935
+      }
+    },
+    "snapshot_preserved": true,
+    "source_files": 1224
+  },
+  "shared_stage_medians_ms": {
+    "python": {
+      "discovery": 142.03993743285537,
+      "analysis": 321.41112501267344,
+      "providers": 282.5530420523137,
+      "policy": 1835.0660415599123,
+      "reporting": 92.61147945653647,
+      "native_phase_ms": []
+    },
+    "rust_v1": {
+      "discovery": 106.98533349204808,
+      "analysis": 243.03058360237628,
+      "providers": 257.95106240548193,
+      "policy": 1750.6906038615853,
+      "reporting": 84.00868740864098,
+      "native_phase_ms": [
+        393.7585420208052,
+        31.59245802089572,
+        2.464479480201662,
+        12.1064375,
+        4.003062145784497,
+        521.7133748810738
+      ]
+    },
+    "rust_v2": {
+      "discovery": 134.48706304188818,
+      "analysis": 520.919083035551,
+      "providers": 256.6635829862207,
+      "policy": 1244.1147291101515,
+      "reporting": 84.25931259989738,
+      "native_phase_ms": [
+        198.01645807456225,
+        8.288770914077759e-05,
+        7.3023545278406745,
+        26.0924585,
+        4.000499495305121,
+        235.53370859008282
+      ]
+    }
+  },
+  "exploratory_row_bridge_latency": {
+    "order": [
+      [
+        "python",
+        "rust_v1",
+        "rust_v2"
+      ],
+      [
+        "rust_v2",
+        "rust_v1",
+        "python"
+      ]
+    ],
+    "executions": [
+      {
+        "round": 0,
+        "label": "python",
+        "result": {
+          "backend": "python",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.642602916108444,
+              "stages_ms": {
+                "discovery": 109.37795811332762,
+                "analysis": 4934.752624947578,
+                "providers": 1514.8366659414023,
+                "policy": 3880.0427080132067,
+                "reporting": 197.73162505589426
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3630699159111828,
+              "stages_ms": {
+                "discovery": 170.60079099610448,
+                "analysis": 479.1392080951482,
+                "providers": 127.8312080539763,
+                "policy": 477.1034170407802,
+                "reporting": 83.48262496292591
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.5388557908590883,
+              "stages_ms": {
+                "discovery": 104.95058400556445,
+                "analysis": 249.47554105892777,
+                "providers": 129.04791696928442,
+                "policy": 957.5841249898076,
+                "reporting": 83.39449996128678
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 0.9972446251194924,
+              "stages_ms": {
+                "discovery": 105.39075010456145,
+                "analysis": 206.14324999041855,
+                "providers": 116.97658291086555,
+                "policy": 470.8822921384126,
+                "reporting": 82.77854206971824
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4293800829909742,
+              "stages_ms": {
+                "discovery": 105.4988750256598,
+                "analysis": 372.08983302116394,
+                "providers": 122.22458398900926,
+                "policy": 731.4285419415683,
+                "reporting": 83.6820830591023
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.1056148749776185,
+              "stages_ms": {
+                "discovery": 108.2086251117289,
+                "analysis": 209.62016587145627,
+                "providers": 107.37170814536512,
+                "policy": 582.9126657918096,
+                "reporting": 83.08074995875359
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3611762919463217,
+              "stages_ms": {
+                "discovery": 109.59712509065866,
+                "analysis": 245.88187504559755,
+                "providers": 265.70620900020003,
+                "policy": 1641.679833875969,
+                "reporting": 82.85649982281029
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.646212791092694,
+              "stages_ms": {
+                "discovery": 147.29104191064835,
+                "analysis": 543.9602080732584,
+                "providers": 259.4584170728922,
+                "policy": 1591.6138750035316,
+                "reporting": 82.90124987252057
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3671097080223262,
+              "stages_ms": {
+                "discovery": 114.93966681882739,
+                "analysis": 216.9200840871781,
+                "providers": 251.5368340536952,
+                "policy": 1675.30766595155,
+                "reporting": 86.86354197561741
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3037819580640644,
+              "stages_ms": {
+                "discovery": 109.1000409796834,
+                "analysis": 213.49474997259676,
+                "providers": 254.4290830846876,
+                "policy": 1616.9515000656247,
+                "reporting": 85.89812484569848
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.752258999971673,
+              "stages_ms": {
+                "discovery": 159.92958284914494,
+                "analysis": 572.2452090121806,
+                "providers": 260.4691660962999,
+                "policy": 1651.7110420390964,
+                "reporting": 85.97566606476903
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 0,
+        "label": "rust_v1",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.554913916159421,
+              "stages_ms": {
+                "discovery": 113.62529103644192,
+                "analysis": 4897.949708160013,
+                "providers": 1548.9530418999493,
+                "policy": 3790.7703751698136,
+                "reporting": 197.6541669573635
+              },
+              "native_phase_seconds": [
+                0.5330998748540878,
+                0.0381974580232054,
+                0.002991417026489973,
+                0.00862425,
+                0.005813041003420949,
+                0.5887260409072042
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.331589249894023,
+              "stages_ms": {
+                "discovery": 131.70975004322827,
+                "analysis": 506.72345818020403,
+                "providers": 115.87775009684265,
+                "policy": 467.4452079925686,
+                "reporting": 83.10687495395541
+              },
+              "native_phase_seconds": [
+                0.10566733311861753,
+                1.974985934793949e-05,
+                0.00039420919409823355,
+                0.009508208,
+                0.004224207950755954,
+                0.11981370812281966
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.1991587500087917,
+              "stages_ms": {
+                "discovery": 106.56849993392825,
+                "analysis": 225.18370882607996,
+                "providers": 127.98400013707578,
+                "policy": 634.9586250726134,
+                "reporting": 86.11600007861853
+              },
+              "native_phase_seconds": [
+                0.14905945886857808,
+                1.6791047528386116e-05,
+                0.00039058307809269367,
+                0.009045584,
+                0.02789520798251033,
+                0.18640762497670949
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.3306487500667572,
+              "stages_ms": {
+                "discovery": 439.48074989020824,
+                "analysis": 209.83654190786183,
+                "providers": 117.47987498529255,
+                "policy": 465.9898329991847,
+                "reporting": 82.39704184234142
+              },
+              "native_phase_seconds": [
+                0.10658633289858699,
+                1.8584076315164566e-05,
+                0.0003919159765243523,
+                0.009213,
+                0.0038864589296281338,
+                0.12009629188105464
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4342873338609934,
+              "stages_ms": {
+                "discovery": 105.50400009378791,
+                "analysis": 252.96533294022083,
+                "providers": 123.28433408401906,
+                "policy": 855.8788339141756,
+                "reporting": 82.05125015228987
+              },
+              "native_phase_seconds": [
+                0.14687200007028878,
+                1.5791039913892746e-05,
+                0.00041445887345075566,
+                0.009152,
+                0.027711082948371768,
+                0.1841653329320252
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0364615831058472,
+              "stages_ms": {
+                "discovery": 107.19108418561518,
+                "analysis": 210.24937508627772,
+                "providers": 110.98825000226498,
+                "policy": 504.6465841587633,
+                "reporting": 87.57025003433228
+              },
+              "native_phase_seconds": [
+                0.11332400003448129,
+                1.9916100427508354e-05,
+                0.0004370838892310859,
+                0.009498375,
+                0.004522291012108326,
+                0.1278016660362482
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6577139999717474,
+              "stages_ms": {
+                "discovery": 116.69904203154147,
+                "analysis": 221.7851250898093,
+                "providers": 275.5648330785334,
+                "policy": 1941.5406670887023,
+                "reporting": 85.54191701114178
+              },
+              "native_phase_seconds": [
+                0.37699987506493926,
+                0.15424391580745578,
+                0.003128125097906947,
+                0.013374459,
+                0.04877462494187057,
+                0.5965209999121726
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6153738328721374,
+              "stages_ms": {
+                "discovery": 112.8451251424849,
+                "analysis": 302.91241710074246,
+                "providers": 265.8202080056071,
+                "policy": 1824.4338750373572,
+                "reporting": 86.81800006888807
+              },
+              "native_phase_seconds": [
+                0.7280261660926044,
+                0.03210208402015269,
+                0.0028699999409807914,
+                0.012689458,
+                0.004335792036727071,
+                0.780023500090465
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.736571750137955,
+              "stages_ms": {
+                "discovery": 155.98949999548495,
+                "analysis": 496.91774998791516,
+                "providers": 256.26804190687835,
+                "policy": 1719.2527919542044,
+                "reporting": 85.52845800295472
+              },
+              "native_phase_seconds": [
+                0.2776542080100626,
+                0.03115062485449016,
+                0.0025684580963658086,
+                0.012537917,
+                0.016722582979127765,
+                0.3406337909400463
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.3637733748182654,
+              "stages_ms": {
+                "discovery": 109.90479215979576,
+                "analysis": 219.0496250987053,
+                "providers": 252.1092500537634,
+                "policy": 1677.7084590867162,
+                "reporting": 83.18479196168482
+              },
+              "native_phase_seconds": [
+                0.7603991250507534,
+                0.03213074989616871,
+                0.0028753340268923046,
+                0.012650458,
+                0.004032791126519442,
+                0.8120884581003338
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.718585249967873,
+              "stages_ms": {
+                "discovery": 119.4967080373317,
+                "analysis": 614.6539999172091,
+                "providers": 257.6533330138773,
+                "policy": 1622.184959007427,
+                "reporting": 82.89695903658867
+              },
+              "native_phase_seconds": [
+                0.2786654580850154,
+                0.03194129187613726,
+                0.002965000041604042,
+                0.012482,
+                0.004019707906991243,
+                0.33007345790974796
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 0,
+        "label": "rust_v2",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 10.518844834063202,
+              "stages_ms": {
+                "discovery": 114.57270802929997,
+                "analysis": 4798.304041149095,
+                "providers": 1514.1364999581128,
+                "policy": 3897.945958888158,
+                "reporting": 187.7115829847753
+              },
+              "native_phase_seconds": [
+                0.44793712510727346,
+                8.405186235904694e-08,
+                0.009820249918062806,
+                0.026062458,
+                0.0060555830132216215,
+                0.48987550009042025
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 0.9944710000418127,
+              "stages_ms": {
+                "discovery": 103.81300002336502,
+                "analysis": 219.42949993535876,
+                "providers": 107.97754186205566,
+                "policy": 454.1500408668071,
+                "reporting": 83.69466685689986
+              },
+              "native_phase_seconds": [
+                0.06650924985297024,
+                1.6600824892520905e-07,
+                0.00014925015848445827,
+                0.010856917,
+                0.003815207863226533,
+                0.08133079088293016
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4005232921335846,
+              "stages_ms": {
+                "discovery": 105.01533304341137,
+                "analysis": 344.90841696970165,
+                "providers": 115.57237501256168,
+                "policy": 737.0824159588665,
+                "reporting": 82.9927921295166
+              },
+              "native_phase_seconds": [
+                0.07770345802418888,
+                1.25030055642128e-07,
+                0.00014791677761507097,
+                0.010658708,
+                0.03054520906880498,
+                0.11905541690066457
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0469044160563499,
+              "stages_ms": {
+                "discovery": 108.56550000607967,
+                "analysis": 216.77045803517103,
+                "providers": 116.3708339445293,
+                "policy": 502.52579199150205,
+                "reporting": 86.96304191835225
+              },
+              "native_phase_seconds": [
+                0.071278375107795,
+                8.312053978443146e-08,
+                0.00016562590267193283,
+                0.011273708,
+                0.004732625093311071,
+                0.08745041722431779
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4899772920180112,
+              "stages_ms": {
+                "discovery": 114.6442499011755,
+                "analysis": 397.9837920051068,
+                "providers": 115.5163748189807,
+                "policy": 764.118041144684,
+                "reporting": 82.60537497699261
+              },
+              "native_phase_seconds": [
+                0.06740020797587931,
+                8.288770914077759e-08,
+                0.00015691801975035655,
+                0.010456916,
+                0.0037674580235034227,
+                0.08178158290684223
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.025995833100751,
+              "stages_ms": {
+                "discovery": 105.95241701230407,
+                "analysis": 203.99245899170637,
+                "providers": 116.23633303679526,
+                "policy": 500.87900017388165,
+                "reporting": 83.41545797884464
+              },
+              "native_phase_seconds": [
+                0.06720050005242229,
+                8.312053978443146e-08,
+                0.00014637587622237137,
+                0.010314833,
+                0.003828749991953373,
+                0.08149054204113781
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.356011583004147,
+              "stages_ms": {
+                "discovery": 115.01304199919105,
+                "analysis": 223.72695920057595,
+                "providers": 257.1293341461569,
+                "policy": 1658.7256251368672,
+                "reporting": 85.49758396111429
+              },
+              "native_phase_seconds": [
+                0.6380485421977937,
+                1.6693957149982452e-07,
+                0.008342206979161857,
+                0.026244709,
+                0.0040831249207258224,
+                0.6767187500372529
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.551849457900971,
+              "stages_ms": {
+                "discovery": 138.6336248833686,
+                "analysis": 483.1602079793811,
+                "providers": 262.82620895653963,
+                "policy": 1560.770665993914,
+                "reporting": 83.38804100640118
+              },
+              "native_phase_seconds": [
+                0.2000629580579698,
+                1.25030055642128e-07,
+                0.007722708960899351,
+                0.025899541,
+                0.003965666983276606,
+                0.2376510000322014
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.7919031670317054,
+              "stages_ms": {
+                "discovery": 106.12237500026822,
+                "analysis": 248.13083303160965,
+                "providers": 257.2752081323415,
+                "policy": 2069.667999865487,
+                "reporting": 87.90774992667139
+              },
+              "native_phase_seconds": [
+                0.6133638750761747,
+                2.50060111284256e-07,
+                0.00892958305021262,
+                0.027292459,
+                0.004168124869465828,
+                0.6537542920559645
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4554860829375684,
+              "stages_ms": {
+                "discovery": 118.14433289691806,
+                "analysis": 227.6692078448832,
+                "providers": 290.2727499604225,
+                "policy": 1706.3799160532653,
+                "reporting": 88.86891580186784
+              },
+              "native_phase_seconds": [
+                0.212524666916579,
+                1.671724021434784e-07,
+                0.010008708811425807,
+                0.027526916,
+                0.004131250083446503,
+                0.25419170898385346
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.1337083328980953,
+              "stages_ms": {
+                "discovery": 132.53720803186297,
+                "analysis": 345.72233306244016,
+                "providers": 279.81741703115404,
+                "policy": 2252.6401670183986,
+                "reporting": 96.20270784944296
+              },
+              "native_phase_seconds": [
+                0.7098667081445456,
+                2.498272806406021e-07,
+                0.011107125134259464,
+                0.028959125,
+                0.004626374924555421,
+                0.7545595830306411
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "rust_v2",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 11.576718540862203,
+              "stages_ms": {
+                "discovery": 127.59729218669236,
+                "analysis": 5693.647500127554,
+                "providers": 1524.3000409100205,
+                "policy": 4039.7665831260383,
+                "reporting": 185.12600008398294
+              },
+              "native_phase_seconds": [
+                0.4831582501064986,
+                4.190951585769653e-08,
+                0.00920025103724861,
+                0.026679916,
+                0.005925582954660058,
+                0.5249640420079231
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0342133329249918,
+              "stages_ms": {
+                "discovery": 112.4136671423912,
+                "analysis": 221.94262500852346,
+                "providers": 109.30554196238518,
+                "policy": 451.9236250780523,
+                "reporting": 112.61774995364249
+              },
+              "native_phase_seconds": [
+                0.0661767499987036,
+                8.288770914077759e-08,
+                0.00014729204101860544,
+                0.01074025,
+                0.0037445409689098597,
+                0.0808089158963412
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.5046282499097288,
+              "stages_ms": {
+                "discovery": 107.89812495931983,
+                "analysis": 303.4292501397431,
+                "providers": 113.86137502267957,
+                "policy": 880.8462920133024,
+                "reporting": 82.87687483243644
+              },
+              "native_phase_seconds": [
+                0.07980966591276228,
+                4.21423465013504e-08,
+                0.00014562394904231966,
+                0.010644834,
+                0.02985566691495478,
+                0.12045583291910589
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.0160435419529676,
+              "stages_ms": {
+                "discovery": 117.70349997095764,
+                "analysis": 206.17758412845433,
+                "providers": 118.21166682057083,
+                "policy": 471.8937079887837,
+                "reporting": 86.61808399483562
+              },
+              "native_phase_seconds": [
+                0.06715304194949567,
+                4.21423465013504e-08,
+                0.00014879101860523249,
+                0.010440125,
+                0.003790999995544553,
+                0.08153300010599196
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4798174160532653,
+              "stages_ms": {
+                "discovery": 119.62916608899832,
+                "analysis": 348.2283749617636,
+                "providers": 124.18166687712073,
+                "policy": 785.467583918944,
+                "reporting": 86.36000007390976
+              },
+              "native_phase_seconds": [
+                0.08510279189795256,
+                1.6693957149982452e-07,
+                0.00017191610352265858,
+                0.011093667,
+                0.03608629200607538,
+                0.1324548339471221
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.066204790957272,
+              "stages_ms": {
+                "discovery": 124.4067910593003,
+                "analysis": 214.0699999872595,
+                "providers": 112.99024987965822,
+                "policy": 506.63045793771744,
+                "reporting": 91.39508311636746
+              },
+              "native_phase_seconds": [
+                0.0729542919434607,
+                8.288770914077759e-08,
+                0.00015350016647148156,
+                0.010784917,
+                0.004325249930843711,
+                0.08821804192848504
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4956987909972668,
+              "stages_ms": {
+                "discovery": 111.42533319070935,
+                "analysis": 234.05320895835757,
+                "providers": 269.74625000730157,
+                "policy": 1774.2313330527395,
+                "reporting": 89.69116606749594
+              },
+              "native_phase_seconds": [
+                0.6752379999961704,
+                1.6693957149982452e-07,
+                0.009605083083301783,
+                0.02757975,
+                0.004507292062044144,
+                0.7169302920810878
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.8282238750252873,
+              "stages_ms": {
+                "discovery": 151.1179159861058,
+                "analysis": 606.3284159172326,
+                "providers": 264.3697499297559,
+                "policy": 1678.0488749500364,
+                "reporting": 103.74745889566839
+              },
+              "native_phase_seconds": [
+                0.20229312498122454,
+                8.288770914077759e-08,
+                0.008284042015086292,
+                0.027096792,
+                0.004189375089481473,
+                0.24186341697350144
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.241826874902472,
+              "stages_ms": {
+                "discovery": 123.87270806357265,
+                "analysis": 228.74725004658103,
+                "providers": 240.8616670873016,
+                "policy": 2531.39300015755,
+                "reporting": 90.97129199653864
+              },
+              "native_phase_seconds": [
+                1.3024095830041915,
+                2.498272806406021e-07,
+                0.018257001013496157,
+                0.067162916,
+                0.005420458037406206,
+                1.3932502078823745
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.6969515830278397,
+              "stages_ms": {
+                "discovery": 165.28924996964633,
+                "analysis": 613.6233750730753,
+                "providers": 271.3759168982506,
+                "policy": 2513.3055420592427,
+                "reporting": 103.34741696715355
+              },
+              "native_phase_seconds": [
+                0.3388348750304431,
+                8.288770914077759e-08,
+                0.016000125099048017,
+                0.031033125,
+                0.0057894999627023935,
+                0.3916577079799026
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.0930857500061393,
+              "stages_ms": {
+                "discovery": 130.92954084277153,
+                "analysis": 353.42558403499424,
+                "providers": 313.89545812271535,
+                "policy": 2169.130750000477,
+                "reporting": 97.88074996322393
+              },
+              "native_phase_seconds": [
+                0.6428645001724362,
+                8.381903171539307e-08,
+                0.013604666196256873,
+                0.0334175,
+                0.004383374936878681,
+                0.6942701251246035
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "rust_v1",
+        "result": {
+          "backend": "rust",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 12.556940959068015,
+              "stages_ms": {
+                "discovery": 118.25545784085989,
+                "analysis": 6548.926250077784,
+                "providers": 1607.3118750937283,
+                "policy": 4058.7286250665784,
+                "reporting": 216.86033299192786
+              },
+              "native_phase_seconds": [
+                0.5496746250428259,
+                0.0406353329308331,
+                0.0036096252081692214,
+                0.009535375,
+                0.006863249931484461,
+                0.6103182081133127
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4461492081172764,
+              "stages_ms": {
+                "discovery": 152.9727908782661,
+                "analysis": 509.1052921488881,
+                "providers": 138.4114590473473,
+                "policy": 525.4897081758827,
+                "reporting": 91.23395895585418
+              },
+              "native_phase_seconds": [
+                0.11497808410786092,
+                1.8666032701730728e-05,
+                0.00040662494418025087,
+                0.010051125,
+                0.004885500064119697,
+                0.1303400001488626
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4203729999717325,
+              "stages_ms": {
+                "discovery": 122.10891698487103,
+                "analysis": 266.4759170729667,
+                "providers": 147.4750421475619,
+                "policy": 771.7380840331316,
+                "reporting": 94.9394169729203
+              },
+              "native_phase_seconds": [
+                0.17366979201324284,
+                1.9625062122941017e-05,
+                0.00042541603179275904,
+                0.0100735,
+                0.03142320900224149,
+                0.21561154210940003
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.4292341251857579,
+              "stages_ms": {
+                "discovery": 480.4722089320421,
+                "analysis": 214.65437510050833,
+                "providers": 124.0006668958813,
+                "policy": 504.8914169892669,
+                "reporting": 89.01204192079604
+              },
+              "native_phase_seconds": [
+                0.10910320794209838,
+                1.9833911210298538e-05,
+                0.0004073331054641003,
+                0.009933083,
+                0.003973166923969984,
+                0.12343662488274276
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 2.2015629168599844,
+              "stages_ms": {
+                "discovery": 117.94329201802611,
+                "analysis": 254.18466608971357,
+                "providers": 124.86341688781977,
+                "policy": 1570.4547499772161,
+                "reporting": 112.76925005950034
+              },
+              "native_phase_seconds": [
+                0.16630237502977252,
+                1.77919864654541e-05,
+                0.00041074983984231914,
+                0.009693125,
+                0.06498316605575383,
+                0.24140720791183412
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.1215533749200404,
+              "stages_ms": {
+                "discovery": 155.55016696453094,
+                "analysis": 228.49920904263854,
+                "providers": 115.46791600994766,
+                "policy": 516.2643329240382,
+                "reporting": 87.4145410489291
+              },
+              "native_phase_seconds": [
+                0.1229093330912292,
+                1.816684380173683e-05,
+                0.0004312090934153797,
+                0.009438416,
+                0.004185082856565714,
+                0.13698220788501203
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4592296248301864,
+              "stages_ms": {
+                "discovery": 114.8964581079781,
+                "analysis": 223.75045903027058,
+                "providers": 246.31512514315546,
+                "policy": 1771.3707499206066,
+                "reporting": 85.40804218500853
+              },
+              "native_phase_seconds": [
+                0.3109915421810001,
+                0.09895666688680649,
+                0.0027214990676002505,
+                0.012028542,
+                0.03176420903764665,
+                0.4564624591730535
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.6322932080365717,
+              "stages_ms": {
+                "discovery": 117.05437488853931,
+                "analysis": 260.9705419745296,
+                "providers": 263.5154169984162,
+                "policy": 1878.5558331292123,
+                "reporting": 88.33775017410517
+              },
+              "native_phase_seconds": [
+                0.7015870830509812,
+                0.032846542075276375,
+                0.0027434578739510777,
+                0.013331292,
+                0.004223749972879887,
+                0.7547321249730885
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 3.1358060410711914,
+              "stages_ms": {
+                "discovery": 157.62375015765429,
+                "analysis": 479.93075009435415,
+                "providers": 284.1888340190053,
+                "policy": 2104.937208117917,
+                "reporting": 86.78929205052555
+              },
+              "native_phase_seconds": [
+                0.4088098749052733,
+                0.035662041045725346,
+                0.0030433751567006118,
+                0.0135845,
+                0.0055864169262349606,
+                0.46668620803393424
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.449171500047669,
+              "stages_ms": {
+                "discovery": 106.3860000576824,
+                "analysis": 234.0459160041064,
+                "providers": 250.41987490840256,
+                "policy": 1744.8222080711275,
+                "reporting": 88.54879112914205
+              },
+              "native_phase_seconds": [
+                0.4870742920320481,
+                0.2787880420219153,
+                0.0032389998936057096,
+                0.03436475,
+                0.005483875051140785,
+                0.8089499589987099
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.99757520807907,
+              "stages_ms": {
+                "discovery": 113.73579106293619,
+                "analysis": 676.9440418574959,
+                "providers": 270.8653749432415,
+                "policy": 1820.677749812603,
+                "reporting": 91.84787492267787
+              },
+              "native_phase_seconds": [
+                0.3076292499899864,
+                0.031474333023652434,
+                0.0024843341104388243,
+                0.0123305,
+                0.003975040977820754,
+                0.35789345810189843
+              ],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      },
+      {
+        "round": 1,
+        "label": "python",
+        "result": {
+          "backend": "python",
+          "samples": [
+            {
+              "phase": "first",
+              "seconds": 12.748145041055977,
+              "stages_ms": {
+                "discovery": 110.7079170178622,
+                "analysis": 6035.737290978432,
+                "providers": 1806.5395408775657,
+                "policy": 4567.584499949589,
+                "reporting": 221.64066694676876
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.5768702919594944,
+              "stages_ms": {
+                "discovery": 272.1194999758154,
+                "analysis": 512.8884590230882,
+                "providers": 136.4632910117507,
+                "policy": 539.4075422082096,
+                "reporting": 88.03450013510883
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.7583876659628004,
+              "stages_ms": {
+                "discovery": 120.19845796748996,
+                "analysis": 291.9269578997046,
+                "providers": 151.1119999922812,
+                "policy": 1093.4375829529017,
+                "reporting": 86.82799991220236
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.109343082876876,
+              "stages_ms": {
+                "discovery": 119.84816705808043,
+                "analysis": 219.15170783177018,
+                "providers": 132.70125002600253,
+                "policy": 524.8273338656873,
+                "reporting": 97.67829184420407
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.6391490420792252,
+              "stages_ms": {
+                "discovery": 119.28712506778538,
+                "analysis": 467.46800001710653,
+                "providers": 145.51604096777737,
+                "policy": 778.642333811149,
+                "reporting": 112.6723331399262
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "ordinary",
+              "seconds": 1.186994916992262,
+              "stages_ms": {
+                "discovery": 115.69462483748794,
+                "analysis": 240.06283306516707,
+                "providers": 109.43808383308351,
+                "policy": 623.6639581620693,
+                "reporting": 82.40841701626778
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.5331119580660015,
+              "stages_ms": {
+                "discovery": 112.51362506300211,
+                "analysis": 256.6210830118507,
+                "providers": 276.46487508900464,
+                "policy": 1777.9759159311652,
+                "reporting": 92.8567920345813
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.934604207985103,
+              "stages_ms": {
+                "discovery": 152.6690828613937,
+                "analysis": 559.6360829658806,
+                "providers": 285.02983320504427,
+                "policy": 1822.312249802053,
+                "reporting": 91.19770885445178
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.4763783749658614,
+              "stages_ms": {
+                "discovery": 115.97520811483264,
+                "analysis": 236.51595902629197,
+                "providers": 261.28600002266467,
+                "policy": 1751.4288749080151,
+                "reporting": 88.9815001282841
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.434410999994725,
+              "stages_ms": {
+                "discovery": 145.91029193252325,
+                "analysis": 225.15137493610382,
+                "providers": 259.0416669845581,
+                "policy": 1693.4336661361158,
+                "reporting": 89.01458396576345
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            },
+            {
+              "phase": "shared",
+              "seconds": 2.8458986671175808,
+              "stages_ms": {
+                "discovery": 145.50879201851785,
+                "analysis": 632.8838330227882,
+                "providers": 267.73608289659023,
+                "policy": 1689.9170831311494,
+                "reporting": 87.50595920719206
+              },
+              "native_phase_seconds": [],
+              "stdout_sha256": "d42e8fc303050a507c2b9afb38715f888b2f6f62b8958467a8ca12d36244e2c8",
+              "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "exit_code": 0
+            }
+          ]
+        }
+      }
+    ],
+    "medians_seconds": {
+      "python": {
+        "first": 11.69537397858221,
+        "ordinary": 1.3962249994510785,
+        "shared": 2.5047451665159315
+      },
+      "rust_v1": {
+        "first": 11.555927437613718,
+        "ordinary": 1.3759811249328777,
+        "shared": 2.6450036040041596
+      },
+      "rust_v2": {
+        "first": 11.047781687462702,
+        "ordinary": 1.056554603506811,
+        "shared": 2.8100635210284963
+      }
+    },
+    "snapshot_preserved": true,
+    "source_files": 1224
+  },
+  "real_project_validation": {
+    "python": {
+      "backend": "python",
+      "warmup": 50,
+      "rss_bytes": {
+        "unchanged": [
+          800112640,
+          800227328,
+          800227328,
+          800210944,
+          800210944,
+          799326208,
+          787972096,
+          785842176,
+          784842752,
+          787808256,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787824640,
+          787660800,
+          782630912,
+          782614528,
+          782614528,
+          782614528,
+          749846528,
+          739606528,
+          732495872,
+          722059264,
+          700792832,
+          745504768,
+          745504768,
+          745521152,
+          745504768,
+          741425152,
+          733429760,
+          733364224,
+          731430912,
+          726581248,
+          726581248,
+          726564864,
+          726564864,
+          726564864,
+          726433792,
+          725204992,
+          725204992,
+          723501056,
+          724107264,
+          723664896,
+          724779008,
+          725303296,
+          731381760,
+          734068736,
+          734068736,
+          734068736,
+          734068736,
+          734068736,
+          734068736,
+          734068736,
+          733560832,
+          709869568,
+          630030336,
+          630030336,
+          630030336,
+          628146176,
+          628146176,
+          616071168,
+          619413504,
+          633847808,
+          635633664,
+          642105344,
+          648970240,
+          656982016,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734953472,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734969856,
+          734937088,
+          734953472,
+          730529792,
+          680230912,
+          702283776,
+          735625216,
+          734674944,
+          734691328,
+          734674944
+        ],
+        "mixed": [
+          734691328,
+          799457280,
+          804618240,
+          808337408,
+          810205184,
+          810336256,
+          808189952,
+          809336832,
+          807256064,
+          807436288,
+          799047680,
+          798982144,
+          801210368,
+          801079296,
+          801128448,
+          801112064,
+          800473088,
+          800456704,
+          800505856,
+          801161216,
+          801161216,
+          801161216,
+          797229056,
+          792215552,
+          763215872,
+          786006016,
+          794066944,
+          800686080,
+          800227328,
+          798130176,
+          799621120,
+          799703040,
+          799703040,
+          802439168,
+          802471936,
+          802471936,
+          802471936,
+          802471936,
+          802471936,
+          802570240,
+          802308096,
+          802275328,
+          802275328,
+          802275328,
+          798326784,
+          800571392,
+          800751616,
+          801882112,
+          802045952,
+          802144256
+        ]
+      },
+      "stable": {
+        "unchanged": false,
+        "mixed": false
+      },
+      "fresh_parity": []
+    },
+    "rust": {
+      "backend": "rust",
+      "warmup": 50,
+      "rss_bytes": {
+        "unchanged": [
+          914358272,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914440192,
+          914489344,
+          914997248,
+          899137536,
+          504610816,
+          516784128,
+          518586368,
+          518815744,
+          519929856,
+          520519680,
+          530513920,
+          619020288,
+          652328960,
+          673480704,
+          690159616,
+          707297280,
+          794132480,
+          794132480,
+          794132480,
+          794247168,
+          794247168,
+          794247168,
+          794247168,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794443776,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794476544,
+          794492928,
+          794492928,
+          794509312,
+          794509312,
+          794509312,
+          794509312,
+          794509312,
+          794509312,
+          794509312,
+          794509312,
+          794509312
+        ],
+        "mixed": [
+          794525696,
+          865959936,
+          869924864,
+          872071168,
+          872972288,
+          873005056,
+          894926848,
+          916111360,
+          916160512,
+          916160512,
+          916160512,
+          916160512,
+          916160512,
+          916897792,
+          917012480,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917028864,
+          917602304,
+          917618688,
+          917618688,
+          917618688,
+          917618688,
+          917618688,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917782528,
+          917798912,
+          917798912,
+          917798912,
+          917798912,
+          917798912,
+          917798912,
+          917798912,
+          917798912
+        ]
+      },
+      "stable": {
+        "unchanged": false,
+        "mixed": false
+      },
+      "fresh_parity": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    }
+  },
+  "rss_summary": {
+    "python": {
+      "unchanged": {
+        "samples": 100,
+        "first_mib": 763.046875,
+        "last_mib": 700.640625,
+        "median_mib": 700.9140625,
+        "tail_range_mib": 114.015625,
+        "tolerance_mib": 22.891406059265137,
+        "stable": false
+      },
+      "mixed": {
+        "samples": 50,
+        "first_mib": 700.65625,
+        "last_mib": 764.984375,
+        "median_mib": 764.046875,
+        "tail_range_mib": 15.796875,
+        "tolerance_mib": 21.019686698913574,
+        "stable": false
+      }
+    },
+    "rust": {
+      "unchanged": {
+        "samples": 100,
+        "first_mib": 872.0,
+        "last_mib": 757.703125,
+        "median_mib": 807.59375,
+        "tail_range_mib": 276.46875,
+        "tolerance_mib": 26.15999984741211,
+        "stable": false
+      },
+      "mixed": {
+        "samples": 50,
+        "first_mib": 757.71875,
+        "last_mib": 875.28125,
+        "median_mib": 874.546875,
+        "tail_range_mib": 0.734375,
+        "tolerance_mib": 22.7315616607666,
+        "stable": false
+      }
+    }
+  },
+  "gates": {
+    "default_python": {
+      "passed": 1403,
+      "skipped": 25,
+      "coverage_percent": 90.46
+    },
+    "native_python": {
+      "passed": 1428,
+      "coverage_percent": 90.65
+    },
+    "rust_tests": 4,
+    "checks": [
+      "fmt",
+      "Clippy warnings denied",
+      "Ruff",
+      "strict mypy/Pyright",
+      "conventions",
+      "self-policy",
+      "build/install smoke",
+      "installed-wheel parity"
+    ]
+  },
+  "before_v1_profiles": {
+    "taut-hot-first.txt": "         54305235 function calls (53292172 primitive calls) in 16.078 seconds\n\n   Ordered by: cumulative time\n   List reduced from 1717 to 65 due to restriction <65>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000   18.490   18.490 check_service.py:154(check)\n        1    0.001    0.001   18.476   18.476 check_service.py:209(_run)\n     1225    0.001    0.000   10.969    0.009 process.py:611(_chain_from_iterable_of_lists)\n        1    0.000    0.000    9.482    9.482 check_service.py:355(_evaluate_policy)\n        1    0.001    0.001    9.406    9.406 engine.py:90(run_tracked)\n        1    0.212    0.212    9.404    9.404 engine.py:234(_execute)\n        1    0.001    0.001    5.274    5.274 analyzer.py:38(analyze)\n        1    0.000    0.000    4.090    4.090 language_adapter.py:69(analyze_modules)\n        1    0.000    0.000    4.086    4.086 _base.py:666(__exit__)\n        1    0.000    0.000    4.086    4.086 process.py:856(shutdown)\n      2/1    0.000    0.000    4.086    4.086 threading.py:1096(join)\n      2/1    0.000    0.000    4.084    4.084 {method 'join' of '_thread._ThreadHandle' objects}\n      2/1    0.000    0.000    4.084    4.084 threading.py:1029(_bootstrap)\n      2/1    0.000    0.000    4.084    4.084 threading.py:1064(_bootstrap_inner)\n      2/1    0.000    0.000    4.084    4.084 {method 'run' of '_contextvars.Context' objects}\n        1    0.000    0.000    4.084    4.084 process.py:330(run)\n        1    0.000    0.000    4.084    4.084 process.py:549(join_executor_internals)\n        1    0.000    0.000    4.084    4.084 process.py:553(_join_executor_internals)\n       11    0.000    0.000    4.042    0.367 util.py:272(__call__)\n        1    0.000    0.000    4.041    4.041 queues.py:145(join_thread)\n        1    0.000    0.000    4.041    4.041 queues.py:212(_finalize_join)\n       10    0.000    0.000    3.193    0.319 functools.py:1111(__get__)\n        1    0.000    0.000    2.876    2.876 providers.py:115(apply_fact_providers)\n        1    0.001    0.001    2.876    2.876 providers.py:122(_execute_providers)\n   135/72    0.000    0.000    2.680    0.037 connection.py:188(send_bytes)\n       69    0.001    0.000    2.484    0.036 process.py:405(wait_result_broken_or_wakeup)\n    53807    0.055    0.000    2.430    0.000 async_safety.py:28(evaluate)\n       65    0.284    0.004    2.280    0.035 connection.py:252(recv)\n       65    2.030    0.031    2.032    0.031 {built-in method _pickle.loads}\n       66    0.001    0.000    1.902    0.029 _base.py:626(result_iterator)\n    52434    0.050    0.000    1.669    0.000 context.py:153(transitive_effect_of)\n    77048    0.340    0.000    1.597    0.000 helpers.py:212(unresolved_effect_evaluation)\n   135/72    0.000    0.000    1.530    0.021 connection.py:423(_send_bytes)\n  200/137    0.504    0.003    1.253    0.009 connection.py:397(_send)\n   124235    0.010    0.000    1.208    0.000 context.py:137(function_summaries)\n        1    0.003    0.003    1.198    1.198 context.py:124(function_summary_state)\n        1    0.363    0.363    1.195    1.195 native_function_summaries.py:102(build_native_function_summary_state)\n        1    0.002    0.002    1.173    1.173 project_assembly.py:70(build)\n  2868643    0.550    0.000    1.158    0.000 {method 'get' of 'dict' objects}\n        1    0.001    0.001    1.033    1.033 fastapi.py:177(analyze)\n        1    0.005    0.005    1.013    1.013 sqlalchemy.py:121(analyze)\n  3282267    0.491    0.000    0.982    0.000 frozen.py:30(__getitem__)\n        3    0.154    0.051    0.890    0.297 relations.py:186(_grouped)\n   346953    0.334    0.000    0.885    0.000 {built-in method builtins.sorted}\n  1004040    0.691    0.000    0.882    0.000 {method 'setdefault' of 'dict' objects}\n      204    0.001    0.000    0.818    0.004 connection.py:1151(wait)\n      204    0.001    0.000    0.815    0.004 selectors.py:385(select)\n      204    0.813    0.004    0.813    0.004 {method 'poll' of 'select.poll' objects}\n        1    0.001    0.001    0.803    0.803 pydantic.py:151(analyze)\n12579563/11684245    0.690    0.000    0.801    0.000 {built-in method builtins.hash}\n        1    0.004    0.004    0.776    0.776 transaction.py:95(evaluate)\n        1    0.002    0.002    0.758    0.758 context.py:141(atomicity_summary_state)\n        1    0.123    0.123    0.756    0.756 atomicity_summaries.py:80(build_atomicity_summary_state)\n  1556838    0.250    0.000    0.750    0.000 <frozen _collections_abc>:900(__iter__)\n        1    0.007    0.007    0.714    0.714 relations.py:176(use_edges_by_path_line)\n   242516    0.113    0.000    0.658    0.000 context.py:237(matching_symbol)\n   359760    0.138    0.000    0.641    0.000 context.py:93(effect_of)\n   967170    0.160    0.000    0.632    0.000 semantic_model.py:111(canonical_symbol)\n    24614    0.025    0.000    0.622    0.000 time_access.py:27(evaluate)\n    24614    0.023    0.000    0.614    0.000 transaction.py:29(evaluate)\n425099/373673    0.058    0.000    0.579    0.000 {built-in method builtins.next}\n        1    0.000    0.000    0.569    0.569 check_service.py:404(_build_report)\n        1    0.010    0.010    0.562    0.562 assurance.py:40(audit_project_assurance)\n  223/158    0.326    0.001    0.474    0.003 {built-in method posix.write}\n   860651    0.161    0.000    0.464    0.000 <frozen _collections_abc>:792(get)\n\n\n",
+    "taut-hot-ordinary.txt": "         10824392 function calls (10755385 primitive calls) in 2.181 seconds\n\n   Ordered by: cumulative time\n   List reduced from 1362 to 65 due to restriction <65>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.014    0.014    2.649    2.649 check_service.py:154(check)\n        1    0.008    0.008    2.621    2.621 check_service.py:209(_run)\n        1    0.001    0.001    1.436    1.436 check_service.py:355(_evaluate_policy)\n        1    0.163    0.163    1.355    1.355 engine.py:102(run_incremental)\n      8/5    0.000    0.000    0.705    0.141 functools.py:1111(__get__)\n        1    0.008    0.008    0.511    0.511 engine.py:234(_execute)\n        1    0.000    0.000    0.408    0.408 effect_reuse.py:18(equivalent_effect_modules)\n     2254    0.146    0.000    0.400    0.000 {built-in method builtins.sorted}\n        2    0.000    0.000    0.371    0.185 context.py:137(function_summaries)\n        1    0.000    0.000    0.371    0.371 context.py:124(function_summary_state)\n        1    0.006    0.006    0.370    0.370 native_function_summaries.py:102(build_native_function_summary_state)\n        1    0.000    0.000    0.338    0.338 providers.py:104(apply_fact_providers_incremental)\n        1    0.000    0.000    0.338    0.338 providers.py:122(_execute_providers)\n        1    0.008    0.008    0.321    0.321 source_discovery.py:36(discover_sources)\n        1    0.002    0.002    0.312    0.312 analyzer.py:38(analyze)\n        1    0.001    0.001    0.286    0.286 project_assembly.py:70(build)\n        1    0.061    0.061    0.272    0.272 relations.py:98(from_validated_parts)\n   736223    0.111    0.000    0.220    0.000 {method 'setdefault' of 'dict' objects}\n        1    0.000    0.000    0.206    0.206 check_service.py:404(_build_report)\n        1    0.010    0.010    0.199    0.199 assurance.py:40(audit_project_assurance)\n        1    0.000    0.000    0.187    0.187 fastapi.py:198(analyze_incremental)\n        2    0.075    0.038    0.181    0.090 relations.py:186(_grouped)\n       11    0.000    0.000    0.175    0.016 context.py:121(synchronous_callback_effects)\n        1    0.001    0.001    0.174    0.174 context.py:114(callback_index)\n        1    0.054    0.054    0.174    0.174 callback_effects.py:24(build)\n        1    0.003    0.003    0.167    0.167 transaction.py:95(evaluate)\n        1    0.000    0.000    0.152    0.152 context.py:141(atomicity_summary_state)\n        1    0.014    0.014    0.151    0.151 atomicity_summaries.py:80(build_atomicity_summary_state)\n        1    0.000    0.000    0.139    0.139 fastapi.py:122(_selected_edges_by_path_line)\n        1    0.001    0.001    0.139    0.139 relations.py:172(use_edges_by_module)\n   455156    0.067    0.000    0.136    0.000 frozen.py:30(__getitem__)\n2891211/2889966    0.135    0.000    0.135    0.000 {built-in method builtins.hash}\n        1    0.014    0.014    0.129    0.129 exceptions.py:160(evaluate)\n     7346    0.008    0.000    0.125    0.000 <frozen _collections_abc>:1021(__contains__)\n     4898    0.008    0.000    0.116    0.000 __init__.py:481(relative_to)\n   238263    0.062    0.000    0.113    0.000 <string>:17(__lt__)\n      333    0.000    0.000    0.104    0.000 context.py:237(matching_symbol)\n     1246    0.001    0.000    0.104    0.000 __init__.py:785(read_text)\n        1    0.001    0.001    0.103    0.103 context.py:77(indexes)\n        1    0.031    0.031    0.103    0.103 indexes.py:87(build)\n      163    0.011    0.000    0.097    0.001 frozen.py:12(__init__)\n    33544    0.006    0.000    0.091    0.000 <frozen _collections_abc>:1011(__iter__)\n    26198    0.013    0.000    0.086    0.000 __init__.py:63(__getitem__)\n        1    0.000    0.000    0.083    0.083 assurance.py:233(_project_python_files)\n        1    0.002    0.002    0.083    0.083 project_observation.py:44(python_files)\n     1235    0.074    0.000    0.078    0.000 {method 'read' of '_io.TextIOWrapper' objects}\n    55851    0.028    0.000    0.072    0.000 semantic_model.py:111(canonical_symbol)\n     4616    0.041    0.000    0.071    0.000 exceptions.py:199(<genexpr>)\n    32320    0.010    0.000    0.069    0.000 __init__.py:269(_from_parsed_parts)\n    52920    0.005    0.000    0.064    0.000 frozen.py:25(<lambda>)\n        1    0.000    0.000    0.063    0.063 pydantic.py:178(analyze_incremental)\n        1    0.000    0.000    0.063    0.063 pydantic_incremental.py:32(analyze_incremental_pydantic)\n    52955    0.007    0.000    0.058    0.000 {built-in method builtins.repr}\n        1    0.000    0.000    0.058    0.058 sqlalchemy.py:144(analyze_incremental)\n        1    0.000    0.000    0.058    0.058 sqlalchemy_incremental.py:33(analyze_incremental_sqlalchemy)\n        1    0.000    0.000    0.058    0.058 pydantic.py:223(_models)\n        1    0.029    0.029    0.058    0.058 pydantic_models.py:12(extract_pydantic_models)\n   173337    0.030    0.000    0.057    0.000 fnmatch.py:85(fnmatchcase)\n   431771    0.043    0.000    0.057    0.000 enum.py:186(__get__)\n        1    0.001    0.001    0.053    0.053 sqlalchemy.py:162(_models)\n     1818    0.023    0.000    0.052    0.000 sqlalchemy.py:173(<genexpr>)\n    52688    0.025    0.000    0.051    0.000 reprlib.py:15(wrapper)\n    34777    0.006    0.000    0.050    0.000 __init__.py:276(_from_parsed_string)\n     2449    0.002    0.000    0.048    0.000 __init__.py:503(is_relative_to)\n   197113    0.024    0.000    0.047    0.000 {method 'add' of 'set' objects}\n\n\n",
+    "taut-hot-shared.txt": "         19316584 function calls (19191806 primitive calls) in 4.717 seconds\n\n   Ordered by: cumulative time\n   List reduced from 1361 to 65 due to restriction <65>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.005    0.005    5.534    5.534 check_service.py:154(check)\n        1    0.006    0.006    5.515    5.515 check_service.py:209(_run)\n        1    0.001    0.001    3.941    3.941 check_service.py:355(_evaluate_policy)\n        1    0.310    0.310    3.866    3.866 engine.py:102(run_incremental)\n      9/6    0.000    0.000    2.376    0.396 functools.py:1111(__get__)\n        1    0.029    0.029    1.997    1.997 engine.py:234(_execute)\n        1    0.000    0.000    1.336    1.336 effect_reuse.py:18(equivalent_effect_modules)\n    17756    0.002    0.000    1.299    0.000 context.py:137(function_summaries)\n        1    0.002    0.002    1.298    1.298 context.py:124(function_summary_state)\n        1    0.092    0.092    1.295    1.295 native_function_summaries.py:102(build_native_function_summary_state)\n        1    0.003    0.003    0.879    0.879 transaction.py:95(evaluate)\n   101146    0.551    0.000    0.877    0.000 {built-in method builtins.sorted}\n        1    0.001    0.001    0.864    0.864 context.py:141(atomicity_summary_state)\n        1    0.076    0.076    0.863    0.863 atomicity_summaries.py:80(build_atomicity_summary_state)\n        1    0.000    0.000    0.675    0.675 providers.py:104(apply_fact_providers_incremental)\n        1    0.000    0.000    0.675    0.675 providers.py:122(_execute_providers)\n    21978    0.020    0.000    0.592    0.000 transaction.py:29(evaluate)\n    22006    0.091    0.000    0.474    0.000 helpers.py:212(unresolved_effect_evaluation)\n        1    0.001    0.001    0.450    0.450 analyzer.py:38(analyze)\n    32324    0.016    0.000    0.421    0.000 context.py:237(matching_symbol)\n        1    0.001    0.001    0.405    0.405 project_assembly.py:70(build)\n        1    0.000    0.000    0.403    0.403 pydantic.py:178(analyze_incremental)\n        1    0.003    0.003    0.402    0.402 pydantic_incremental.py:32(analyze_incremental_pydantic)\n        1    0.059    0.059    0.390    0.390 relations.py:98(from_validated_parts)\n  1299554    0.184    0.000    0.365    0.000 frozen.py:30(__getitem__)\n        1    0.000    0.000    0.338    0.338 context.py:77(indexes)\n        1    0.270    0.270    0.338    0.338 indexes.py:87(build)\n   844165    0.151    0.000    0.300    0.000 {method 'setdefault' of 'dict' objects}\n   780221    0.141    0.000    0.263    0.000 {method 'get' of 'dict' objects}\n    38613    0.008    0.000    0.260    0.000 context.py:121(synchronous_callback_effects)\n        5    0.000    0.000    0.249    0.050 provider_reuse.py:20(local_provider_result)\n        1    0.008    0.008    0.241    0.241 source_discovery.py:36(discover_sources)\n    82710    0.046    0.000    0.238    0.000 context.py:93(effect_of)\n   483373    0.077    0.000    0.238    0.000 <frozen _collections_abc>:900(__iter__)\n4695112/4641901    0.223    0.000    0.230    0.000 {built-in method builtins.hash}\n   299394    0.061    0.000    0.215    0.000 semantic_model.py:111(canonical_symbol)\n        1    0.000    0.000    0.200    0.200 check_service.py:404(_build_report)\n        1    0.010    0.010    0.194    0.194 assurance.py:40(audit_project_assurance)\n        1    0.001    0.001    0.194    0.194 context.py:114(callback_index)\n        1    0.068    0.068    0.193    0.193 callback_effects.py:24(build)\n        1    0.000    0.000    0.188    0.188 fastapi.py:198(analyze_incremental)\n        2    0.078    0.039    0.182    0.091 relations.py:186(_grouped)\n    37740    0.099    0.000    0.170    0.000 atomicity_summaries.py:252(_database_write_range)\n   325623    0.060    0.000    0.166    0.000 <frozen _collections_abc>:792(get)\n   385147    0.089    0.000    0.163    0.000 <string>:17(__lt__)\n        1    0.002    0.002    0.144    0.144 pydantic.py:237(_fields)\n        1    0.000    0.000    0.140    0.140 fastapi.py:122(_selected_edges_by_path_line)\n        1    0.001    0.001    0.140    0.140 relations.py:172(use_edges_by_module)\n      674    0.000    0.000    0.138    0.000 pydantic.py:104(_refs)\n     1987    0.052    0.000    0.138    0.000 pydantic.py:110(<genexpr>)\n    99121    0.037    0.000    0.135    0.000 callback_effects.py:84(effects)\n        1    0.079    0.079    0.129    0.129 pydantic_operations.py:15(extract_operations)\n        1    0.011    0.011    0.123    0.123 exceptions.py:160(evaluate)\n     7346    0.008    0.000    0.121    0.000 <frozen _collections_abc>:1021(__contains__)\n     4898    0.007    0.000    0.113    0.000 __init__.py:481(relative_to)\n     6566    0.015    0.000    0.107    0.000 frozen.py:12(__init__)\n       10    0.000    0.000    0.093    0.009 scheduler.py:20(targets_for_modules)\n       10    0.009    0.001    0.093    0.009 scheduler.py:29(_targets_for)\n    38572    0.072    0.000    0.093    0.000 atomicity_summaries.py:247(_lexical_boundary)\n   377455    0.078    0.000    0.090    0.000 pydantic.py:92(_contains)\n    33544    0.005    0.000    0.089    0.000 <frozen _collections_abc>:1011(__iter__)\n    60508    0.013    0.000    0.089    0.000 context.py:118(callback_effects)\n    26198    0.013    0.000    0.084    0.000 __init__.py:63(__getitem__)\n        1    0.000    0.000    0.081    0.081 assurance.py:233(_project_python_files)\n        1    0.002    0.002    0.081    0.081 project_observation.py:44(python_files)\n\n\n"
+  },
+  "limitations": [
+    "Two first-check and ten edit samples per backend; no statistical significance claim.",
+    "RSS is whole-process resident memory, not native allocated bytes or a leak diagnosis.",
+    "Source parsing, aliases, callbacks and catalog interpretation remain Python.",
+    "Native v2 phase preparation includes column encoding; compute includes Rust preparation.",
+    "Stage medians overlap with subphase timings and do not add to median wall time."
+  ]
+}

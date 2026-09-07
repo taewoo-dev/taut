@@ -1,0 +1,102 @@
+{
+  "date": "2026-09-05",
+  "baseline_engine_commit": "5698c7b",
+  "source_manifest_sha256": "36e3e64d3e88ce3562558744960a487a2227f0743bb3fec5d2678d3aa55a5562",
+  "source_count": 1224,
+  "cases": [
+    {
+      "case": "original",
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 11.705979167018086,
+      "cold_compared": false,
+      "cold_parity": true,
+      "diagnostics": [],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "c1a57ecf531a592212c702b7931feedd895b13314956122559bec66f316eb7b7"
+    },
+    {
+      "case": "lambda",
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 2.037151333875954,
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [
+        {
+          "rule": "ASYNC001",
+          "path": "app/services/taut_validation_probe.py",
+          "line": 3
+        }
+      ],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "0031307cbb72e411133a0d7c10b4fb67053d68e03132586e7794bb303e3efcd2"
+    },
+    {
+      "case": "callback",
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 2.111868374980986,
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [
+        {
+          "rule": "ASYNC001",
+          "path": "app/services/taut_validation_probe.py",
+          "line": 5
+        }
+      ],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "0874bef18ac021b768216371a26c7260a3b840a454e3e9bf47e34f8859bc0c43"
+    },
+    {
+      "case": "forwarding",
+      "exit": 1,
+      "expected_exit": 1,
+      "seconds": 1.7203612909652293,
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [
+        {
+          "rule": "ASYNC001",
+          "path": "app/services/taut_validation_probe.py",
+          "line": 7
+        }
+      ],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "83c6081dd77aadcbf9bb0be0dd16448517e5440a10cf367ba857ba8b61a7546e"
+    },
+    {
+      "case": "offload",
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 2.171253375010565,
+      "cold_compared": false,
+      "cold_parity": true,
+      "diagnostics": [],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "ea644e6fb4d6e3b7fdd8f509d6d862368767d067af3070f1ac03b630cc9960ee"
+    },
+    {
+      "case": "restored",
+      "exit": 0,
+      "expected_exit": 0,
+      "seconds": 2.721395540982485,
+      "cold_compared": true,
+      "cold_parity": true,
+      "diagnostics": [],
+      "assurance_issues": 0,
+      "engine_issues": 0,
+      "stdout_sha256": "c1a57ecf531a592212c702b7931feedd895b13314956122559bec66f316eb7b7"
+    }
+  ],
+  "limits": [
+    "Injected cases are controlled regressions, not discovered application bugs.",
+    "Measured before dropping empty callback-index entries; final full test gate and native stage measurements include that storage-only optimization."
+  ]
+}

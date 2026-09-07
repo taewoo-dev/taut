@@ -1,7 +1,7 @@
 # Start using pytaut in a project
 
 This guide covers the complete path from a repository without Taut to strict CI. It describes
-pytaut 0.7.0, init answers/proposal contract v6, and configuration schema v5.
+pytaut 0.10.0, init answers/proposal contract v6, and configuration schema v5.
 
 ## Choose project or workspace scope
 
@@ -42,7 +42,7 @@ or replaces an existing policy.
 ## 1. Install a fixed version
 
 ```bash
-uv add --dev pytaut==0.7.0
+uv add --dev pytaut==0.10.0
 uv run taut --version
 ```
 

@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.10.0
+
+- Standardize all built-in diagnostics, remediation, CLI help, onboarding questions, and
+  text/JSON messages in English. Preserve user-provided Unicode paths and identifiers.
+  Invalidate older report/module caches and daemon status to avoid mixed-language output.
+- Fix incremental atomicity analysis requeueing a removed caller from an old reverse graph.
+- Retain the optional Rust summary/atomicity PoC and differential tests in the source repository.
+  The published `pytaut` package uses Python by default and does not require or bundle Rust.
+  Native expansion is on hold; measured benefits and memory limits are documented in
+  [the PoC report](docs/quality/native-pipeline-poc.md).
+
+- Reduce retained memory by eliminating duplicate index-comparison tuples and empty module
+  assurance evidence; share module-local symbol IDs and equal immutable function summaries.
+  Release extractor callback cycles on success and failure without forcing global GC.
+  Add a reproducible session-object census and explicitly warmed RSS measurements; preserve
+  the earlier failed memory acceptance evidence in the [memory follow-up](docs/quality/memory-followup.md).
+
+- Reuse validated module contributions and project indexes when their exact inputs are unchanged;
+  publish new incremental identities only after successful assembly.
+- Bound built-in FastAPI/SQLAlchemy propagation by unchanged exports, reuse audited async/time
+  policy results under conservative semantic equality, and cache module assurance/exception evidence.
+- Share immutable Python extraction values within a module, discard stale revision evidence,
+  and add reproducible paired timing, semantic-edit parity, and retention acceptance runs.
+  See [performance acceptance](docs/quality/performance-implementation.md) for measured results
+  and memory acceptance limits.
+
+- Track known callback effects across multiple synchronous helper calls and module boundaries,
+  preserving uncertainty on guarded paths and excluding storage, offloading, and reassignment.
+  Validate transitive helper edits against fresh analysis and revisit native acceleration using
+  current anti-monitor stage timings.
+
+- Model immediately invoked and locally assigned lambdas as callable facts while preserving
+  deferred/offloaded lambda behavior. Specialize valid direct synchronous callback invocations;
+  guarded/context-managed callback paths remain indeterminate.
+- Split the resident check pipeline into analysis setup, policy execution, and reporting stages;
+  move persistent module bundles into the cache layer.
+- Validate against an isolated 1,224-source anti-monitor snapshot and retain synthetic and
+  real-project measurements separately.
+
+- Clarify successful-check scope in text and additive JSON interpretation metadata; report
+  effective rule levels and avoid a green success summary when assurance is incomplete.
+- Recognize selected pathlib and Requests session blocking operations and exact constructor
+  chains without treating project-owned lookalikes as library constructors.
+- Track known catalog effects passed to invoked function parameters, including uncertainty where
+  synchronous execution is not proven, default/keyword arguments, and helper propagation. Invalidate dependent effect checks
+  when helper bodies change; bump Python adapter and affected rule behavior versions.
+- Add a labeled detection evaluator that reports missed findings and uncertainty separately.
+- Allow individual rules to be advisory during adoption while retaining strict assurance.
+- Translate framework facts to neutral database operations outside PolicyContext, and share the
+  repository dependency declaration between the independent convention checker and self-policy.
+
 ## 0.9.0
 
 ### Compact, inspectable configuration

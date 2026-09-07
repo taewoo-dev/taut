@@ -188,8 +188,11 @@ def construction_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             WIRING_RULE_ID,
             WIRING_RULE_VERSION,
-            "구현과 client 생성 위치",
-            "외부 client와 Adapter 구현은 시작 조립 코드 또는 승인된 Factory에서만 만드세요.",
+            "Implementation and client construction",
+            (
+                "Construct external clients and Adapter implementations only in "
+                "bootstrap wiring or approved Factories."
+            ),
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -201,8 +204,8 @@ def construction_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             ADAPTER_TYPE_RULE_ID,
             RULE_VERSION,
-            "Adapter 외부 자료형 유출 금지",
-            "Adapter의 공개 입력과 반환형은 내부 자료형만 사용하세요.",
+            "No external type leaks from Adapters",
+            "Use only internal types in public Adapter inputs and return values.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,
@@ -214,9 +217,9 @@ def construction_rule_definitions() -> tuple[RuleDefinition, ...]:
         RuleDefinition(
             CONFIG_RULE_ID,
             RULE_VERSION,
-            "Settings 생성 위치",
-            "Settings는 설정 또는 시작 조립 코드에서만 만들고 "
-            "나머지는 승인된 접근 함수를 사용하세요.",
+            "Settings construction",
+            "Construct Settings only in configuration or bootstrap wiring; "
+            "use approved accessors elsewhere.",
             RuleTarget.MODULE,
             requirements,
             ChangeImpact.SELF,

@@ -1,0 +1,344 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from tests.utils.builders import analyze, make_context, make_source
+from tests.utils.config import assurance_toml
+
+from taut.check_service import CheckRequest, ResidentCheckSession, run_check_request
+from taut.domain.ids import RuleId
+from taut.loading.config_loader import load_project_configuration
+from taut.loading.config_simplification import simplify_configuration
+from taut.policy.engine import PolicyEngine
+from taut.policy.rules import builtin_rule_registry
+from taut.reporting.text import render_text
+
+
+def _project(root: Path, source: str) -> CheckRequest:
+    (root / "app").mkdir()
+    (root / "app/service.py").write_text(source)
+    (root / "pyproject.toml").write_text(
+        '[tool.taut]\nschema_version = 5\nproviders = ["taut.python-core"]\n'
+        'source_roots = ["."]\n[tool.taut.roles]\nservice = ["app/*.py"]\n'
+        '[tool.taut.allow]\nservice = ["service"]\n' + assurance_toml(pyproject=True)
+    )
+    return CheckRequest(root, output_format="json")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import time\nasync def work():\n    time.sleep(1)\n",
+        'from pathlib import Path\nasync def work():\n    Path("data").read_text()\n',
+        'from pathlib import Path as P\nasync def work():\n    P("data").read_bytes()\n',
+        "from pathlib import Path\nasync def work():\n"
+        '    p = Path("data")\n    p.write_text("x")\n',
+        'async def work():\n    open("data")\n',
+    ],
+)
+def test_known_blocking_calls_fail_strict_check(tmp_path: Path, source: str) -> None:
+    result = run_check_request(_project(tmp_path, source))
+    assert result.exit_code == 1
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+@pytest.mark.parametrize("owner", ["requests.Session", "requests.sessions.Session"])
+def test_session_methods_have_blocking_effects(owner: str) -> None:
+    snapshot = analyze(
+        make_source(
+            "app/service.py", f'import requests\nasync def work():\n    {owner}().get("url")\n'
+        )
+    )
+    context = make_context(snapshot, roles={"service": ("app/*.py",)})
+    result = PolicyEngine(builtin_rule_registry()).run(context)
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+@pytest.mark.parametrize(
+    ("helper", "call"),
+    [
+        ("def invoke(fn):\n    fn(1)", "invoke(time.sleep)"),
+        ("def invoke(fn):\n    fn(1)", "invoke(fn=time.sleep)"),
+        ("def invoke(*, fn):\n    fn(1)", "invoke(fn=time.sleep)"),
+        ("def invoke(fn, /):\n    fn(1)", "invoke(time.sleep)"),
+        ("def invoke(fn=time.sleep):\n    fn(1)", "invoke()"),
+        ("def invoke(fn):\n    fn(1)\ndef helper():\n    invoke(time.sleep)", "helper()"),
+    ],
+)
+def test_callback_execution_is_not_silently_safe(tmp_path: Path, helper: str, call: str) -> None:
+    result = run_check_request(
+        _project(tmp_path, f"import time\n{helper}\nasync def work():\n    {call}\n")
+    )
+    assert result.exit_code == 1
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+    payload = json.loads(result.stdout)
+    assert payload["interpretation"]["runtime_safety_proven"] is False
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import time\ndef store(fn):\n    return fn\nasync def work():\n    store(time.sleep)\n",
+        "import asyncio\nimport time\nasync def work():\n"
+        "    await asyncio.to_thread(time.sleep, 1)\n",
+        "def invoke(fn):\n    fn(1)\nasync def work():\n    invoke(str)\n",
+        'def Path(value):\n    return value\nasync def work():\n    Path("data").read_text()\n',
+        'def open(value):\n    return value\nasync def work():\n    open("data")\n',
+        "import time\ndef invoke(fn):\n    fn = str\n    fn(1)\n"
+        "async def work():\n    invoke(time.sleep)\n",
+    ],
+)
+def test_callable_storage_offloading_and_shadowing_are_not_blocked(
+    tmp_path: Path, source: str
+) -> None:
+    result = run_check_request(_project(tmp_path, source))
+    assert result.exit_code == 0
+
+
+def test_callback_body_changes_preserve_resident_cold_parity(tmp_path: Path) -> None:
+    request = _project(
+        tmp_path,
+        "import time\nfrom app.helper import invoke\nasync def work():\n    invoke(time.sleep)\n",
+    )
+    helper = tmp_path / "app/helper.py"
+    session = ResidentCheckSession(tmp_path)
+    for body, expected in [("return fn", 0), ("fn(1)", 1), ("return fn", 0)]:
+        helper.write_text(f"def invoke(fn):\n    {body}\n")
+        resident = session.check(request)
+        cold = run_check_request(request)
+        assert resident.exit_code == cold.exit_code == expected
+        assert resident.stdout == cold.stdout
+        assert resident.stderr == cold.stderr
+
+
+def test_uncertainty_does_not_hide_a_known_blocking_helper(tmp_path: Path) -> None:
+    request = _project(
+        tmp_path,
+        "import time\ndef invoke(fn):\n    fn(1)\n"
+        "def helper():\n    time.sleep(1)\n    invoke(time.sleep)\n"
+        "async def work():\n    helper()\n",
+    )
+    result = run_check_request(request)
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+def test_staged_rule_remains_visible_and_can_be_promoted(tmp_path: Path) -> None:
+    request = _project(tmp_path, "import time\nasync def work():\n    time.sleep(1)\n")
+    path = tmp_path / "pyproject.toml"
+    base = path.read_text()
+    path.write_text(base + '\n[tool.taut.rules]\nASYNC001 = "advisory"\n')
+    session = ResidentCheckSession(tmp_path)
+    advisory = session.check(request)
+    payload = json.loads(advisory.stdout)
+    assert advisory.exit_code == 0
+    assert payload["coverage"]["rule_levels"]["ASYNC001"] == "advisory"
+    assert any(item["rule_id"] == "ASYNC001" for item in payload["diagnostics"])
+    original = load_project_configuration(tmp_path)
+    path.write_text(simplify_configuration(tmp_path, None, original))
+    assert load_project_configuration(tmp_path).policy.rules == original.policy.rules
+    path.write_text(base)
+    enforced = session.check(request)
+    assert enforced.exit_code == 1
+    assert enforced.stdout == run_check_request(request).stdout
+
+
+def test_staging_does_not_bypass_assurance(tmp_path: Path) -> None:
+    request = _project(tmp_path, "import time\nasync def work():\n    time.sleep(1)\n")
+    path = tmp_path / "pyproject.toml"
+    path.write_text(
+        path.read_text().replace('api = "absent"', 'api = "required"')
+        + '\n[tool.taut.rules]\nASYNC001 = "advisory"\n'
+    )
+    result = run_check_request(request)
+    assert result.exit_code == 2
+    assert result.report is not None and result.report.assurance.issues
+    text = render_text(result.report, color=True)
+    assert "no policy violations within supported scope" not in text
+    assert "\033[31mCheck complete:" in text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "(lambda: time.sleep(1))()",
+        "callback = lambda: time.sleep(1)\n    callback()",
+        "(lambda fn: fn(1))(time.sleep)",
+        "(lambda *, fn: fn(1))(fn=time.sleep)",
+        "callback = lambda: (lambda: time.sleep(1))()\n    callback()",
+        "callback = lambda x=time.sleep(1): x",
+    ],
+)
+def test_lambda_execution_reports_blocking_effects(tmp_path: Path, body: str) -> None:
+    result = run_check_request(_project(tmp_path, f"import time\nasync def work():\n    {body}\n"))
+    assert result.exit_code == 1
+    assert any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "callback = lambda: time.sleep(1)",
+        "await asyncio.to_thread(lambda: time.sleep(1))",
+        "loop = asyncio.get_running_loop()\n"
+        "    await loop.run_in_executor(None, lambda: time.sleep(1))",
+        "callback = lambda: time.sleep(1)\n    callback = str\n    callback(1)",
+        "callback = lambda: lambda: time.sleep(1)\n    callback()",
+        "(lambda: str(1))()",
+    ],
+)
+def test_deferred_and_offloaded_lambdas_are_not_blocked(tmp_path: Path, body: str) -> None:
+    result = run_check_request(
+        _project(tmp_path, f"import asyncio\nimport time\nasync def work():\n    {body}\n")
+    )
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "invoke(time.sleep, fn=time.sleep)",
+        "invoke(time.sleep, 1)",
+        "invoke(unknown=time.sleep)",
+        "invoke()",
+        "invoke(time.sleep.__name__)",
+        "invoke(type(time.sleep).__call__)",
+    ],
+)
+def test_invalid_or_non_callable_bindings_are_not_proven_blocking(
+    tmp_path: Path, call: str
+) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path, f"import time\ndef invoke(fn):\n    fn(1)\nasync def work():\n    {call}\n"
+        )
+    )
+    assert not any(finding.rule_id == RuleId("ASYNC001") for finding in result.findings)
+
+
+def test_lambda_edit_sequence_preserves_resident_cold_parity(tmp_path: Path) -> None:
+    request = _project(tmp_path, "value = 1\n")
+    session = ResidentCheckSession(tmp_path)
+    for expression, code in [("str(1)", 0), ("time.sleep(1)", 1), ("str(1)", 0)]:
+        (tmp_path / "app/service.py").write_text(
+            f"import time\nasync def work():\n    (lambda: {expression})()\n"
+        )
+        resident = session.check(request)
+        fresh = run_check_request(request)
+        assert resident.exit_code == fresh.exit_code == code
+        assert resident.stdout == fresh.stdout
+
+
+@pytest.mark.parametrize(
+    "forward",
+    [
+        "invoke(fn)",
+        "invoke(fn=fn)",
+        "middle(fn)",
+    ],
+)
+def test_forwarded_callback_is_blocking(tmp_path: Path, forward: str) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef invoke(fn):\n    fn(1)\n"
+            "def middle(fn):\n    invoke(fn)\n"
+            f"def outer(fn):\n    {forward}\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 1
+    assert any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "return fn",
+        "asyncio.to_thread(invoke, fn)",
+        "fn = str\n    invoke(fn)",
+        "invoke(str)",
+        "invoke(fn, fn=fn)",
+    ],
+)
+def test_forwarding_safe_controls(tmp_path: Path, body: str) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\nimport asyncio\ndef invoke(fn):\n    fn(1)\n"
+            f"def outer(fn):\n    {body}\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 0
+
+
+def test_guarded_forwarding_remains_uncertain(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef invoke(fn):\n    fn(1)\n"
+            "def outer(fn, enabled):\n    if enabled:\n        invoke(fn)\n"
+            "async def work():\n    outer(time.sleep, True)\n",
+        )
+    )
+    assert result.exit_code == 2
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cycle_without_invocation_is_not_blocking(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef first(fn):\n    second(fn)\n"
+            "def second(fn):\n    first(fn)\n"
+            "async def work():\n    first(time.sleep)\n",
+        )
+    )
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cross_module_edit_parity(tmp_path: Path) -> None:
+    request = _project(
+        tmp_path,
+        "import time\nfrom app.helper import outer\nasync def work():\n    outer(time.sleep)\n",
+    )
+    (tmp_path / "app/helper.py").write_text(
+        "from app.leaf import invoke\ndef outer(fn):\n    invoke(fn)\n"
+    )
+    with ResidentCheckSession(tmp_path) as session:
+        for body, expected in [("return fn", 0), ("fn(1)", 1), ("return fn", 0)]:
+            (tmp_path / "app/leaf.py").write_text(f"def invoke(fn):\n    {body}\n")
+            resident = session.check(request)
+            cold = run_check_request(request)
+            assert resident.exit_code == cold.exit_code == expected
+            assert (resident.stdout, resident.stderr) == (cold.stdout, cold.stderr)
+
+
+def test_forwarding_reaches_fixed_point_in_reverse_definition_order(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef outer(fn):\n    middle(fn)\n"
+            "def middle(fn):\n    invoke(fn)\n"
+            "def invoke(fn):\n    fn(1)\n"
+            "async def work():\n    outer(time.sleep)\n",
+        )
+    )
+    assert result.exit_code == 1
+    assert any(f.rule_id == RuleId("ASYNC001") for f in result.findings)
+
+
+def test_forwarding_cycle_with_guarded_invocation_is_uncertain(tmp_path: Path) -> None:
+    result = run_check_request(
+        _project(
+            tmp_path,
+            "import time\ndef first(fn, enabled):\n    second(fn, enabled)\n"
+            "def second(fn, enabled):\n    if enabled:\n        fn(1)\n"
+            "    else:\n        first(fn, enabled)\n"
+            "async def work():\n    first(time.sleep, True)\n",
+        )
+    )
+    assert result.exit_code == 2
+    assert not any(f.rule_id == RuleId("ASYNC001") for f in result.findings)

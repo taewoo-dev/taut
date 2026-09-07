@@ -189,9 +189,9 @@ class AdapterBoundaryRule:
                 None,
             )
             if call_prefix is None:
-                tortoise = context.tortoise_queries.get(call.id)
-                if tortoise is not None and tortoise.confidence is ResolutionState.RESOLVED:
-                    call_prefix = SymbolId(f"tortoise.query.{tortoise.operation}")
+                database = context.database_query(call.id)
+                if database is not None and database.confidence is ResolutionState.RESOLVED:
+                    call_prefix = SymbolId(f"{database.provider}.query.{database.operation}")
             if call_prefix is None:
                 continue
             findings.append(
@@ -223,8 +223,8 @@ def responsibility_boundary_rule_definitions() -> tuple[
     service = RuleDefinition(
         id=SERVICE_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="Service 외부 SDK 직접 사용 금지",
-        help="Service는 외부 SDK 대신 내부 Contract를 사용하세요.",
+        title="No direct external SDK use in Services",
+        help="Use internal Contracts instead of external SDKs in Services.",
         target=RuleTarget.MODULE,
         requirements=requirements,
         change_impact=ChangeImpact.SELF,
@@ -240,8 +240,8 @@ def responsibility_boundary_rule_definitions() -> tuple[
     contract = RuleDefinition(
         id=CONTRACT_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="Contract 외부 구현 의존 금지",
-        help="Contract에는 외부 프레임워크와 SDK 자료형을 노출하지 마세요.",
+        title="No external implementation dependencies in Contracts",
+        help="Do not expose external framework or SDK types in Contracts.",
         target=RuleTarget.MODULE,
         requirements=requirements,
         change_impact=ChangeImpact.SELF,
@@ -257,8 +257,11 @@ def responsibility_boundary_rule_definitions() -> tuple[
     adapter = RuleDefinition(
         id=ADAPTER_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="Adapter DB 접근 금지",
-        help="Adapter는 외부 연결만 맡고 DB와 transaction은 Service에 두세요.",
+        title="No DB access in Adapters",
+        help=(
+            "Keep Adapters focused on external connections and leave DB "
+            "orchestration and transactions to Services."
+        ),
         target=RuleTarget.MODULE,
         requirements=requirements,
         change_impact=ChangeImpact.SELF,

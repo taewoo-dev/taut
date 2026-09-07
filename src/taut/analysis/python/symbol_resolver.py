@@ -8,6 +8,7 @@ from taut.analysis.contracts import SourceInput
 from taut.analysis.module_identity import absolute_import_base
 from taut.analysis.python.fact_ids import next_fact_id
 from taut.analysis.python.identity import PYTHON_AST_IDENTITY
+from taut.analysis.python.known_types import constructed_type
 from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
 from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
 from taut.domain.facts import FactKind, ResolutionState, SymbolRef
@@ -28,6 +29,7 @@ _BUILTINS = frozenset(
         "list",
         "max",
         "min",
+        "open",
         "print",
         "range",
         "set",
@@ -45,6 +47,7 @@ class PythonSymbolResolver(PythonScopeFlow):
 
     def __init__(self, source: SourceInput) -> None:
         self.source = source
+        self._symbols: dict[str, SymbolId] = {}
         self.current_scope: SymbolId | None = None
         self.scopes: dict[SymbolId | None, Scope] = {None: Scope(None, None, "module")}
         self.bindings: dict[SymbolId | None, dict[str, SymbolId]] = defaultdict(dict)
@@ -59,12 +62,21 @@ class PythonSymbolResolver(PythonScopeFlow):
         self._type_checking_depth = 0
         self._type_resolution_depth = 0
         self._locations: dict[ast.AST, SourceRange] = {}
+        self._location_values: dict[SourceRange, SourceRange] = {}
+        self._provenance_values: dict[SourceRange, Provenance] = {}
         self._provenances: dict[ast.AST, Provenance] = {}
         self._written_names: dict[ast.AST, str] = {}
         self._resolutions: dict[ast.AST, SymbolRef] = {}
         self.node_scopes: dict[ast.AST, SymbolId] = {}
         self.variable_symbols: set[SymbolId] = set()
         self.context_manager_providers: dict[SymbolId, SymbolId] = {}
+
+    def _symbol(self, value: str) -> SymbolId:
+        symbol = self._symbols.get(value)
+        if symbol is None:
+            symbol = SymbolId(value)
+            self._symbols[value] = symbol
+        return symbol
 
     def _prime_statements(self, statements: list[ast.stmt], scope: SymbolId | None) -> None:
         """Plan lexical scopes without making executable bindings visible early."""
@@ -117,14 +129,14 @@ class PythonSymbolResolver(PythonScopeFlow):
                 if scope is None:
                     for alias in statement.names:
                         self.future_bindings[scope][alias.asname or alias.name.split(".")[0]] = (
-                            SymbolId(alias.name if alias.asname else alias.name.split(".")[0])
+                            self._symbol(alias.name if alias.asname else alias.name.split(".")[0])
                         )
             elif isinstance(statement, ast.ImportFrom):
                 if scope is None:
                     base = self._absolute_import_base(statement.module, statement.level)
                     for alias in statement.names:
                         if alias.name != "*":
-                            self.future_bindings[scope][alias.asname or alias.name] = SymbolId(
+                            self.future_bindings[scope][alias.asname or alias.name] = self._symbol(
                                 f"{base}.{alias.name}" if base else alias.name
                             )
             else:
@@ -144,7 +156,7 @@ class PythonSymbolResolver(PythonScopeFlow):
 
     def _is_type_checking_test(self, node: ast.expr) -> bool:
         if isinstance(node, ast.Name):
-            return self.future_bindings[None].get(node.id) == SymbolId("typing.TYPE_CHECKING")
+            return self.future_bindings[None].get(node.id) == self._symbol("typing.TYPE_CHECKING")
         return (
             isinstance(node, ast.Attribute)
             and isinstance(node.value, ast.Name)
@@ -238,24 +250,30 @@ class PythonSymbolResolver(PythonScopeFlow):
 
     def _synthetic_symbol(self, scope: SymbolId | None, kind: str, node: ast.expr) -> SymbolId:
         parent = scope.value if scope else self.source.module_id.value
-        return SymbolId(f"{parent}.__{kind}_{node.lineno}_{node.col_offset}")
+        return self._symbol(f"{parent}.__{kind}_{node.lineno}_{node.col_offset}")
 
     def _child_symbol(self, scope: SymbolId | None, name: str) -> SymbolId:
-        return SymbolId(f"{scope.value if scope else self.source.module_id.value}.{name}")
+        return self._symbol(f"{scope.value if scope else self.source.module_id.value}.{name}")
 
     def _location(self, node: ast.AST) -> SourceRange:
         if node not in self._locations:
-            self._locations[node] = node_range(self.source, node)
+            location = node_range(self.source, node)
+            self._locations[node] = self._location_values.setdefault(location, location)
         return self._locations[node]
 
     def _provenance(self, node: ast.AST) -> Provenance:
         if node not in self._provenances:
-            self._provenances[node] = Provenance(
-                PYTHON_AST_IDENTITY.name,
-                PYTHON_AST_IDENTITY.version,
-                self.source.content_hash,
-                self._location(node),
-            )
+            location = self._location(node)
+            value = self._provenance_values.get(location)
+            if value is None:
+                value = Provenance(
+                    PYTHON_AST_IDENTITY.name,
+                    PYTHON_AST_IDENTITY.version,
+                    self.source.content_hash,
+                    location,
+                )
+                self._provenance_values[location] = value
+            self._provenances[node] = value
         return self._provenances[node]
 
     def _written_name(self, node: ast.AST) -> str:
@@ -403,6 +421,8 @@ class PythonSymbolResolver(PythonScopeFlow):
     def _resolve_uncached(self, node: ast.AST) -> SymbolRef:
         name = self._written_name(node)
         provenance = self._provenance(node)
+        if isinstance(node, ast.Lambda):
+            return SymbolRef(name, ResolutionState.RESOLVED, self.node_scopes[node], (), provenance)
         if isinstance(node, ast.Name):
             binding = self._lookup_binding_state(node.id)
             if binding is not None:
@@ -415,7 +435,7 @@ class PythonSymbolResolver(PythonScopeFlow):
                     )
                 if candidates:
                     return SymbolRef(name, ResolutionState.RESOLVED, candidates[0], (), provenance)
-            symbol = SymbolId(f"builtins.{node.id}") if node.id in _BUILTINS else None
+            symbol = self._symbol(f"builtins.{node.id}") if node.id in _BUILTINS else None
             state = ResolutionState.RESOLVED if symbol is not None else ResolutionState.UNRESOLVED
             return SymbolRef(name, state, symbol, (), provenance)
         if isinstance(node, ast.Attribute):
@@ -425,7 +445,7 @@ class PythonSymbolResolver(PythonScopeFlow):
                     return SymbolRef(
                         name,
                         ResolutionState.RESOLVED,
-                        SymbolId(f"{typed.value}.{node.attr}"),
+                        self._symbol(f"{typed.value}.{node.attr}"),
                         (),
                         provenance,
                     )
@@ -436,14 +456,19 @@ class PythonSymbolResolver(PythonScopeFlow):
                 return SymbolRef(
                     name,
                     ResolutionState.RESOLVED,
-                    SymbolId(f"{base.symbol.value}.{node.attr}"),
+                    self._symbol(f"{base.symbol.value}.{node.attr}"),
                     (),
                     provenance,
                 )
             candidates = tuple(
-                SymbolId(f"{candidate.value}.{node.attr}") for candidate in base.candidates
+                self._symbol(f"{candidate.value}.{node.attr}") for candidate in base.candidates
             )
             return SymbolRef(name, base.state, None, candidates, provenance)
+        if isinstance(node, ast.Call):
+            constructor = self._resolve(node.func)
+            inferred = constructed_type(constructor.symbol)
+            if inferred is not None:
+                return SymbolRef(name, ResolutionState.RESOLVED, inferred, (), provenance)
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)

@@ -42,7 +42,7 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "source_scope.accept_observed",
-                "패키징 메타데이터와 Python 경로에서 계산한 source roots를 사용할까요?",
+                "Use the source roots inferred from packaging metadata and Python paths?",
                 ("accept", "override"),
                 "override" if source_scope.conflicts else "accept",
                 source_scope.question_evidence(),
@@ -52,8 +52,8 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "architecture.accept_observed",
-                "현재 import 관계가 의도한 정책에 맞는지 검토하세요. "
-                "위반은 코드를 먼저 수정하세요.",
+                "Review whether the current imports match the intended policy. "
+                "Fix violations in the code first.",
                 ("accept", "review"),
                 "review",
                 paths,
@@ -63,7 +63,7 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 f"architecture.edge.{source}->{target}",
-                f"위험한 import edge {source} -> {target}를 허용할지 결정하세요.",
+                f"Decide whether to allow the risky import edge {source} -> {target}.",
                 ("allow_with_reason", "deny_with_reason"),
                 "deny_with_reason",
                 (f"{source}->{target}",),
@@ -73,7 +73,7 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "size.accept_observed",
-                "현재 파일 크기 분포에서 계산한 초기 역할별 상한을 사용할까요?",
+                "Use the initial per-role limits inferred from the current file size distribution?",
                 ("accept", "override"),
                 "accept",
                 size.evidence(),
@@ -93,9 +93,9 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 f"role_group.{parent}",
-                f"{parent} 아래 파일의 역할 근거가 부족합니다. "
-                "기존 역할에 맞게 코드를 배치하세요. "
-                "새 구조라면 지속 적용할 role_selectors를 검토하세요.",
+                f"Files under {parent} lack sufficient role evidence. "
+                "Place code according to existing roles. "
+                "For a new structure, review role_selectors that will apply consistently.",
                 ("provide_role_selector", "provide_exact_roles"),
                 "provide_role_selector",
                 (selector, *(item.path for item in observations)),
@@ -106,7 +106,7 @@ def build_init_questions(
             questions.append(
                 InitQuestion(
                     f"feature.{name}",
-                    f"{name} 정책 영역의 기대 상태를 확인하세요.",
+                    f"Confirm the expected state of policy feature {name}.",
                     ("required", "absent"),
                     expectations[name],
                     tuple(feature_evidence[name]),
@@ -116,7 +116,7 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 f"policy.{feature}",
-                f"{feature} 정책을 활성화할 정확한 값을 입력하세요: {required_values}.",
+                f"Provide exact values to activate {feature}: {required_values}.",
                 ("provide_policy", "set_feature_absent"),
                 "provide_policy",
                 tuple(feature_evidence[feature]),
@@ -132,7 +132,7 @@ def build_init_questions(
         questions.append(
             InitQuestion(
                 "policy.schema_mapper",
-                "프로젝트 전체에서 사용할 Response 변환 메서드 하나를 선택하세요.",
+                "Choose one Response mapper method for the entire project.",
                 observed_response_mappers,
                 observed_mapper,
                 observed_response_mappers,
@@ -144,8 +144,8 @@ def build_init_questions(
 def _role_question(observation: InitRoleObservation) -> InitQuestion:
     return InitQuestion(
         f"role.{observation.path}",
-        f"{observation.path}의 역할 근거가 충돌합니다. "
-        "책임을 분리하거나 역할에 맞는 위치로 옮기세요.",
+        f"Role evidence conflicts for {observation.path}. "
+        "Separate responsibilities or move the code to the appropriate role.",
         observation.candidates,
         observation.recommended,
         tuple(

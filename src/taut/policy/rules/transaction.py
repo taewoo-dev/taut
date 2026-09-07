@@ -21,7 +21,7 @@ from taut.policy.rules.helpers import (
 
 RULE_ID = RuleId("TX001")
 ATOMICITY_RULE_ID = RuleId("TX003")
-RULE_VERSION = 3
+RULE_VERSION = 4
 TRANSACTION_EFFECTS = frozenset({Effect.TX_COMMIT, Effect.TX_ROLLBACK})
 
 
@@ -53,7 +53,7 @@ class TransactionOwnerRule:
                 target,
                 RuleVerdict.INDETERMINATE,
                 (),
-                EvaluationReason("missing_role", "파일의 role이 정해지지 않았습니다."),
+                EvaluationReason("missing_role", "No role is assigned to this file."),
             )
         if classification.role in context.policy.transaction_owner_roles:
             return RuleEvaluation(RULE_ID, target, RuleVerdict.PASS, ())
@@ -80,11 +80,11 @@ def transaction_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="transaction 종료 위치 제한",
-        help="commit과 rollback은 저장소에서 정한 transaction owner에서만 실행하세요.",
+        title="Transaction completion ownership",
+        help="Call commit and rollback only in configured transaction owners.",
         target=RuleTarget.CALL,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
-        change_impact=ChangeImpact.SELF,
+        change_impact=ChangeImpact.DEPENDENTS,
         implementation=TransactionOwnerRule(),
         compliant_fixtures=("tests/fixtures/rules/transaction/compliant.py",),
         violation_fixtures=("tests/fixtures/rules/transaction/violation.py",),
@@ -130,7 +130,7 @@ class MultiWriteAtomicityRule:
                 (),
                 EvaluationReason(
                     "uncertain_transaction_write",
-                    "서비스 실행 경로의 DB 쓰기 수를 확정하지 못했습니다.",
+                    "Could not determine the DB write count on the service execution path.",
                 ),
             )
         return RuleEvaluation(ATOMICITY_RULE_ID, target, RuleVerdict.PASS, ())
@@ -140,8 +140,11 @@ def multi_write_atomicity_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=ATOMICITY_RULE_ID,
         behavior_version=1,
-        title="다중 쓰기 원자성",
-        help="한 서비스 실행 경로의 여러 DB 쓰기는 증명 가능한 transaction 경계로 묶으세요.",
+        title="Multiple-write atomicity",
+        help=(
+            "Protect multiple DB writes on a service execution path with a "
+            "verifiable transaction boundary."
+        ),
         target=RuleTarget.PROJECT,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, True),
         change_impact=ChangeImpact.PROJECT,

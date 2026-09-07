@@ -83,6 +83,7 @@ def test_status_rejects_insecure_mode_and_incompatible_version(
         plugin_environment="0" * 64,
     )
     assert not compatible(incompatible_plugin, root)
+    assert not compatible(msgspec.structs.replace(current, schema=2), root)
 
 
 def test_status_rejects_malformed_and_invalid_identity(

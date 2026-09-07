@@ -68,7 +68,7 @@ class PassingWithGapRule:
             RuleVerdict.PASS,
             (),
             coverage_gaps=(
-                EvaluationReason("partial_relation", "일부 관계를 해석하지 못했습니다."),
+                EvaluationReason("partial_relation", "Could not resolve some relations."),
             ),
         )
 

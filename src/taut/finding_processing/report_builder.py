@@ -56,13 +56,13 @@ def decide_exit(
     assurance = assurance or AssuranceReport()
     trust_failures: list[str] = []
     if engine_issues:
-        trust_failures.append("설정 또는 분석 문제")
+        trust_failures.append("Configuration or analysis issue")
     if any(
         issue.required_level is RuleLevel.ENFORCED for issue in (*coverage.skipped, *coverage.gaps)
     ):
-        trust_failures.append("강제 규칙 판단 불가")
+        trust_failures.append("Indeterminate enforced rule")
     if assurance.issues:
-        trust_failures.append("strict assurance 미완료")
+        trust_failures.append("Strict assurance incomplete")
     if trust_failures:
         return ExitDecision(2, tuple(trust_failures))
     blocking = any(
@@ -71,5 +71,5 @@ def decide_exit(
         for diagnostic in diagnostics
     )
     if blocking:
-        return ExitDecision(1, ("강제 규칙 위반",))
+        return ExitDecision(1, ("Enforced rule violation",))
     return ExitDecision(0, ())

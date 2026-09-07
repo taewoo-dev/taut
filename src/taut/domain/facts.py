@@ -171,10 +171,19 @@ class FunctionParameter:
     has_default: bool
     default_expression: ExpressionSummary | None = None
     default_location: SourceRange | None = None
+    kind: str = "positional_or_keyword"
 
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("function parameter name cannot be empty")
+        if self.kind not in {
+            "positional_only",
+            "positional_or_keyword",
+            "keyword_only",
+            "var_positional",
+            "var_keyword",
+        }:
+            raise ValueError("invalid function parameter kind")
 
 
 @dataclass(frozen=True, order=True)

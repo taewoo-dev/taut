@@ -10,7 +10,8 @@ import msgspec
 from taut import __version__
 
 PROTOCOL_VERSION = 1
-STATUS_SCHEMA_VERSION = 2
+# Reject resident processes that predate the English output contract.
+STATUS_SCHEMA_VERSION = 3
 MAX_REQUEST_SIZE = 64 * 1024
 MAX_RESPONSE_SIZE = 32 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 300.0

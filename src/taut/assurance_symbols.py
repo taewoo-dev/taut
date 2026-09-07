@@ -145,9 +145,12 @@ def policy_symbol_issues(
             issues.append(
                 AssuranceIssue(
                     "POLICY_SYMBOL_UNRESOLVED",
-                    "정책 활성화에 사용한 exact symbol을 실제 코드에서 확인하지 못했습니다.",
+                    (
+                        "Could not resolve the exact symbol used to activate this policy in "
+                        "the source code."
+                    ),
                     symbol.value,
-                    f"{label} 설정을 실제 fully-qualified symbol로 수정하세요.",
+                    f"Set {label} to an existing fully qualified symbol.",
                 )
             )
             continue
@@ -162,9 +165,9 @@ def policy_symbol_issues(
             issues.append(
                 AssuranceIssue(
                     "POLICY_SYMBOL_KIND_MISMATCH",
-                    "정책 symbol의 실제 종류가 요구한 계약과 다릅니다.",
+                    "The policy symbol kind does not match the required contract.",
                     symbol.value,
-                    f"{label}에는 {expected_kind} symbol을 지정하세요.",
+                    f"Set {label} to a symbol of kind {expected_kind}.",
                 )
             )
     return tuple(issues)

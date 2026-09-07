@@ -28,6 +28,7 @@ class CoverageReport:
     indeterminate: int
     skipped: tuple[CoverageIssue, ...]
     gaps: tuple[CoverageIssue, ...] = ()
+    rule_levels: tuple[tuple[RuleId, RuleLevel], ...] = ()
 
     def __post_init__(self) -> None:
         counts = (

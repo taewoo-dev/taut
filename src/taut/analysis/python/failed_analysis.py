@@ -15,8 +15,7 @@ from taut.domain.frozen import FrozenMap
 
 def failed_facts(source: SourceInput) -> ModuleFacts:
     unavailable = FrozenMap(
-        (kind, IncompleteReason("analysis_failed", "파일 분석이 실패했습니다."))
-        for kind in FactKind
+        (kind, IncompleteReason("analysis_failed", "File analysis failed.")) for kind in FactKind
     )
     return ModuleFacts(
         module=ModuleIdentity(

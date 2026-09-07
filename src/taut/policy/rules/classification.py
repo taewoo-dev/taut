@@ -45,8 +45,8 @@ def classification_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="검사 대상 파일 역할 지정",
-        help="모든 검사 대상 파일을 저장소 설정의 역할 패턴에 포함하세요.",
+        title="Source file role assignment",
+        help="Include every analyzed file in the configured role patterns.",
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         change_impact=ChangeImpact.SELF,

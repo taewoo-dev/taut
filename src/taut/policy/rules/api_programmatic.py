@@ -36,7 +36,7 @@ def programmatic_route_evidence(
             gaps.append(
                 EvaluationReason(
                     "unresolved_endpoint",
-                    f"{call.ref.written_name}의 endpoint 함수를 확정하지 못했습니다.",
+                    f"Could not resolve the endpoint function for {call.ref.written_name}.",
                 )
             )
             continue
@@ -72,7 +72,7 @@ def programmatic_route_evidence(
                 gaps.append(
                     EvaluationReason(
                         "unresolved_mapping",
-                        f"{function.symbol_id.value}의 {keyword} mapping을 확정하지 못했습니다.",
+                        f"Could not resolve the {keyword} mapping for {function.symbol_id.value}.",
                     )
                 )
     return tuple(findings), tuple(gaps)

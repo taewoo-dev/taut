@@ -28,7 +28,10 @@ def preflight_questions(root: Path, toml: str) -> tuple[InitQuestion, ...]:
         return (
             InitQuestion(
                 "preflight.engine",
-                "생성 설정을 검증하지 못했습니다. source, selector, provider 설정을 수정하세요.",
+                (
+                    "Could not validate the generated configuration. Fix source, "
+                    "selector, and provider settings."
+                ),
                 ("fix_configuration",),
                 "fix_configuration",
                 evidence,

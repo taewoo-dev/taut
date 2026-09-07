@@ -95,6 +95,45 @@ class ProjectRelations:
     import_edges: tuple[ImportEdge, ...]
     use_edges: tuple[UseEdge, ...]
 
+    @classmethod
+    def from_validated_parts(
+        cls, parts: tuple[ProjectRelations, ...], import_edges: tuple[ImportEdge, ...]
+    ) -> ProjectRelations:
+        """Compose immutable validated parts without revalidating every local reference."""
+        binding_by_id: dict[FactId, Binding] = {}
+        for part in parts:
+            before = len(binding_by_id)
+            binding_by_id.update(part.binding_by_id)
+            if len(binding_by_id) != before + len(part.bindings):
+                raise ValueError("binding ids must be unique")
+        bindings = tuple(
+            sorted(
+                binding_by_id.values(),
+                key=lambda item: (
+                    item.location.path.value,
+                    item.location.start_line,
+                    item.location.start_column,
+                    item.id.value,
+                ),
+            )
+        )
+        uses = tuple(
+            sorted(
+                (edge for part in parts for edge in part.use_edges),
+                key=lambda item: item.occurrence_id.value,
+            )
+        )
+        if len({edge.occurrence_id for edge in uses}) != len(uses):
+            raise ValueError("use occurrence ids must be unique")
+        # Each selected/candidate reference was checked by its part's constructor;
+        # disjoint binding IDs preserve those checks under composition.
+        result = object.__new__(cls)
+        object.__setattr__(result, "bindings", bindings)
+        object.__setattr__(result, "import_edges", import_edges)
+        object.__setattr__(result, "use_edges", uses)
+        object.__setattr__(result, "binding_by_id", MappingProxyType(binding_by_id))
+        return result
+
     def __post_init__(self) -> None:
         binding_by_id: dict[FactId, Binding] = {}
         for binding in self.bindings:

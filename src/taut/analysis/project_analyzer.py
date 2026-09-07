@@ -62,12 +62,12 @@ class ProjectAnalyzer:
             complete_modules=states.count(CompletenessState.COMPLETE),
             partial_modules=states.count(CompletenessState.PARTIAL),
             failed_modules=states.count(CompletenessState.FAILED),
-            calls=_resolution_coverage(tuple(call.ref.state for call in calls)),
-            references=_resolution_coverage(tuple(reference.ref.state for reference in references)),
+            calls=resolution_coverage(tuple(call.ref.state for call in calls)),
+            references=resolution_coverage(tuple(reference.ref.state for reference in references)),
             resolved_imports=len(project.import_edges),
             unresolved_imports=len(project.unresolved_imports),
         )
-        digest = _analysis_digest(request)
+        digest = analysis_digest(request)
         return AnalysisSnapshot(
             id=SnapshotId(digest),
             inputs=AnalysisInputDigest(digest),
@@ -80,7 +80,7 @@ class ProjectAnalyzer:
         )
 
 
-def _resolution_coverage(states: tuple[ResolutionState, ...]) -> ResolutionCoverage:
+def resolution_coverage(states: tuple[ResolutionState, ...]) -> ResolutionCoverage:
     return ResolutionCoverage(
         resolved=states.count(ResolutionState.RESOLVED),
         conditional=states.count(ResolutionState.CONDITIONAL),
@@ -90,7 +90,7 @@ def _resolution_coverage(states: tuple[ResolutionState, ...]) -> ResolutionCover
     )
 
 
-def _analysis_digest(request: AnalysisRequest) -> str:
+def analysis_digest(request: AnalysisRequest) -> str:
     payload = {
         "sources": [
             {

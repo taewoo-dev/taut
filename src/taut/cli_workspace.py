@@ -76,7 +76,7 @@ def run_workspace_check(
     else:
         sections = [f"== {path} ==\n{result.stdout.decode().rstrip()}" for path, result in results]
         sections.append(
-            "workspace 검사 완료: "
+            "Workspace check complete: "
             + ", ".join(f"{path}=exit {result.exit_code}" for path, result in results)
         )
         if unlisted:
@@ -107,7 +107,10 @@ def run_workspace_config(workspace: TautWorkspace, command: str, output_format: 
                 + ", ".join(unlisted)
             )
         for path, configured in loaded_members:
-            print(f"설정 정상: {path}/{configured.manifest.source.path} ({configured.digest()})")
+            print(
+                f"Configuration valid: {path}/{configured.manifest.source.path} "
+                f"({configured.digest()})"
+            )
         return 0
     if command != "explain":
         raise PolicyConfigError(f"unsupported workspace config command: {command}")
@@ -125,7 +128,7 @@ def run_workspace_config(workspace: TautWorkspace, command: str, output_format: 
     else:
         for config_member in members:
             print(
-                f"{config_member['path']}: 스키마 v{config_member['schema_version']}, "
+                f"{config_member['path']}: schema v{config_member['schema_version']}, "
                 f"digest {config_member['configuration_digest']}"
             )
     return 0

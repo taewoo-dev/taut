@@ -110,7 +110,7 @@ class ExpressionSummarizer:
 
     def parameters(
         self,
-        node: ast.FunctionDef | ast.AsyncFunctionDef,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     ) -> tuple[FunctionParameter, ...]:
         positional = (*node.args.posonlyargs, *node.args.args)
         default_start = len(positional) - len(node.args.defaults)
@@ -125,6 +125,9 @@ class ExpressionSummarizer:
                 self._location(node.args.defaults[index - default_start])
                 if index >= default_start and self._location is not None
                 else None,
+                "positional_only"
+                if index < len(node.args.posonlyargs)
+                else "positional_or_keyword",
             )
             for index, argument in enumerate(positional)
         ]
@@ -135,6 +138,7 @@ class ExpressionSummarizer:
                 default is not None,
                 self.expression(default) if default is not None else None,
                 self._location(default) if default is not None and self._location else None,
+                "keyword_only",
             )
             for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
         )
@@ -149,6 +153,7 @@ class ExpressionSummarizer:
                         False,
                         None,
                         None,
+                        "var_positional" if argument is node.args.vararg else "var_keyword",
                     )
                 )
         return tuple(result)
@@ -180,6 +185,6 @@ def _is_dynamic_string(node: ast.AST) -> bool:
 
 
 def summarize_parameters(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, resolve: Resolve
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, resolve: Resolve
 ) -> tuple[FunctionParameter, ...]:
     return ExpressionSummarizer(resolve).parameters(node)

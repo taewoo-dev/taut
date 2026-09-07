@@ -75,7 +75,7 @@ class DirectSecurityAccessRule:
                     (),
                     EvaluationReason(
                         "uncertain_symbol",
-                        "규칙에 필요한 environment reference를 확정하지 못했습니다.",
+                        "Could not resolve the environment reference required by this rule.",
                     ),
                 )
             if not _is_direct_environ_reference(reference, module.calls):
@@ -151,8 +151,11 @@ def security_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="보안 값 접근 위치 제한",
-        help="환경 값·비밀 값·토큰 처리는 설정 또는 보안 역할의 승인된 함수에 두세요.",
+        title="Security-sensitive access boundaries",
+        help=(
+            "Handle environment values, secrets, and tokens in approved "
+            "configuration or security functions."
+        ),
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.RESOLVED, False, False),
         change_impact=ChangeImpact.SELF,

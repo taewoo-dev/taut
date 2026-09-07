@@ -63,7 +63,7 @@ def build_project_index(modules: Iterable[ModuleFacts]) -> ProjectIndex:
                         importer=facts.module.id,
                         written_name=import_fact.imported_name,
                         location=import_fact.location,
-                        reason="프로젝트 내부 모듈로 연결하지 못했습니다.",
+                        reason="Could not resolve to an internal project module.",
                     )
                 )
 

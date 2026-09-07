@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Protocol, TypeVar, cast, runtime_checkable
 
@@ -88,13 +89,27 @@ class IncrementalFactProviderV1(FactProviderV1, Protocol):
     ) -> CapabilityValues: ...
 
 
+type ProviderReuseSelector = Callable[
+    [
+        IncrementalFactProviderV1,
+        AnalysisSnapshot,
+        AnalysisSnapshot,
+        CapabilityValues,
+        frozenset[ModuleId],
+    ],
+    CapabilityValues | None,
+]
+
+
 def apply_fact_providers_incremental(
     snapshot: AnalysisSnapshot,
     providers: tuple[FactProviderV1, ...],
     previous_snapshot: AnalysisSnapshot,
     impacted: frozenset[ModuleId],
+    *,
+    reuse_selector: ProviderReuseSelector | None = None,
 ) -> AnalysisSnapshot:
-    return _execute_providers(snapshot, providers, previous_snapshot, impacted)
+    return _execute_providers(snapshot, providers, previous_snapshot, impacted, reuse_selector)
 
 
 def apply_fact_providers(
@@ -109,6 +124,7 @@ def _execute_providers(
     providers: tuple[FactProviderV1, ...],
     previous_snapshot: AnalysisSnapshot | None = None,
     impacted: frozenset[ModuleId] = frozenset(),
+    reuse_selector: ProviderReuseSelector | None = None,
 ) -> AnalysisSnapshot:
     incremental = previous_snapshot is not None
     prior = cast(AnalysisSnapshot, previous_snapshot)
@@ -172,9 +188,17 @@ def _execute_providers(
             )
             if can_increment:
                 previous = FrozenMap((name, prior.capabilities[name]) for name in sorted(declared))
-                supplied = cast(IncrementalFactProviderV1, provider).analyze_incremental(
-                    base, previous, impacted
+                supplied = (
+                    reuse_selector(
+                        cast(IncrementalFactProviderV1, provider), base, prior, previous, impacted
+                    )
+                    if reuse_selector is not None
+                    else None
                 )
+                if supplied is None:
+                    supplied = cast(IncrementalFactProviderV1, provider).analyze_incremental(
+                        base, previous, impacted
+                    )
             else:
                 supplied = provider.analyze(base)
             unexpected = set(supplied).difference(declared)

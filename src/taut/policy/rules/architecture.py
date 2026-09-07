@@ -138,8 +138,8 @@ def architecture_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     import_rule = RuleDefinition(
         id=IMPORT_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="import 방향 제한",
-        help="manifest에서 허용한 role 방향으로만 내부 모듈을 import하세요.",
+        title="Allowed import directions",
+        help="Import internal modules only along role directions allowed by the manifest.",
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         change_impact=ChangeImpact.DEPENDENTS,
@@ -150,8 +150,8 @@ def architecture_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     cycle_rule = RuleDefinition(
         id=CYCLE_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="import 순환 금지",
-        help="서로 다시 돌아오는 내부 import 연결을 끊으세요.",
+        title="No import cycles",
+        help="Remove cycles in internal imports.",
         target=RuleTarget.PROJECT,
         requirements=RuleRequirements(frozenset(), AnalysisStage.INDEXED, False, True),
         change_impact=ChangeImpact.PROJECT,

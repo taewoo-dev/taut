@@ -67,15 +67,18 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="taut",
         description="Python backend architecture policy and assurance checks.",
-        epilog="시작: taut init . --format json  |  CI: taut check . --format json",
+        epilog="Start: taut init . --format json  |  CI: taut check . --format json",
     )
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    check = subparsers.add_parser("check", help="Python 백엔드 정책을 검사합니다.")
+    check = subparsers.add_parser("check", help="Check Python backend policies.")
     check.add_argument("project_root", nargs="?", default=".")
     check.add_argument(
         "--config",
-        help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
+        help=(
+            "Use a separate TOML configuration file. By default, discover "
+            "pyproject.toml automatically."
+        ),
     )
     check.add_argument("--no-cache", action="store_true")
     check.add_argument("--cache-dir")
@@ -87,60 +90,71 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument(
         "--width",
         type=int,
-        help="출력 줄 너비입니다. 기본값은 터미널 너비이며 최소 60입니다.",
+        help="Output width. Defaults to terminal width, with a minimum of 60.",
     )
-    rules = subparsers.add_parser("rules", help="내장 규칙 목록과 설명을 보여 줍니다.")
+    rules = subparsers.add_parser("rules", help="List built-in rules and their descriptions.")
     rules.add_argument("rule_id", nargs="?")
     rules.add_argument("--format", choices=("text", "json"), default="text")
     init = subparsers.add_parser(
-        "init", help="프로젝트를 탐색하고 검토 가능한 strict 설정 제안을 만듭니다."
+        "init", help="Inspect the project and propose a strict configuration for review."
     )
     init.add_argument("project_root", nargs="?", default=".")
-    init.add_argument("--config", default="pyproject.toml", help="저장할 설정 경로입니다.")
-    init.add_argument("--answers", help="init JSON 답변 파일이며 -는 stdin입니다.")
-    init.add_argument("--write", action="store_true", help="모든 결정이 끝난 설정만 저장합니다.")
+    init.add_argument("--config", default="pyproject.toml", help="Configuration path to write.")
+    init.add_argument("--answers", help="JSON answers file for init; use - for stdin.")
+    init.add_argument(
+        "--write",
+        action="store_true",
+        help="Write configuration only after all required decisions are resolved.",
+    )
     init.add_argument("--format", choices=("text", "json"), default="text")
     audit = subparsers.add_parser(
-        "audit", help="소스·역할·기능별 strict assurance 완전성만 검사합니다."
+        "audit", help="Audit strict assurance completeness for sources, roles, and features."
     )
     audit.add_argument("project_root", nargs="?", default=".")
     audit.add_argument("--config")
     audit.add_argument("--format", choices=("text", "json"), default="text")
-    config = subparsers.add_parser("config", help="설정 파일을 검사합니다.")
+    config = subparsers.add_parser("config", help="Inspect configuration files.")
     config_commands = config.add_subparsers(dest="config_command", required=True)
-    validate = config_commands.add_parser("validate", help="설정 파일만 검사합니다.")
+    validate = config_commands.add_parser("validate", help="Validate configuration files only.")
     validate.add_argument("project_root", nargs="?", default=".")
     validate.add_argument(
         "--config",
-        help="별도 TOML 설정 파일을 사용합니다. 기본값은 pyproject.toml 자동 탐색입니다.",
+        help=(
+            "Use a separate TOML configuration file. By default, discover "
+            "pyproject.toml automatically."
+        ),
     )
-    migrate = config_commands.add_parser("migrate", help="이전 설정을 v4로 변환합니다.")
+    migrate = config_commands.add_parser(
+        "migrate", help="Migrate legacy configuration to the current schema."
+    )
     migrate.add_argument("project_root", nargs="?", default=".")
-    migrate.add_argument("--config", help="변환할 별도 TOML 설정 파일입니다.")
-    migrate.add_argument("--output", help="변환 결과를 저장할 새 파일입니다.")
-    migrate.add_argument("--force", action="store_true", help="기존 출력 파일을 덮어씁니다.")
-    explain = config_commands.add_parser("explain", help="실제로 적용되는 설정을 설명합니다.")
+    migrate.add_argument("--config", help="Separate TOML configuration file to migrate.")
+    migrate.add_argument("--output", help="New file for the migrated configuration.")
+    migrate.add_argument("--force", action="store_true", help="Overwrite the existing output file.")
+    explain = config_commands.add_parser("explain", help="Explain the effective configuration.")
     explain.add_argument("project_root", nargs="?", default=".")
-    explain.add_argument("--config", help="설명할 별도 TOML 설정 파일입니다.")
+    explain.add_argument("--config", help="Separate TOML configuration file to explain.")
     explain.add_argument("--format", choices=("text", "json"), default="text")
-    explain.add_argument("--path", help="프로젝트 기준 파일 경로의 역할과 분류 근거를 확인합니다.")
+    explain.add_argument(
+        "--path", help="Show the role and classification evidence for a project-relative file path."
+    )
     simplify = config_commands.add_parser(
-        "simplify", help="동일한 정책의 간결한 TOML을 출력합니다."
+        "simplify", help="Print compact TOML with equivalent policy settings."
     )
     simplify.add_argument("project_root", nargs="?", default=".")
-    simplify.add_argument("--config", help="정리할 [tool.taut] 설정 파일입니다.")
+    simplify.add_argument("--config", help="Configuration file containing [tool.taut] to simplify.")
     schema = config_commands.add_parser(
-        "schema", help="AI와 도구가 읽을 수 있는 설정 계약을 보여 줍니다."
+        "schema", help="Show the configuration contract for AI and tooling."
     )
     schema.add_argument("--format", choices=("text", "json"), default="text")
-    cache = subparsers.add_parser("cache", help="persistent report cache 관리")
+    cache = subparsers.add_parser("cache", help="Manage the persistent report cache.")
     cache_commands = cache.add_subparsers(dest="cache_command", required=True)
-    for name, help_text in (("stats", "캐시 통계"), ("clean", "캐시 비우기")):
+    for name, help_text in (("stats", "Show cache statistics."), ("clean", "Clear the cache.")):
         command_parser = cache_commands.add_parser(name, help=help_text)
         command_parser.add_argument("project_root", nargs="?", default=".")
         command_parser.add_argument("--config")
         command_parser.add_argument("--cache-dir")
-    daemon = subparsers.add_parser("daemon", help="상주 분석 daemon 관리")
+    daemon = subparsers.add_parser("daemon", help="Manage the resident analysis daemon.")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
     for name in ("start", "status", "stop", "restart"):
         command_parser = daemon_commands.add_parser(name)
@@ -338,7 +352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if namespace.config_command != "validate":
                 parser.error("unknown config command")
             config = prepare_check_runtime(root, config_path).config
-            print(f"설정 정상: {config.manifest.source.path} ({config.digest()})")
+            print(f"Configuration valid: {config.manifest.source.path} ({config.digest()})")
             return 0
         if command == "cache":
             root = Path(namespace.project_root).resolve()
@@ -351,21 +365,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if not (directory / "cache.sqlite3").exists():
                 if namespace.cache_command == "clean":
-                    print("캐시 삭제 완료")
+                    print("Cache cleared")
                 else:
-                    print("모듈: 0")
-                    print("리포트: 0")
-                    print("바이트: 0")
+                    print("Modules: 0")
+                    print("Reports: 0")
+                    print("Bytes: 0")
                 return 0
             with CacheStore(directory, signing_key=load_user_signing_key()) as store:
                 if namespace.cache_command == "clean":
                     store.clean()
-                    print("캐시 삭제 완료")
+                    print("Cache cleared")
                 else:
                     stats = store.stats()
-                    print(f"모듈: {stats.module_entries}")
-                    print(f"리포트: {stats.report_entries}")
-                    print(f"바이트: {stats.total_bytes}")
+                    print(f"Modules: {stats.module_entries}")
+                    print(f"Reports: {stats.report_entries}")
+                    print(f"Bytes: {stats.total_bytes}")
             return 0
         if command == "daemon":
             root = Path(namespace.project_root).resolve()
@@ -428,7 +442,7 @@ def _report_cache_key(
 ) -> str:
     source_values = tuple((source.path.value, source.content_hash) for source in sources)
     payload = {
-        "schema": 2,
+        "schema": 3,
         "engine_version": __version__,
         "decision_digest": runtime.decision_digest,
         "python_runtime": [sys.version_info.major, sys.version_info.minor],

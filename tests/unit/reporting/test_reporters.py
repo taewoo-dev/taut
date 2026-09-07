@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import cast
 
 from tests.utils.builders import analyze, make_context, make_source
@@ -9,6 +10,7 @@ from taut import __version__
 from taut.domain.evaluations import RuleLevel
 from taut.domain.frozen import FrozenMap
 from taut.domain.ids import RuleId
+from taut.domain.location import ProjectPath
 from taut.domain.reports import RunReport
 from taut.finding_processing.finding_processor import FindingProcessor
 from taut.finding_processing.report_builder import build_run_report
@@ -70,19 +72,19 @@ def test_text_output_is_compact_by_default_and_verbose_on_request() -> None:
 
     assert "error:" in compact
     assert "[TIME001]" in compact
-    assert "검사 완료: 오류 1건, 경고 0건" in compact
-    assert "도움:" not in compact
-    assert "판정 기준:" not in compact
-    assert "도움: use clock" in verbose
-    assert "판정 기준:" in verbose
-    assert "approval: 사용 0, 미사용 0" in verbose
+    assert "Check complete: 1 error, 0 warnings" in compact
+    assert "Help:" not in compact
+    assert "Decision digest:" not in compact
+    assert "Help: use clock" in verbose
+    assert "Decision digest:" in verbose
+    assert "approval: used 0, unused 0" in verbose
 
 
 def test_text_output_uses_warning_for_advisory_findings() -> None:
     text = render_text(_report(level=RuleLevel.ADVISORY))
 
     assert "warning:" in text
-    assert "검사 완료: 오류 0건, 경고 1건" in text
+    assert "Check complete: 0 errors, 1 warning" in text
 
 
 def test_text_output_can_add_terminal_colors() -> None:
@@ -97,8 +99,8 @@ def test_text_output_wraps_long_diagnostics_with_indentation() -> None:
     diagnostic_lines = text.splitlines()[:-1]
 
     assert len(diagnostic_lines) > 1
-    assert diagnostic_lines[0] == ("app/service.py:2:9: error: [TIME001] 승인되지 않은 시간 조회")
-    assert diagnostic_lines[1].startswith("    datetime.datetime.now")
+    assert diagnostic_lines[0] == "app/service.py:2:9: error: [TIME001] Direct call to"
+    assert diagnostic_lines[1] == "    unapproved clock function datetime.datetime.now."
     assert all(len(line) <= 60 for line in diagnostic_lines)
 
 
@@ -106,3 +108,26 @@ def test_json_output_is_deterministic() -> None:
     report = _report()
 
     assert render_json(report) == render_json(report)
+
+
+def test_english_diagnostics_preserve_unicode_source_paths() -> None:
+    report = _report()
+    diagnostic = report.diagnostics[0]
+    path = "app/결제.py"
+    diagnostic = replace(
+        diagnostic,
+        primary_location=replace(diagnostic.primary_location, path=ProjectPath(path)),
+    )
+    report = replace(report, diagnostics=(diagnostic,))
+
+    assert diagnostic.message == ("Direct call to unapproved clock function datetime.datetime.now.")
+    assert f"{path}:2:9: error: [TIME001]" in render_text(report)
+    payload = json.loads(render_json(report))
+    assert payload["diagnostics"][0]["location"]["path"] == path
+    assert payload["diagnostics"][0]["message"] == diagnostic.message
+
+
+def test_builtin_rule_documentation_is_english() -> None:
+    for definition in builtin_rule_registry().definitions.values():
+        assert definition.title.isascii(), definition.id
+        assert definition.help.isascii(), definition.id

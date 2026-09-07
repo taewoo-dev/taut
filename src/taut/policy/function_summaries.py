@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
 from itertools import chain
@@ -22,6 +23,7 @@ class FunctionSemanticSummary:
     )
     session_providers: frozenset[SymbolId] = frozenset()
     bulk_mapping_operations: frozenset[str] = frozenset()
+    uncertain_effects: frozenset[Effect] = frozenset()
 
     @property
     def effects(self) -> frozenset[Effect]:
@@ -31,14 +33,17 @@ class FunctionSemanticSummary:
 @dataclass(frozen=True)
 class FunctionSummaryState:
     summaries: FrozenMap[SymbolId, FunctionSemanticSummary]
-    direct: FrozenMap[SymbolId, FunctionSemanticSummary]
-    graph: FrozenMap[SymbolId, tuple[SymbolId, ...]]
+    direct: Mapping[SymbolId, FunctionSemanticSummary]
+    graph: Mapping[SymbolId, tuple[SymbolId, ...]]
     modules: FrozenMap[SymbolId, ModuleId]
     reused_functions: int
     recomputed_functions: int
     evaluated_calls: int
     reused_components: int
     recomputed_components: int
+    native_handle: object | None = field(default=None, repr=False, compare=False)
+    native_modules: frozenset[ModuleId] = field(default=frozenset(), repr=False, compare=False)
+    native_timings: tuple[float, ...] = field(default=(), repr=False, compare=False)
 
 
 class FunctionSummaryContext(Protocol):
@@ -49,6 +54,10 @@ class FunctionSummaryContext(Protocol):
     def policy(self) -> EffectivePolicy: ...
 
     def effect_of(self, call: CallFact) -> EffectResolution: ...
+
+    def callback_effects(self, call: CallFact) -> frozenset[Effect]: ...
+
+    def synchronous_callback_effects(self, call: CallFact) -> frozenset[Effect]: ...
 
     def matching_symbol(
         self, symbol: SymbolId | None, candidates: frozenset[SymbolId]
@@ -80,12 +89,19 @@ def build_function_summary_state(
     modules: dict[SymbolId, ModuleId] = {}
     graph: dict[SymbolId, frozenset[SymbolId]] = {}
     direct: dict[SymbolId, FunctionSemanticSummary] = {}
+    summary_values: dict[FunctionSemanticSummary, FunctionSemanticSummary] = {}
+
+    def canonical_summary(summary: FunctionSemanticSummary) -> FunctionSemanticSummary:
+        # Full immutable values, including uncertainty and access paths, define equality.
+        # The pool belongs to this build and does not retain previous revisions globally.
+        return summary_values.setdefault(summary, summary)
+
     reused_functions = 0
     if prior is not None:
         for symbol, module_id in prior.modules.items():
             if module_id in current_modules and module_id not in invalidated:
                 modules[symbol] = module_id
-                direct[symbol] = prior.direct[symbol]
+                direct[symbol] = canonical_summary(prior.direct[symbol])
                 graph[symbol] = frozenset(prior.graph[symbol])
                 reused_functions += 1
 
@@ -110,11 +126,16 @@ def build_function_summary_state(
         module_id = modules[symbol]
         effect_access: dict[Effect, AccessPath] = {}
         providers: set[SymbolId] = set()
+        uncertain_effects: set[Effect] = set()
         bulk_operations: set[str] = set()
         owned_callees: set[SymbolId] = set()
         function = functions[symbol]
         for call in calls_by_owner.get((module_id, function.symbol_id), ()):
             evaluated_calls += 1
+            synchronous = context.synchronous_callback_effects(call)
+            uncertain_effects.update(context.callback_effects(call) - synchronous)
+            for effect in synchronous:
+                _merge_access(effect_access, effect, AccessPath.DIRECT)
             resolution = context.effect_of(call)
             if resolution.state is EffectResolutionState.MATCHED:
                 assert resolution.access_path is not None
@@ -141,10 +162,13 @@ def build_function_summary_state(
                 bulk_operations.add(operation)
 
         graph[symbol] = frozenset(owned_callees)
-        direct[symbol] = FunctionSemanticSummary(
-            FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
-            frozenset(providers),
-            frozenset(bulk_operations),
+        direct[symbol] = canonical_summary(
+            FunctionSemanticSummary(
+                FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
+                frozenset(providers),
+                frozenset(bulk_operations),
+                frozenset(uncertain_effects),
+            )
         )
 
     changed_symbols = set(functions)
@@ -225,7 +249,7 @@ def build_function_summary_state(
             for target in sorted(outgoing[component_index]):
                 summary = _merge_summary(summary, component_summaries[target])
             recomputed_components += 1
-        component_summaries[component_index] = summary
+        component_summaries[component_index] = canonical_summary(summary)
         for dependent in sorted(dependents[component_index]):
             remaining[dependent] -= 1
             if remaining[dependent] == 0:
@@ -300,6 +324,7 @@ def _merge_summary(
         FrozenMap(sorted(effect_access.items(), key=lambda item: item[0].value)),
         left.session_providers | right.session_providers,
         left.bulk_mapping_operations | right.bulk_mapping_operations,
+        left.uncertain_effects | right.uncertain_effects,
     )
 
 

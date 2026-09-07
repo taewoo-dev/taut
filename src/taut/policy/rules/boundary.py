@@ -104,7 +104,7 @@ class ForbiddenImportRule:
                 target,
                 RuleVerdict.INDETERMINATE,
                 (),
-                EvaluationReason("missing_role", "파일의 role이 정해지지 않았습니다."),
+                EvaluationReason("missing_role", "No role is assigned to this file."),
             )
         boundaries = tuple(
             boundary
@@ -171,8 +171,8 @@ def boundary_rule_definition() -> RuleDefinition:
     return RuleDefinition(
         id=RULE_ID,
         behavior_version=RULE_VERSION,
-        title="역할별 금지 import와 호출",
-        help="이 역할에서 금지한 모듈과 함수를 직접 사용하지 말고 허용된 계층을 거치세요.",
+        title="Forbidden imports and calls by role",
+        help="Access forbidden modules and functions through the allowed layers for this role.",
         target=RuleTarget.MODULE,
         requirements=RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False),
         change_impact=ChangeImpact.SELF,

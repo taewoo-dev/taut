@@ -85,6 +85,11 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         self._syntax = SyntaxContextStack()
         self._summarizer = ExpressionSummarizer(self._resolve, self._written_name, self._location)
 
+    def close(self) -> None:
+        """Release callbacks that otherwise keep this extractor and its AST caches cyclic."""
+        if hasattr(self, "_summarizer"):
+            del self._summarizer
+
     def _syntax_context(self) -> SyntaxContext:
         scope_kind = (
             ScopeKind.CLASS
@@ -116,7 +121,10 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
         previous_scope = self.current_scope
         resolved_functions: list[FunctionFact] = []
         for function in self.functions:
-            node = self._function_nodes[function.symbol_id]
+            node = self._function_nodes.get(function.symbol_id)
+            if node is None:
+                resolved_functions.append(function)
+                continue
             self.current_scope = function.symbol_id
             resolved_functions.append(
                 replace(

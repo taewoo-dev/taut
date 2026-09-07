@@ -15,6 +15,7 @@ from taut.domain.ids import FactId, SymbolId
 
 class SyntaxContextStack:
     def __init__(self) -> None:
+        self._contexts: dict[tuple[object, ...], SyntaxContext] = {}
         self._guards = [GuardKind.UNCONDITIONAL]
         self._positions = [SyntaxPosition.BODY]
         self._parents: list[FactId | None] = [None]
@@ -27,16 +28,30 @@ class SyntaxContextStack:
         scope_kind: ScopeKind,
         phase: ExecutionPhase,
     ) -> SyntaxContext:
-        return SyntaxContext(
-            lexical_owner=owner,
-            scope_kind=scope_kind,
-            position=self._positions[-1],
-            execution_phase=phase,
-            guard=self._guards[-1],
-            parent_fact_id=self._parents[-1],
-            argument_name=self._argument_names[-1],
-            argument_position=self._argument_positions[-1],
+        key = (
+            owner,
+            scope_kind,
+            self._positions[-1],
+            phase,
+            self._guards[-1],
+            self._parents[-1],
+            self._argument_names[-1],
+            self._argument_positions[-1],
         )
+        cached = self._contexts.get(key)
+        if cached is None:
+            cached = SyntaxContext(
+                owner,
+                scope_kind,
+                self._positions[-1],
+                phase,
+                self._guards[-1],
+                self._parents[-1],
+                self._argument_names[-1],
+                self._argument_positions[-1],
+            )
+            self._contexts[key] = cached
+        return cached
 
     @contextmanager
     def occurrence(

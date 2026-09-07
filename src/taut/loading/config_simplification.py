@@ -13,6 +13,7 @@ from typing import cast
 
 from taut.configuration.model import ProjectConfiguration
 from taut.configuration.path_patterns import compact_patterns
+from taut.configuration.rule_standard import BUILTIN_RULE_LEVELS
 from taut.domain.location import ConfigPath
 from taut.loading.config_loader import load_project_configuration
 from taut.loading.config_values import table, table_list
@@ -78,7 +79,10 @@ def simplify_configuration(
         raise PolicyConfigError("simplify requires a [tool.taut] configuration")
     section = deepcopy(table(table(raw["tool"], "tool")["taut"], "tool.taut"))
     expected = semantic_digest(original)
-    levels = {rule: setting.level for rule, setting in original.policy.rules.items()}
+    levels = {
+        rule: BUILTIN_RULE_LEVELS.get(rule, setting.level)
+        for rule, setting in original.policy.rules.items()
+    }
 
     def load(value: dict[str, object]) -> ProjectConfiguration:
         document = parse_configuration_document({"tool": {"taut": value}}, path)

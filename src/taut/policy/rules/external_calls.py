@@ -72,7 +72,7 @@ class HttpTimeoutRule:
                 (),
                 EvaluationReason(
                     "dynamic_keywords",
-                    "**kwargs 안에 timeout이 있는지 정적으로 확인할 수 없습니다.",
+                    "Cannot statically determine whether **kwargs contains a timeout.",
                 ),
             )
         return RuleEvaluation(HTTP_RULE_ID, target, RuleVerdict.PASS, ())
@@ -141,8 +141,8 @@ def external_call_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     http = RuleDefinition(
         id=HTTP_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="외부 HTTP 시간 제한",
-        help="설정한 HTTP client를 만들 때 timeout을 명시하세요.",
+        title="Explicit HTTP timeout",
+        help="Specify a timeout when constructing configured HTTP clients.",
         target=RuleTarget.MODULE,
         requirements=requirements,
         change_impact=ChangeImpact.SELF,
@@ -153,8 +153,8 @@ def external_call_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     log = RuleDefinition(
         id=LOG_RULE_ID,
         behavior_version=RULE_VERSION,
-        title="외부 호출 구조화 기록",
-        help="외부 호출은 승인된 external_call 문맥 안에서 실행하세요.",
+        title="Structured external call logging",
+        help="Run external calls inside an approved external_call context.",
         target=RuleTarget.MODULE,
         requirements=requirements,
         change_impact=ChangeImpact.SELF,

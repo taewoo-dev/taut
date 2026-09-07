@@ -19,6 +19,7 @@ from taut.domain.ids import ModuleId, RuleId
 from taut.domain.issues import EngineIssue, EngineIssueKind
 from taut.domain.reports import CoverageIssue, CoverageReport
 from taut.policy.context import PolicyContext
+from taut.policy.effect_reuse import equivalent_effect_modules, supports_effect_reuse
 from taut.policy.registry import RuleRegistry
 from taut.policy.rule import RuleEvaluation, RuleRequirements
 from taut.policy.scheduler import RuleScheduler
@@ -126,6 +127,18 @@ class PolicyEngine:
                     identity,
                 ),
             )
+        effect_rules = frozenset(
+            rule_id
+            for rule_id, definition in self._registry.definitions.items()
+            if supports_effect_reuse(definition)
+        )
+        equivalent: frozenset[ModuleId] = (
+            equivalent_effect_modules(
+                context, prior_context, impact_graph.impacted - changes.touched
+            )
+            if effect_rules
+            else frozenset()
+        )
         reuse_by_rule: dict[RuleId, list[RuleEvaluation]] = {}
         for evaluation in previous.evaluations:
             definition = self._registry.definitions[evaluation.rule_id]
@@ -137,6 +150,8 @@ class PolicyEngine:
                 if definition.change_impact is ChangeImpact.SELF
                 else impact_graph.impacted
             )
+            if evaluation.rule_id in effect_rules:
+                invalidated = invalidated - equivalent
             if module not in invalidated:
                 reuse_by_rule.setdefault(evaluation.rule_id, []).append(evaluation)
         target_modules = {
@@ -147,6 +162,7 @@ class PolicyEngine:
                     changes.touched
                     if definition.change_impact is ChangeImpact.SELF
                     else impact_graph.impacted
+                    - (equivalent if rule_id in effect_rules else frozenset())
                 )
             )
             for rule_id, definition in self._registry.definitions.items()
@@ -297,7 +313,7 @@ class PolicyEngine:
                             (),
                             EvaluationReason(
                                 "rule_failure",
-                                "규칙 실행 중 오류가 발생해 판단하지 못했습니다.",
+                                "An error prevented this rule from reaching a decision.",
                             ),
                         )
                     )
@@ -305,7 +321,7 @@ class PolicyEngine:
                         EngineIssue(
                             code="RULE_FAILURE",
                             kind=EngineIssueKind.RULE_FAILURE,
-                            message=f"규칙 {rule_id.value} 실행을 완료하지 못했습니다.",
+                            message=f"Could not complete rule {rule_id.value}.",
                             location=None,
                             cause=error.__class__.__name__,
                         )
@@ -347,13 +363,13 @@ class PolicyEngine:
         if missing_capabilities:
             return EvaluationReason(
                 "missing_capability",
-                "규칙에 필요한 추가 분석 자료가 없습니다: "
+                "Missing analysis capabilities required by this rule: "
                 + ", ".join(sorted(missing_capabilities)),
             )
         if requirements.needs_complete_project and not project_is_complete:
             return EvaluationReason(
                 "incomplete_project",
-                "프로젝트 전체 분석이 완성되지 않았습니다.",
+                "Whole-project analysis is incomplete.",
             )
         return None
 
@@ -368,14 +384,14 @@ class PolicyEngine:
             if _STAGE_ORDER[completeness.stage] < _STAGE_ORDER[requirements.minimum_stage]:
                 return EvaluationReason(
                     "insufficient_analysis",
-                    "규칙에 필요한 분석 단계까지 완료되지 않았습니다.",
+                    "The analysis stage required by this rule has not completed.",
                 )
         if requirements.needs_resolved_symbols and target.fact_id is not None:
             call = context.model.call(target.fact_id)
             if call.ref.state is not ResolutionState.RESOLVED:
                 return EvaluationReason(
                     "unresolved_symbol",
-                    "호출 대상을 정확히 확인하지 못했습니다.",
+                    "Could not resolve the call target.",
                 )
         return None
 
@@ -415,4 +431,9 @@ def _coverage(
         indeterminate=verdicts.count(RuleVerdict.INDETERMINATE),
         skipped=skipped,
         gaps=gaps,
+        rule_levels=tuple(
+            (rule_id, setting.level)
+            for rule_id, setting in context.policy.rules.items()
+            if setting.level is not RuleLevel.OFF
+        ),
     )
