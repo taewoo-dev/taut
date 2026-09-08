@@ -1,0 +1,36 @@
+# Shared, unchanged policy for both versions of the demo.
+[tool.taut]
+schema_version = 5
+packs = ["taut.backend"]
+providers = ["taut.python-core", "taut.fastapi"]
+strict = true
+include = ["app/*.py"]
+source_roots = ["."]
+
+[tool.taut.roles]
+router = ["app/router.py"]
+service = ["app/service.py"]
+repository = ["app/repository.py"]
+bootstrap = ["app/main.py"]
+
+[tool.taut.allow]
+router = ["router", "service"]
+service = ["service", "repository"]
+repository = ["repository"]
+bootstrap = ["bootstrap", "router"]
+
+[tool.taut.assurance.features]
+api = "required"
+# The example returns a string and uses an in-memory repository, not an ORM.
+schema = "absent"
+dto = "absent"
+snapshot = "absent"
+exception_registry = "absent"
+enum = "absent"
+database = "absent"
+transaction = "absent"
+external_calls = "absent"
+security = "absent"
+tests = "absent"
+migrations = "absent"
+scripts = "absent"

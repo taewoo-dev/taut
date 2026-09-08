@@ -5,6 +5,10 @@
 
 ## 현재 구현 기준
 
+- [`../examples/architecture/README.md`](../examples/architecture/README.md): 배포 버전으로 재현하는 FastAPI 경계 위반 데모와 비교 검증
+- [`reference.md`](reference.md): 기존 README의 상세 CLI·설정·확장 계약
+- [`launch/README.md`](launch/README.md): 출시 자료, 게시 초안, 외부 레포 후보, 30일 실행 기록
+
 - [`detection-quality.md`](detection-quality.md): 판정 범위, 미탐 평가와 점진 도입; 0.10.0 출시 변경
 
 - [`configuration-conventions.md`](configuration-conventions.md): 신규 파일 자동 분류, 역할 규약, 설정 간소화와 정책 준수 전환

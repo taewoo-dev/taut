@@ -1,0 +1,46 @@
+name: First-use feedback
+description: Tell us where installing, trying, or adopting Taut got confusing.
+title: "[First use]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Taut. A small example is enough; do not include secrets or proprietary code.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did you get stuck?
+      options:
+        - Installation
+        - Running the example
+        - Understanding the value
+        - Onboarding my repository
+        - Understanding or fixing a diagnostic
+        - Adding CI
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Taut version and Python version
+      placeholder: "pytaut 0.10.0, Python 3.12.12"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: What did you try, and what happened?
+      description: Include the command, exit code, and relevant output or a minimal example.
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What did you expect?
+  - type: input
+    id: discovery
+    attributes:
+      label: How did you find Taut? (optional)
+      placeholder: "Show HN, Show GN, X, a colleague, another repository..."
