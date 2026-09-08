@@ -6,8 +6,8 @@ their presence does not mean a post has been published or a project has adopted 
 ## Ready to review
 
 - [Public introduction](../../README.md) and [runnable FastAPI demo](../../examples/architecture/README.md)
-- [36-second GIF](assets/architecture-demo.gif) for the README
-- [36-second MP4](assets/architecture-demo.mp4) for social posts
+- [18-second GIF](assets/architecture-demo.gif) for the README
+- [18-second MP4](assets/architecture-demo.mp4) for social posts
 - [Poster](assets/poster.png) and [all-frame QA sheet](assets/contact-sheet.png)
 - [Show GN, Show HN, X, and first-user recruitment copy](posts.md)
 - [10 researched repositories and 3 pilot proposals](candidates.md)
@@ -52,7 +52,7 @@ uv run --no-project --python 3.12 --locked docs/launch/render_demo.py
 ```
 
 The renderer refuses failed or stale evidence. It builds the GIF and MP4 from
-recorded CLI output and hashed example files. Six scenes each last six seconds;
+recorded CLI output and hashed example files. Six scenes each last three seconds;
 this is reading time, not a performance measurement. All scenes disclose that
 the example is hand-authored and the output is a paced replay.
 

@@ -157,7 +157,7 @@ def main() -> None:
         OUT / "architecture-demo.gif",
         save_all=True,
         append_images=frames[1:],
-        duration=6000,
+        duration=3000,
         loop=0,
         optimize=True,
     )
@@ -197,12 +197,12 @@ def main() -> None:
         assert process.stdin is not None
         for frame in frames:
             pixels = frame.tobytes()
-            for _ in range(60):
+            for _ in range(30):
                 process.stdin.write(pixels)
         process.stdin.close()
         if process.wait() != 0:
             raise RuntimeError("Video encoding failed")
-    print("Rendered 36-second GIF and MP4, poster, and QA contact sheet from verified results.")
+    print("Rendered 18-second GIF and MP4, poster, and QA contact sheet from verified results.")
 
 
 if __name__ == "__main__":

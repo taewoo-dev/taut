@@ -40,7 +40,7 @@ release. Its remote result remains pending until these changes are pushed.
 
 - Local Markdown file links checked for missing targets.
 - Both helper scripts passed explicit Ruff lint and formatting checks.
-- Six video scenes inspected using the contact sheet; the GIF and MP4 are 36-second
+- Six video scenes inspected using the contact sheet; the GIF and MP4 are 18-second
   paced replays, with provenance visible on every frame.
 - Source and shared-policy hashes bind the media generator to the verified example.
 - X launch copy: 265 plain Unicode characters, with a single project URL.
