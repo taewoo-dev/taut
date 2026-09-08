@@ -8,14 +8,12 @@
 - Fix incremental atomicity analysis requeueing a removed caller from an old reverse graph.
 - Retain the optional Rust summary/atomicity PoC and differential tests in the source repository.
   The published `pytaut` package uses Python by default and does not require or bundle Rust.
-  Native expansion is on hold; measured benefits and memory limits are documented in
-  [the PoC report](docs/quality/native-pipeline-poc.md).
+  Native expansion is on hold; the optional implementation is not a performance guarantee.
 
 - Reduce retained memory by eliminating duplicate index-comparison tuples and empty module
   assurance evidence; share module-local symbol IDs and equal immutable function summaries.
   Release extractor callback cycles on success and failure without forcing global GC.
-  Add a reproducible session-object census and explicitly warmed RSS measurements; preserve
-  the earlier failed memory acceptance evidence in the [memory follow-up](docs/quality/memory-followup.md).
+  Add a reproducible session-object census and explicitly warmed RSS measurements.
 
 - Reuse validated module contributions and project indexes when their exact inputs are unchanged;
   publish new incremental identities only after successful assembly.
@@ -23,21 +21,17 @@
   policy results under conservative semantic equality, and cache module assurance/exception evidence.
 - Share immutable Python extraction values within a module, discard stale revision evidence,
   and add reproducible paired timing, semantic-edit parity, and retention acceptance runs.
-  See [performance acceptance](docs/quality/performance-implementation.md) for measured results
-  and memory acceptance limits.
+  See the [performance guide](docs/performance.md) to measure a particular workload.
 
 - Track known callback effects across multiple synchronous helper calls and module boundaries,
   preserving uncertainty on guarded paths and excluding storage, offloading, and reassignment.
-  Validate transitive helper edits against fresh analysis and revisit native acceleration using
-  current anti-monitor stage timings.
+  Validate transitive helper edits against fresh analysis.
 
 - Model immediately invoked and locally assigned lambdas as callable facts while preserving
   deferred/offloaded lambda behavior. Specialize valid direct synchronous callback invocations;
   guarded/context-managed callback paths remain indeterminate.
 - Split the resident check pipeline into analysis setup, policy execution, and reporting stages;
   move persistent module bundles into the cache layer.
-- Validate against an isolated 1,224-source anti-monitor snapshot and retain synthetic and
-  real-project measurements separately.
 
 - Clarify successful-check scope in text and additive JSON interpretation metadata; report
   effective rule levels and avoid a green success summary when assurance is incomplete.
@@ -286,8 +280,6 @@
 
 - Added CI and release verification on Python 3.12, 3.13, and 3.14.
 - Added isolated wheel installation and end-to-end smoke checks to the release test script.
-- Validated strict analysis against the anti-monitor backend with zero active findings,
-  indeterminate findings, engine issues, or unused approvals.
 
 ## 0.2.0
 
@@ -309,8 +301,6 @@
   misses on any validation failure.
 - Added incremental source hashing so unchanged projects reuse all modules and one-file edits
   reparse only the changed module while retaining exact no-cache output parity.
-- On the anti-monitor validation checkout, measured about 10 seconds cold, 0.2 seconds unchanged,
-  and 6.9–7.8 seconds for repeated single-file disk-cache edits.
 
 ### Resident daemon
 
@@ -322,6 +312,3 @@
 - Added a reproducible benchmark that performs a real content change for every edit sample,
   selects targets by transitive import impact, checks canonical output parity, and records daemon
   RSS over repeated checks.
-- On the 952-module anti-monitor validation checkout, measured 0.189 seconds for an unchanged
-  resident check, 1.321 seconds for an ordinary edit, and 2.723 seconds for a shared edit
-  affecting 610 transitive importers.

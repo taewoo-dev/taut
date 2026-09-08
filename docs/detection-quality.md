@@ -81,44 +81,7 @@ The checked-in corpus is synthetic and hand-labeled during repository review. It
 contains known misses and safe controls. Small-corpus scores are regression evidence, not an
 estimate of real-world precision or recall. Preserve missed cases when changing the analyzer.
 
-### Measured comparison — 2026-09-05
-
-The same 10 cases (6 violations, 4 safe controls) were evaluated with the current evaluator against
-baseline commit `bfddf85` and the changed working tree, using Python 3.14.0. The old source was
-extracted with `git archive` into a temporary directory and selected via `PYTHONPATH`, so the
-baseline was executed rather than inferred from historical notes.
-
-| Outcome | Baseline | Changed source |
-|---|---:|---:|
-| Definite findings on the 6 violations | 2 | 4 |
-| Indeterminate on the 6 violations | 0 | 1 |
-| No finding or uncertainty on the 6 violations | 4 | 1 |
-| False findings / indeterminate on 4 safe controls | 0 / 0 | 0 / 0 |
-| Definite-detection recall on this corpus | 33.3% | 66.7% |
-
-At that first improvement point, immediate lambda invocation remained a silent miss and the
-callback was indeterminate rather than a definite finding. Original case outcomes and source hashes
-are retained in [baseline JSON](quality/async-before.json) and [changed-source JSON](quality/async-after.json).
-
-A development performance sample used 32 synthetic mixed FastAPI/SQLAlchemy/Pydantic modules,
-three independent cold runs each. Median wall time was approximately 0.060 s before and 0.054 s
-after, with deterministic digests within each version and no analysis/engine issues. This small,
-non-isolated sample does not establish a speedup, large-project latency, or daemon memory behavior.
-Raw samples: [before](quality/performance-before.json), [after](quality/performance-after.json).
-
-### Follow-up after commit 0dea529
-
-The same 10 snippets now produce six definite findings on the six labeled violations and no
-findings/indeterminate decisions on the four safe controls. The previously missed lambda and
-uncertain direct callback are both detected. This is a regression result on selected examples,
-not a claim of complete Python analysis. [Follow-up results](quality/async-followup.json).
-
-Real-project validation uses a temporary snapshot of the current anti-monitor backend, including
-its existing uncommitted source changes. Raw source and full analysis reports stay outside this
-repository. See [the real-project report](quality/antimonitor-followup.md) for source identity,
-controlled probes, resident parity, timing, memory, and limitations.
-
-## Adopt rules incrementally
+Run the evaluator against the revision you intend to use and retain its JSON output\nwith that source revision. Results on selected synthetic cases are not estimates of\nreal-world detection accuracy.\n\n## Adopt rules incrementally
 
 Keep `strict = true` and stage explicitly selected rules as advisory:
 
