@@ -1,7 +1,7 @@
 # Launch-kit validation
 
-Validated locally on 2026-09-08. No remote workflow run or external adoption is
-claimed by this report.
+Validated locally on 2026-09-08. The launch kit is now published in
+[PR #14](https://github.com/taewoo-dev/taut/pull/14). No external adoption is claimed.
 
 ## Released-tool demonstration
 
@@ -33,8 +33,15 @@ inside README. It now checks the preserved `docs/reference.md` and getting-start
 guide, plus README links to both documents and the agent prompt. No engine rule
 or CLI behavior was changed to make the demo pass.
 
-The new independent demo workflow targets Linux/Python 3.12 and tests the published
-release. Its remote result remains pending until these changes are pushed.
+The independent demo workflow targets Linux/Python 3.12 and tests the published
+release. Its [remote run passed](https://github.com/taewoo-dev/taut/actions/runs/34225267063).
+
+The first full remote CI run exposed ten `SOURCE_UNACCOUNTED` issues: newly
+tracked demo and media files were outside the engine's declared source scope.
+The fix adds narrow, reasoned exclusions for the separately verified demo
+applications and helper scripts. The full gate now also checks both helpers'
+formatting and lint. No detection rule or demo policy was weakened.
+Consult the PR checks for the latest full remote matrix result.
 
 ## Presentation checks
 

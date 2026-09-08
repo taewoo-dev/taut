@@ -48,10 +48,12 @@ Read-only GitHub/PyPI check on **2026-09-08**:
 | External trials / adopters | Not yet measured | No participants contacted during kit preparation |
 | Published launch posts | None from this workflow | Drafts only |
 
-Prepared locally: README, demo, verification, media, issue form, CI job, post
-drafts, candidate research. Pending externally: reviewed changes pushed, public
-CI result, account/profile edits, launch posts, trial recruitment, pilot contacts,
-adoptions, and follow-ups.
+Published in [PR #14](https://github.com/taewoo-dev/taut/pull/14): README, demo,
+verification, media, logos, issue form, CI job, post drafts, and candidate research.
+The independent release demo passed remotely. Full CI scope corrections and
+main-branch publication are being finalized; consult the PR for live status.
+Launch posts, trial recruitment, pilot contacts, adoptions, and follow-ups remain
+unperformed. Prepared drafts are not published launch posts or adoption evidence.
 
 ## Append observations
 

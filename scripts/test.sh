@@ -97,6 +97,8 @@ if [[ "$SKIP_STATIC" == false ]]; then
   uv run --locked python scripts/check_conventions.py
   uv run --locked ruff format --check src tests scripts
   uv run --locked ruff check src tests scripts
+  uv run --locked ruff format --check --isolated --line-length 100 examples/architecture/verify.py docs/launch/render_demo.py
+  uv run --locked ruff check --isolated --select E,F,I,UP,B --target-version py312 --line-length 100 examples/architecture/verify.py docs/launch/render_demo.py
   uv run --locked mypy
   uv run --locked pyright
   uv run --locked taut check .

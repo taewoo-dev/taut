@@ -243,6 +243,14 @@ reason = "Rule fixtures intentionally contain violations; pytest validates them 
 patterns = ["scripts/*.py"]
 reason = "Release tooling is validated by Ruff, mypy, Pyright, and dedicated smoke tests."
 
+[[tool.taut.exclusions]]
+patterns = ["examples/architecture/before/app/*.py", "examples/architecture/after/app/*.py"]
+reason = "Standalone demo applications use their shared architecture policy; the published-release demo workflow verifies both, including the intentional violation."
+
+[[tool.taut.exclusions]]
+patterns = ["examples/architecture/verify.py", "docs/launch/render_demo.py"]
+reason = "Isolated demo verification and media tooling are not engine source; linted by scripts/test.sh, with demo execution validated in its own workflow."
+
 [[tool.taut.assurance.assertions]]
 domain = "dto"
 kind = "path"
