@@ -1,25 +1,25 @@
-# 문서 안내
+# Documentation
 
-릴리스 사용자는 [`../MIGRATION.md`](../MIGRATION.md)와 [`VALIDATION_REPORT.md`](VALIDATION_REPORT.md)를
-먼저 확인한다. 이 문서 세트는 pytaut 0.10.0, 설정 schema v5, Python 3.12+ 기준이다.
+Start with the [setup guide](getting-started.md) or run the
+[FastAPI example](../examples/architecture/README.md).
+These documents describe pytaut 0.10.0, configuration schema v5, and Python 3.12+.
 
-## 현재 구현 기준
+## Using Taut
 
-- [`../examples/architecture/README.md`](../examples/architecture/README.md): 배포 버전으로 재현하는 FastAPI 경계 위반 데모와 비교 검증
-- [`reference.md`](reference.md): 기존 README의 상세 CLI·설정·확장 계약
-- [`launch/README.md`](launch/README.md): 출시 자료, 게시 초안, 외부 레포 후보, 30일 실행 기록
+- [Getting started](getting-started.md): installation, policy setup, agent-assisted setup, and CI.
+- [Reference](reference.md): CLI commands, configuration, rules, and extension contracts.
+- [Configuration conventions](configuration-conventions.md): file roles, automatic classification, and policy simplification.
+- [Detection scope](detection-quality.md): what results establish, known limits, and incremental adoption.
+- [Migration guide](../MIGRATION.md): upgrading existing configurations.
+- [Cache and daemon operations](operations.md): execution modes, lifecycle, and security boundaries.
+- [Performance measurement](performance.md): reproducible benchmarks and result interpretation.
 
-- [`detection-quality.md`](detection-quality.md): 판정 범위, 미탐 평가와 점진 도입; 0.10.0 출시 변경
+## Examples and development
 
-- [`configuration-conventions.md`](configuration-conventions.md): 신규 파일 자동 분류, 역할 규약, 설정 간소화와 정책 준수 전환
+- [Runnable architecture example](../examples/architecture/README.md): before/after code and verified results.
+- [Demo and visual assets](launch/README.md): media, logos, and reproduction commands.
+- [Plugin development](plugins.md): public rule-pack and fact-provider contracts.
+- [System architecture](architecture/taut-system-architecture.html): interactive component and analysis-flow map.
 
-- [`architecture/taut-system-architecture.html`](architecture/taut-system-architecture.html): 핵심 구조·계층·판정 흐름 인터랙티브 맵
-- [`getting-started.md`](getting-started.md): 신규 설치부터 AI 보정, audit/check 반복, CI 적용까지의 사용자 가이드
-- [`performance.md`](performance.md): disk cache와 resident daemon의 재현 가능한 성능 계약
-- [`performance-roadmap.md`](performance-roadmap.md): 조사 근거, 단계별 최적화 순서, 정확성·성능 진입 조건
-- [`operations.md`](operations.md): cache/daemon 운영 방식과 보안 경계
-- [`plugins.md`](plugins.md): 외부 rule pack과 fact provider 공개 계약 및 설치 예시
-- [`VALIDATION_REPORT.md`](VALIDATION_REPORT.md): 재현 가능한 릴리스 검증 절차와 최신 결과
-
-현재 동작이 문서와 다르면 코드, 자동 테스트, 위 문서를 함께 고쳐야 한다. 현재 명령,
-설정 형식, 규칙 수, 예외 처리 방식은 README와 추적되는 문서 및 코드를 기준으로 한다.
+Run `bash scripts/test.sh` from the repository root for the static checks,
+tests, coverage, package build, and installed-wheel smoke test.

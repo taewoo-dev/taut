@@ -615,5 +615,5 @@ uv pip install --python /tmp/taut-validation/bin/python --refresh --reinstall /p
 The full check runs the repository's own policy rules, Ruff, mypy strict, Pyright strict, pytest
 with at least 90% branch coverage, package builds, and an isolated wheel installation.
 
-See [`MIGRATION.md`](../MIGRATION.md) for the 0.1.x upgrade checklist and [`docs/VALIDATION_REPORT.md`](VALIDATION_REPORT.md)
-for reproducible release checks. See [`docs/README.md`](README.md) for current design documents.
+See the [migration guide](../MIGRATION.md) for upgrade instructions and the
+[documentation index](README.md) for usage, measurement, and development guides.

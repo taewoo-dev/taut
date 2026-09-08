@@ -5,7 +5,7 @@
 * Synthetic scaling (`--scale small|medium|large`) generates deterministic
   generic Python or mixed FastAPI + SQLAlchemy + Pydantic projects at 8, 32,
   and 96 modules. These results are labeled `mode: synthetic`; they are not
-  anti-monitor evidence.
+  measurements of a real checkout.
 * Real checkout (`--real-checkout PATH --requested N`) reads Python files from
   the named checkout only. It reports `requested`, `discovered`, `complete`,
   `partial`, `failed`, `status`, wall time, normalized RSS bytes, throughput,
@@ -37,46 +37,23 @@ uv run python scripts/benchmark_performance.py --scale small --repeats 1 \
   --daemon-timing-repeats 5 --daemon-memory-checks 30
 ```
 
-The real checkout command is the path for the exact anti-monitor validation;
-synthetic 952-source experiments must not be labeled as that evidence. A
-successful 952/952 result has `requested=952`, `discovered=952`,
-`complete=952`, `partial=0`, `failed=0`, and `status=complete`.
+Set `--requested` to the expected source count of your checkout. A complete result
+has matching requested, discovered, and complete counts, with zero partial/failed
+sources and `status=complete`. Do not present synthetic runs as real-project evidence.
 
-## 0.2.0 disk-cache contract
+## Cache and daemon correctness
 
-The project-local cache must preserve exact stdout, stderr, and exit-code parity
-with `--no-cache`. The release thresholds on the anti-monitor validation checkout
-are:
+Both acceleration modes must preserve stdout, stderr, and exit-code parity with
+canonical analysis. See [operations](operations.md) for commands and lifecycle.
 
-| Scenario | Limit | Observed |
-|---|---:|---:|
-| cold, no cache | 20 s | about 10.0 s |
-| unchanged, disk cache | 3 s | about 0.2 s |
-| ordinary one-file edit, disk cache | 8 s | 6.9–7.8 s |
+The fast bundle is an optimization, not a source of truth. Missing keys, invalid
+signatures, incompatible interpreters, malformed payloads, disallowed types, and
+I/O failures become cache misses and fall back to canonical analysis.
 
-The fast bundle is an optimization, not a source of truth. A missing key, invalid
-signature, incompatible interpreter, malformed payload, disallowed type, or I/O
-failure becomes a cache miss and falls back to canonical analysis.
-
-## 0.2.0 resident-daemon contract
-
-The daemon benchmark selects the ordinary source with the smallest transitive
-inbound impact and the shared source with the largest. On the 952-module
-anti-monitor checkout the selected files were `app/asgi.py` (0 transitive
-importers) and `app/core/config.py` (610 transitive importers).
-
-| Scenario | Limit | Final median |
-|---|---:|---:|
-| cold daemon | 20 s | 9.54 s |
-| unchanged | 0.5 s | 0.189 s |
-| ordinary edit | 2 s | 1.321 s |
-| shared edit | 4 s | 2.723 s |
-
-Every edit result reparsed exactly one module. The ordinary samples reused 217,446
-of 218,018 policy evaluations; the shared samples reused 216,968. Across 30
-unchanged memory checks, RSS moved from 769,130,496 to 744,325,120 bytes, with a
-769,146,880-byte peak. The machine-readable release result is
-[`performance/anti-monitor-0.2.0.json`](performance/anti-monitor-0.2.0.json).
+The daemon benchmark selects ordinary and shared sources by transitive inbound
+impact. Interpret edit timings alongside reparsed modules, reused evaluations,
+source count, machine details, and memory samples. Measure your own workload;
+no universal latency or memory bound is promised.
 
 ## Baseline enforcement
 
