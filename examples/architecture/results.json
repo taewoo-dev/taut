@@ -1,0 +1,235 @@
+{
+  "recorded_at": "2026-09-08T11:32:13.071218+00:00",
+  "verified": true,
+  "python": "3.12.12",
+  "versions": {
+    "pytaut": "0.10.0",
+    "fastapi": "0.116.1",
+    "httpx": "0.28.1",
+    "ruff": "0.12.12",
+    "mypy": "1.18.2",
+    "pyright": "1.1.405"
+  },
+  "provenance": "Hand-authored example; real CLI and HTTP results; not an AI session.",
+  "shared_policy_sha256": "e652ed2c9c54a42232c9c9585b9b17b4d2b22badc20646db13b6818c99721862",
+  "sources": {
+    "after/app/main.py": "486ad40137d1ff3cbf1e17a0f35b3f812edefb2fc138061d3176b292f103ca93",
+    "after/app/repository.py": "179539cc456f6af2d72fe2905444e2b78e389bef114c4778f67dd25ea9b3f204",
+    "after/app/router.py": "fbe0d48e06cc4ffcd41aec791d6fb93d198b94e1ebb9c33262bcc5b71bab9e58",
+    "after/app/service.py": "677a5dd078ed2aff59b1642122c82be6bef5de42826764008c5ff67e87bd07a4",
+    "before/app/main.py": "486ad40137d1ff3cbf1e17a0f35b3f812edefb2fc138061d3176b292f103ca93",
+    "before/app/repository.py": "179539cc456f6af2d72fe2905444e2b78e389bef114c4778f67dd25ea9b3f204",
+    "before/app/router.py": "4196cf23db96437c995f600ac255a9dc2c3c950eaebc465ac0365a06410533ae",
+    "before/app/service.py": "677a5dd078ed2aff59b1642122c82be6bef5de42826764008c5ff67e87bd07a4",
+    "after/pyproject.toml": "59ba865d9fb4a07b3b1051caabd5d0a61c3628a88d5482ec3a97cc48e7bc0f82",
+    "before/pyproject.toml": "6c9f0f78da0d5f639b9a984213d60e64b65e377088d8337a420f12cf46825f51"
+  },
+  "commands": [
+    {
+      "variant": "before",
+      "command": [
+        "ruff",
+        "check",
+        "--isolated",
+        "--select",
+        "E,F,I,UP,B",
+        "--target-version",
+        "py312",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "All checks passed!\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "mypy",
+        "--strict",
+        "--explicit-package-bases",
+        "--no-incremental",
+        "--cache-dir",
+        "/dev/null",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Success: no issues found in 4 source files\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "pyright",
+        "--pythonversion",
+        "3.12",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "0 errors, 0 warnings, 0 informations\nWARNING: there is a new pyright version available (v1.1.405 -> v1.1.411).\nPlease install the new version or set PYRIGHT_PYTHON_FORCE_VERSION to `latest`\n\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "python",
+        "-c",
+        "from fastapi.testclient import TestClient; from app.main import app; response = TestClient(app).get('/greetings/'); assert response.status_code == 200; assert response.json() == 'Hello from the repository'; print('GET /greetings/: 200, expected response')"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "GET /greetings/: 200, expected response\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "taut",
+        "config",
+        "validate",
+        "."
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Configuration valid: pyproject.toml (85f580eb4a0905d7f415b09da70763c9a55fd6a2d1d05df440e159e736d9ec19)\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "taut",
+        "audit",
+        "."
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Assurance complete\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "taut",
+        "check",
+        ".",
+        "--no-cache"
+      ],
+      "expected_exit": 1,
+      "actual_exit": 1,
+      "output": "app/router.py:3:1: error: [ARCH001] Role router imports app.repository from disallowed role repository.\nCheck complete: 1 error, 0 warnings\n"
+    },
+    {
+      "variant": "before",
+      "command": [
+        "taut",
+        "check",
+        ".",
+        "--no-cache",
+        "--format",
+        "json"
+      ],
+      "expected_exit": 1,
+      "actual_exit": 1,
+      "output": "{\n  \"approvals\": {\n    \"unused\": [],\n    \"used\": []\n  },\n  \"assurance\": {\n    \"complete\": true,\n    \"features\": [\n      {\n        \"detected\": true,\n        \"evidence\": [\n          {\n            \"domain\": \"api\",\n            \"kind\": \"path\",\n            \"path\": \"app/main.py\",\n            \"target\": \"app/main.py\"\n          },\n          {\n            \"domain\": \"api\",\n            \"kind\": \"path\",\n            \"path\": \"app/router.py\",\n            \"target\": \"app/router.py\"\n          }\n        ],\n        \"expected\": \"required\",\n        \"name\": \"api\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"database\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"dto\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"enum\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"exception_registry\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"external_calls\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"migrations\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"schema\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"scripts\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"security\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"snapshot\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"tests\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"transaction\"\n      }\n    ],\n    \"issues\": [],\n    \"scope\": {\n      \"analyzed_python_files\": 4,\n      \"discovered_python_files\": 4,\n      \"excluded_python_files\": 0\n    },\n    \"used_assertions\": []\n  },\n  \"coverage\": {\n    \"analysis\": {\n      \"calls\": {\n        \"ambiguous\": 0,\n        \"conditional\": 0,\n        \"dynamic\": 0,\n        \"resolved\": 6,\n        \"total\": 6,\n        \"unresolved\": 0\n      },\n      \"capability_provenance\": [\n        {\n          \"capability\": \"taut.bindings@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.fastapi.dependencies@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.fastapi.endpoints@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.fastapi.response_models@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.fastapi.routers@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.imports@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.syntax@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        },\n        {\n          \"capability\": \"taut.uses@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n        }\n      ],\n      \"imports\": {\n        \"resolved\": 3,\n        \"unresolved\": 0\n      },\n      \"references\": {\n        \"ambiguous\": 0,\n        \"conditional\": 0,\n        \"dynamic\": 0,\n        \"resolved\": 13,\n        \"total\": 13,\n        \"unresolved\": 0\n      },\n      \"sources\": {\n        \"complete\": 4,\n        \"failed\": 0,\n        \"partial\": 0,\n        \"requested\": 4\n      },\n      \"unavailable_capabilities\": []\n    },\n    \"enabled_rules\": 49,\n    \"failed\": 1,\n    \"gaps\": [],\n    \"indeterminate\": 0,\n    \"not_applicable\": 134,\n    \"passed\": 53,\n    \"rule_levels\": {\n      \"ADAPTER001\": \"enforced\",\n      \"ADAPTER002\": \"enforced\",\n      \"API001\": \"enforced\",\n      \"API002\": \"enforced\",\n      \"API003\": \"enforced\",\n      \"ARCH000\": \"enforced\",\n      \"ARCH001\": \"enforced\",\n      \"ARCH002\": \"enforced\",\n      \"ASYNC001\": \"enforced\",\n      \"BOUNDARY001\": \"enforced\",\n      \"BOUNDARY002\": \"enforced\",\n      \"BOUNDARY003\": \"enforced\",\n      \"CAT001\": \"advisory\",\n      \"CONFIG001\": \"enforced\",\n      \"DB001\": \"enforced\",\n      \"DEPENDS001\": \"enforced\",\n      \"DTO001\": \"enforced\",\n      \"DTO002\": \"enforced\",\n      \"ENTRY001\": \"enforced\",\n      \"ENUM001\": \"enforced\",\n      \"EXC001\": \"enforced\",\n      \"HTTP001\": \"enforced\",\n      \"IGNORE001\": \"enforced\",\n      \"IMPORT001\": \"enforced\",\n      \"IMPORT002\": \"enforced\",\n      \"LOG001\": \"enforced\",\n      \"MODEL001\": \"enforced\",\n      \"ORM001\": \"enforced\",\n      \"ORM002\": \"enforced\",\n      \"QUERY001\": \"enforced\",\n      \"RUNTIME001\": \"enforced\",\n      \"SCHEMA001\": \"enforced\",\n      \"SCHEMA002\": \"enforced\",\n      \"SCHEMA003\": \"enforced\",\n      \"SEC001\": \"enforced\",\n      \"SERVICE001\": \"enforced\",\n      \"SESSION001\": \"enforced\",\n      \"SESSION002\": \"enforced\",\n      \"SESSION003\": \"enforced\",\n      \"SIZE001\": \"enforced\",\n      \"SNAPSHOT001\": \"enforced\",\n      \"SQL001\": \"enforced\",\n      \"TEST001\": \"enforced\",\n      \"TEST002\": \"enforced\",\n      \"TIME001\": \"enforced\",\n      \"TX001\": \"enforced\",\n      \"TX002\": \"enforced\",\n      \"TX003\": \"enforced\",\n      \"WIRING001\": \"enforced\"\n    },\n    \"skipped\": [],\n    \"total_targets\": 188\n  },\n  \"decision_digest\": \"4d214fe647508c2d41b5277a46dd83321e0eb27d3d5c4a73452c33eb8ddfcf9a\",\n  \"diagnostics\": [\n    {\n      \"disposition\": \"active\",\n      \"evidence\": [\n        {\n          \"key\": \"source_role\",\n          \"value\": \"router\"\n        },\n        {\n          \"key\": \"target_role\",\n          \"value\": \"repository\"\n        }\n      ],\n      \"fingerprint\": \"2896097c6d2434fe24e12cc0b654e8603dfc77343a78fef08d3ab786b96c3673\",\n      \"help\": \"Import internal modules only along role directions allowed by the manifest.\",\n      \"level\": \"enforced\",\n      \"location\": {\n        \"end\": {\n          \"column\": 56,\n          \"line\": 2\n        },\n        \"path\": \"app/router.py\",\n        \"start\": {\n          \"column\": 0,\n          \"line\": 2\n        }\n      },\n      \"message\": \"Role router imports app.repository from disallowed role repository.\",\n      \"related_locations\": [],\n      \"rule_id\": \"ARCH001\",\n      \"source\": \"static\"\n    }\n  ],\n  \"engine_issues\": [],\n  \"engine_version\": \"0.10.0\",\n  \"exit\": {\n    \"code\": 1,\n    \"reasons\": [\n      \"Enforced rule violation\"\n    ]\n  },\n  \"ignores\": {\n    \"unused\": [],\n    \"used\": []\n  },\n  \"interpretation\": {\n    \"assurance_complete_means\": \"configured source and feature checks completed\",\n    \"empty_gaps_means\": \"no rule-reported gaps, not exhaustive semantic coverage\",\n    \"resolved_means\": \"symbol identity resolved, not runtime behavior proven\",\n    \"runtime_safety_proven\": false,\n    \"scope\": \"supported_semantics_and_configured_policy\"\n  },\n  \"schema_version\": 5,\n  \"snapshot_id\": \"469c2b03711be58ec026869eff737ec9363256fd1d9b2120e853ed7393c62c80\"\n}\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "ruff",
+        "check",
+        "--isolated",
+        "--select",
+        "E,F,I,UP,B",
+        "--target-version",
+        "py312",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "All checks passed!\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "mypy",
+        "--strict",
+        "--explicit-package-bases",
+        "--no-incremental",
+        "--cache-dir",
+        "/dev/null",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Success: no issues found in 4 source files\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "pyright",
+        "--pythonversion",
+        "3.12",
+        "app"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "0 errors, 0 warnings, 0 informations\nWARNING: there is a new pyright version available (v1.1.405 -> v1.1.411).\nPlease install the new version or set PYRIGHT_PYTHON_FORCE_VERSION to `latest`\n\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "python",
+        "-c",
+        "from fastapi.testclient import TestClient; from app.main import app; response = TestClient(app).get('/greetings/'); assert response.status_code == 200; assert response.json() == 'Hello from the repository'; print('GET /greetings/: 200, expected response')"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "GET /greetings/: 200, expected response\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "taut",
+        "config",
+        "validate",
+        "."
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Configuration valid: pyproject.toml (85f580eb4a0905d7f415b09da70763c9a55fd6a2d1d05df440e159e736d9ec19)\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "taut",
+        "audit",
+        "."
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Assurance complete\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "taut",
+        "check",
+        ".",
+        "--no-cache"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "Check complete: no policy violations within supported scope\n"
+    },
+    {
+      "variant": "after",
+      "command": [
+        "taut",
+        "check",
+        ".",
+        "--no-cache",
+        "--format",
+        "json"
+      ],
+      "expected_exit": 0,
+      "actual_exit": 0,
+      "output": "{\n  \"approvals\": {\n    \"unused\": [],\n    \"used\": []\n  },\n  \"assurance\": {\n    \"complete\": true,\n    \"features\": [\n      {\n        \"detected\": true,\n        \"evidence\": [\n          {\n            \"domain\": \"api\",\n            \"kind\": \"path\",\n            \"path\": \"app/main.py\",\n            \"target\": \"app/main.py\"\n          },\n          {\n            \"domain\": \"api\",\n            \"kind\": \"path\",\n            \"path\": \"app/router.py\",\n            \"target\": \"app/router.py\"\n          }\n        ],\n        \"expected\": \"required\",\n        \"name\": \"api\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"database\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"dto\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"enum\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"exception_registry\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"external_calls\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"migrations\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"schema\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"scripts\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"security\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"snapshot\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"tests\"\n      },\n      {\n        \"detected\": false,\n        \"evidence\": [],\n        \"expected\": \"absent\",\n        \"name\": \"transaction\"\n      }\n    ],\n    \"issues\": [],\n    \"scope\": {\n      \"analyzed_python_files\": 4,\n      \"discovered_python_files\": 4,\n      \"excluded_python_files\": 0\n    },\n    \"used_assertions\": []\n  },\n  \"coverage\": {\n    \"analysis\": {\n      \"calls\": {\n        \"ambiguous\": 0,\n        \"conditional\": 0,\n        \"dynamic\": 0,\n        \"resolved\": 6,\n        \"total\": 6,\n        \"unresolved\": 0\n      },\n      \"capability_provenance\": [\n        {\n          \"capability\": \"taut.bindings@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.fastapi.dependencies@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.fastapi.endpoints@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.fastapi.response_models@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.fastapi.routers@1\",\n          \"location\": null,\n          \"provider\": \"taut.fastapi\",\n          \"provider_version\": \"1\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.imports@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.syntax@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        },\n        {\n          \"capability\": \"taut.uses@1\",\n          \"location\": null,\n          \"provider\": \"taut.python-core\",\n          \"provider_version\": \"0.10.0\",\n          \"source_hash\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n        }\n      ],\n      \"imports\": {\n        \"resolved\": 3,\n        \"unresolved\": 0\n      },\n      \"references\": {\n        \"ambiguous\": 0,\n        \"conditional\": 0,\n        \"dynamic\": 0,\n        \"resolved\": 13,\n        \"total\": 13,\n        \"unresolved\": 0\n      },\n      \"sources\": {\n        \"complete\": 4,\n        \"failed\": 0,\n        \"partial\": 0,\n        \"requested\": 4\n      },\n      \"unavailable_capabilities\": []\n    },\n    \"enabled_rules\": 49,\n    \"failed\": 0,\n    \"gaps\": [],\n    \"indeterminate\": 0,\n    \"not_applicable\": 134,\n    \"passed\": 54,\n    \"rule_levels\": {\n      \"ADAPTER001\": \"enforced\",\n      \"ADAPTER002\": \"enforced\",\n      \"API001\": \"enforced\",\n      \"API002\": \"enforced\",\n      \"API003\": \"enforced\",\n      \"ARCH000\": \"enforced\",\n      \"ARCH001\": \"enforced\",\n      \"ARCH002\": \"enforced\",\n      \"ASYNC001\": \"enforced\",\n      \"BOUNDARY001\": \"enforced\",\n      \"BOUNDARY002\": \"enforced\",\n      \"BOUNDARY003\": \"enforced\",\n      \"CAT001\": \"advisory\",\n      \"CONFIG001\": \"enforced\",\n      \"DB001\": \"enforced\",\n      \"DEPENDS001\": \"enforced\",\n      \"DTO001\": \"enforced\",\n      \"DTO002\": \"enforced\",\n      \"ENTRY001\": \"enforced\",\n      \"ENUM001\": \"enforced\",\n      \"EXC001\": \"enforced\",\n      \"HTTP001\": \"enforced\",\n      \"IGNORE001\": \"enforced\",\n      \"IMPORT001\": \"enforced\",\n      \"IMPORT002\": \"enforced\",\n      \"LOG001\": \"enforced\",\n      \"MODEL001\": \"enforced\",\n      \"ORM001\": \"enforced\",\n      \"ORM002\": \"enforced\",\n      \"QUERY001\": \"enforced\",\n      \"RUNTIME001\": \"enforced\",\n      \"SCHEMA001\": \"enforced\",\n      \"SCHEMA002\": \"enforced\",\n      \"SCHEMA003\": \"enforced\",\n      \"SEC001\": \"enforced\",\n      \"SERVICE001\": \"enforced\",\n      \"SESSION001\": \"enforced\",\n      \"SESSION002\": \"enforced\",\n      \"SESSION003\": \"enforced\",\n      \"SIZE001\": \"enforced\",\n      \"SNAPSHOT001\": \"enforced\",\n      \"SQL001\": \"enforced\",\n      \"TEST001\": \"enforced\",\n      \"TEST002\": \"enforced\",\n      \"TIME001\": \"enforced\",\n      \"TX001\": \"enforced\",\n      \"TX002\": \"enforced\",\n      \"TX003\": \"enforced\",\n      \"WIRING001\": \"enforced\"\n    },\n    \"skipped\": [],\n    \"total_targets\": 188\n  },\n  \"decision_digest\": \"4d214fe647508c2d41b5277a46dd83321e0eb27d3d5c4a73452c33eb8ddfcf9a\",\n  \"diagnostics\": [],\n  \"engine_issues\": [],\n  \"engine_version\": \"0.10.0\",\n  \"exit\": {\n    \"code\": 0,\n    \"reasons\": []\n  },\n  \"ignores\": {\n    \"unused\": [],\n    \"used\": []\n  },\n  \"interpretation\": {\n    \"assurance_complete_means\": \"configured source and feature checks completed\",\n    \"empty_gaps_means\": \"no rule-reported gaps, not exhaustive semantic coverage\",\n    \"resolved_means\": \"symbol identity resolved, not runtime behavior proven\",\n    \"runtime_safety_proven\": false,\n    \"scope\": \"supported_semantics_and_configured_policy\"\n  },\n  \"schema_version\": 5,\n  \"snapshot_id\": \"f143d8bcdf3a24d416df5d34e65dc55cbd40878f2e04160f6b9be05f78eec330\"\n}\n"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+name: Published release demo
+
+on:
+  pull_request:
+    paths:
+      - examples/architecture/**
+      - .github/workflows/demo.yml
+  push:
+    branches: [main]
+    paths:
+      - examples/architecture/**
+      - .github/workflows/demo.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify the published tools and unchanged policy
+        run: uv run --no-project --python 3.12 --locked examples/architecture/verify.py

@@ -19,6 +19,8 @@ dist/
 !/docs/performance-roadmap.md
 !/docs/configuration-conventions.md
 !/docs/detection-quality.md
+!/docs/reference.md
+!/docs/launch/
 !/docs/quality/
 
 # Optional native summary PoC
