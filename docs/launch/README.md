@@ -5,6 +5,7 @@ their presence does not mean a post has been published or a project has adopted 
 
 ## Ready to review
 
+- [Logo direction, Python ecosystem references, and usage notes](brand.md)
 - [Public introduction](../../README.md) and [runnable FastAPI demo](../../examples/architecture/README.md)
 - [18-second GIF](assets/architecture-demo.gif) for the README
 - [18-second MP4](assets/architecture-demo.mp4) for social posts

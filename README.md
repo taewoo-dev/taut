@@ -1,11 +1,16 @@
 <div align="center">
 
-<h1>taut</h1>
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/launch/assets/taut-logo-dark.png">
+    <img src="docs/launch/assets/taut-logo-light.png" alt="taut" width="400">
+  </picture>
+</h1>
 
 <p><strong>Your AI writes code. Taut checks your architecture.</strong></p>
 
-<p>Check Python code against your project's architecture rules.<br>
-Catch violations locally and enforce the same rules in CI.</p>
+<p>Define which modules can depend on each other.<br>
+Taut flags Python imports that break those rules, locally and in CI.</p>
 
 <p>
   <a href="#try-the-demo"><strong>Try the demo</strong></a> ·
