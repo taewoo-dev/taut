@@ -7,6 +7,7 @@
   Clear inferred types on reassignment and conservatively join them across control flow.
 - Distinguish reviewed no-effect catalog entries from missing classifications. Keep real
   HTTP/process/stream effects enforced and prevent project overrides of built-in effects.
+  Preserve blocking I/O for Requests JSON decoding, which may consume a streamed body.
 - Invalidate older Python analysis caches with adapter identity 13.
 
 ## 0.10.0

@@ -609,6 +609,8 @@ missing classification. For example, constructing `subprocess.CompletedProcess` 
 execute a process, and parsing an already-loaded HTTP response is not another request.
 Reviewed local operations use an empty effect set and resolve as `no_effects`. Actual HTTP
 requests, subprocess execution/waiting, response streaming, and pipe I/O keep their effects.
+`requests.Response.json()` also retains blocking I/O because decoding can consume an unread
+streaming response body; `httpx.Response.json()` requires an already-read body.
 An exact no-effect entry takes precedence over a broad external logging prefix.
 
 Project-owned local operations may be declared explicitly:

@@ -74,3 +74,26 @@ async def inspect(client: httpx.Client):
     logged = [item for item in result.findings if item.rule_id == RuleId("LOG001")]
     assert {item.evidence[0].value for item in logged} == {"client.get", "response.read"}
     assert not [item for item in result.findings if item.rule_id == RuleId("CAT001")]
+
+
+def test_requests_json_and_stream_operations_remain_blocking_in_async() -> None:
+    source = make_source(
+        "app/probe.py",
+        """
+import requests
+
+async def inspect(client: requests.Session):
+    response = client.get('https://example.invalid', stream=True)
+    response.json()
+    response.iter_content()
+    response.iter_lines()
+    response.close()
+    response.raise_for_status()
+    response.cookies.get('session')
+""",
+    )
+    context = make_context(analyze(source), roles={"adapter": ("app/*.py",)})
+    result = PolicyEngine(builtin_rule_registry()).run(context)
+    blocking = [item for item in result.findings if item.rule_id == RuleId("ASYNC001")]
+    assert len(blocking) == 5
+    assert not [item for item in result.findings if item.rule_id == RuleId("CAT001")]

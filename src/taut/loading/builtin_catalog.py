@@ -39,7 +39,6 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
         _direct("httpx.Response.json"),
         _direct("httpx.Response.raise_for_status"),
         _direct("httpx.Cookies.get"),
-        _direct("requests.Response.json"),
         _direct("requests.Response.raise_for_status"),
         _direct("requests.cookies.RequestsCookieJar.get"),
     ]
@@ -47,6 +46,9 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
         entries.append(_direct(f"io.IOBase.{name}", Effect.IO_BLOCKING))
     for name in ("read", "close", "iter_bytes", "iter_text", "iter_lines", "iter_raw"):
         entries.append(_direct(f"httpx.Response.{name}", Effect.IO_BLOCKING))
+    # requests JSON decoding consumes an unread streaming response body.
+    for name in ("json", "close", "iter_content", "iter_lines"):
+        entries.append(_direct(f"requests.Response.{name}", Effect.IO_BLOCKING))
     for name in ("run", "call", "check_call", "check_output"):
         entries.append(_direct(f"subprocess.{name}", Effect.IO_BLOCKING))
     for owner in ("pathlib.Path", "pathlib.PosixPath", "pathlib.WindowsPath"):
