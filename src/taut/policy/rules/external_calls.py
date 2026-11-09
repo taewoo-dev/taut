@@ -21,7 +21,8 @@ from taut.policy.rules.helpers import (
 
 HTTP_RULE_ID = RuleId("HTTP001")
 LOG_RULE_ID = RuleId("LOG001")
-RULE_VERSION = 1
+HTTP_RULE_VERSION = 1
+LOG_RULE_VERSION = 2
 
 
 class HttpTimeoutRule:
@@ -47,7 +48,7 @@ class HttpTimeoutRule:
         findings = tuple(
             build_finding(
                 rule_id=HTTP_RULE_ID,
-                rule_version=RULE_VERSION,
+                rule_version=HTTP_RULE_VERSION,
                 module_id=call.module_id,
                 enclosing_symbol=call.enclosing_symbol,
                 subject=call.id,
@@ -98,10 +99,13 @@ class ExternalCallLoggingRule:
         relevant = tuple(
             call
             for call in context.model.module(target.module_id).calls
-            if context.indexes.is_logged_external_call(call)
-            or (
-                (resolution := context.effect_of(call)).state is EffectResolutionState.MATCHED
-                and Effect.EXTERNAL_CALL in resolution.effects
+            if (resolution := context.effect_of(call)).state is not EffectResolutionState.NO_EFFECTS
+            and (
+                context.indexes.is_logged_external_call(call)
+                or (
+                    resolution.state is EffectResolutionState.MATCHED
+                    and Effect.EXTERNAL_CALL in resolution.effects
+                )
             )
         )
         if not relevant:
@@ -120,7 +124,7 @@ class ExternalCallLoggingRule:
             findings.append(
                 build_finding(
                     rule_id=LOG_RULE_ID,
-                    rule_version=RULE_VERSION,
+                    rule_version=LOG_RULE_VERSION,
                     module_id=call.module_id,
                     enclosing_symbol=call.enclosing_symbol,
                     subject=call.id,
@@ -140,7 +144,7 @@ def external_call_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     requirements = RuleRequirements(frozenset(), AnalysisStage.FACTS_READY, False, False)
     http = RuleDefinition(
         id=HTTP_RULE_ID,
-        behavior_version=RULE_VERSION,
+        behavior_version=HTTP_RULE_VERSION,
         title="Explicit HTTP timeout",
         help="Specify a timeout when constructing configured HTTP clients.",
         target=RuleTarget.MODULE,
@@ -152,7 +156,7 @@ def external_call_rule_definitions() -> tuple[RuleDefinition, RuleDefinition]:
     )
     log = RuleDefinition(
         id=LOG_RULE_ID,
-        behavior_version=RULE_VERSION,
+        behavior_version=LOG_RULE_VERSION,
         title="Structured external call logging",
         help="Run external calls inside an approved external_call context.",
         target=RuleTarget.MODULE,

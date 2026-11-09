@@ -475,9 +475,11 @@ class PythonFactExtractor(PythonBindingFormsMixin, PythonControlFlowVisitor):
             if item.optional_vars is None:
                 continue
             item_type = self._context_manager_item_type(item.context_expr)
-            if item_type is not None and isinstance(item.optional_vars, ast.Name):
-                self.types[self.current_scope][item.optional_vars.id] = item_type
             self.visit(item.optional_vars)
+            if item_type is not None and isinstance(item.optional_vars, ast.Name):
+                scope = self._binding_scope(item.optional_vars.id)
+                self._prepare_flow_write(scope)
+                self.types[scope][item.optional_vars.id] = item_type
         for statement in node.body:
             self.visit(statement)
         if pushed_contexts:

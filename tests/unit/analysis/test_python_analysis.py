@@ -718,7 +718,7 @@ def test_python_adapter_resolves_constructor_assignment_and_plain_import() -> No
         "app/client.py",
         """
 import datetime
-from vendor import Client
+from httpx import Client
 
 client = Client()
 client.send()
@@ -729,7 +729,7 @@ datetime.datetime.now()
     calls = analyze(source).modules[ModuleId("app.client")].calls
     symbols = {call.ref.symbol for call in calls}
 
-    assert SymbolId("vendor.Client.send") in symbols
+    assert SymbolId("httpx.Client.send") in symbols
     assert SymbolId("datetime.datetime.now") in symbols
 
 

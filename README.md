@@ -119,7 +119,7 @@ Installation alone does not attach agent hooks or make the agent run checks.
 To start setup yourself:
 
 ```bash
-uv add --dev pytaut==0.10.0
+uv add --dev pytaut==0.10.1
 uv run taut init . --format json
 ```
 

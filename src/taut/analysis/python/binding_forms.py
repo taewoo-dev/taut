@@ -14,7 +14,6 @@ from taut.domain.facts import (
     FieldFact,
     FunctionFact,
     ReferenceFact,
-    ResolutionState,
     ScopeKind,
     SymbolRef,
     SyntaxContext,
@@ -61,6 +60,8 @@ class _BindingHost(Protocol):
     def _syntax_context(self) -> SyntaxContext: ...
     def _resolve(self, node: ast.AST) -> SymbolRef: ...
     def _annotation_symbol(self, node: ast.expr | None) -> SymbolId | None: ...
+    def _value_type(self, node: ast.AST) -> SymbolId | None: ...
+    def _prepare_flow_write(self, scope: SymbolId | None) -> None: ...
     def generic_visit(self, node: ast.AST) -> Any: ...
     def _visit_lambda_scope(self, node: ast.Lambda) -> None: ...
     def _visit_comprehension_scope(
@@ -73,10 +74,8 @@ class _BindingHost(Protocol):
 
 class PythonBindingFormsMixin:
     def visit_AnnAssign(self: _BindingHost, node: ast.AnnAssign) -> None:
+        annotation = self._annotation_symbol(node.annotation)
         if isinstance(node.target, ast.Name):
-            annotation = self._annotation_symbol(node.annotation)
-            if annotation is not None:
-                self.types[self.current_scope][node.target.id] = annotation
             self._add_field(
                 node.target.id,
                 node,
@@ -85,23 +84,23 @@ class PythonBindingFormsMixin:
                 True,
             )
         self.generic_visit(node)
+        if isinstance(node.target, ast.Name) and annotation is not None:
+            scope = self._binding_scope(node.target.id)
+            self._prepare_flow_write(scope)
+            self.types[scope][node.target.id] = annotation
 
     def visit_Assign(self: _BindingHost, node: ast.Assign) -> None:
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self._add_field(target.id, node, None, self._expression_summary(node.value), False)
         self.visit(node.value)
-        inferred = None
-        if isinstance(node.value, ast.Call):
-            ref = self._resolve(node.value.func)
-            if ref.state is ResolutionState.RESOLVED:
-                inferred = ref.symbol
-        if inferred is not None:
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    self.types[self.current_scope][target.id] = inferred
+        inferred = self._value_type(node.value)
         for target in node.targets:
             self.visit(target)
+            if isinstance(target, ast.Name) and inferred is not None:
+                scope = self._binding_scope(target.id)
+                self._prepare_flow_write(scope)
+                self.types[scope][target.id] = inferred
             if isinstance(target, ast.Name) and isinstance(node.value, ast.Lambda):
                 self._declare(target.id, self.node_scopes[node.value])
 
