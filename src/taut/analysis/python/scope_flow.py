@@ -18,6 +18,7 @@ class BindingState:
 FlowSnapshot = tuple[
     dict[SymbolId | None, dict[str, SymbolId]],
     dict[SymbolId | None, dict[str, BindingState]],
+    dict[SymbolId | None, dict[str, SymbolId]],
 ]
 GuardedVisitor = Callable[[Sequence[ast.stmt], GuardKind, bool], object]
 
@@ -26,6 +27,7 @@ class PythonScopeFlow:
     current_scope: SymbolId | None
     bindings: dict[SymbolId | None, dict[str, SymbolId]]
     binding_states: dict[SymbolId | None, dict[str, BindingState]]
+    types: dict[SymbolId | None, dict[str, SymbolId]]
     _shared_flow_maps: set[int]
     _type_checking_depth: int
     _type_resolution_depth: int
@@ -39,16 +41,20 @@ class PythonScopeFlow:
     def _flow_snapshot(self) -> FlowSnapshot:
         bindings = dict(self.bindings)
         states = dict(self.binding_states)
+        types = dict(self.types)
         self._shared_flow_maps.update(id(values) for values in bindings.values())
         self._shared_flow_maps.update(id(values) for values in states.values())
-        return bindings, states
+        self._shared_flow_maps.update(id(values) for values in types.values())
+        return bindings, states, types
 
     def _restore_flow(self, snapshot: FlowSnapshot) -> None:
-        bindings, states = snapshot
+        bindings, states, types = snapshot
         self.bindings.clear()
         self.bindings.update(bindings)
         self.binding_states.clear()
         self.binding_states.update(states)
+        self.types.clear()
+        self.types.update(types)
 
     def _prepare_flow_write(self, scope: SymbolId | None) -> None:
         bindings = self.bindings[scope]
@@ -57,32 +63,36 @@ class PythonScopeFlow:
         states = self.binding_states[scope]
         if id(states) in self._shared_flow_maps:
             self.binding_states[scope] = dict(states)
+        types = self.types[scope]
+        if id(types) in self._shared_flow_maps:
+            self.types[scope] = dict(types)
 
     def _merge_flows(self, snapshots: Sequence[FlowSnapshot]) -> None:
         if not snapshots:
             self.bindings.clear()
             self.binding_states.clear()
+            self.types.clear()
             return
-        first_bindings, first_states = snapshots[0]
+        first_bindings, first_states, first_types = snapshots[0]
         if all(
-            bindings == first_bindings and states == first_states
-            for bindings, states in snapshots[1:]
+            bindings == first_bindings and states == first_states and types == first_types
+            for bindings, states, types in snapshots[1:]
         ):
             self._restore_flow(snapshots[0])
             return
         scopes: set[SymbolId | None] = set()
-        for _, states in snapshots:
+        for _, states, _ in snapshots:
             scopes.update(states)
         merged_bindings: dict[SymbolId | None, dict[str, SymbolId]] = {}
         merged_states: dict[SymbolId | None, dict[str, BindingState]] = {}
         for scope in scopes:
             names: set[str] = set()
-            for _, states in snapshots:
+            for _, states, _ in snapshots:
                 names.update(states.get(scope, {}))
             scope_bindings: dict[str, SymbolId] = {}
             scope_states: dict[str, BindingState] = {}
             for name in names:
-                path_states = [states.get(scope, {}).get(name) for _, states in snapshots]
+                path_states = [states.get(scope, {}).get(name) for _, states, _ in snapshots]
                 candidates = frozenset(
                     candidate
                     for state in path_states
@@ -105,6 +115,15 @@ class PythonScopeFlow:
         self.bindings.update(merged_bindings)
         self.binding_states.clear()
         self.binding_states.update(merged_states)
+        self.types.clear()
+        # Only retain a receiver type when every reachable path agrees. A
+        # last-visited branch is not evidence for a definite method identity.
+        for scope, values in first_types.items():
+            self.types[scope] = {
+                name: value
+                for name, value in values.items()
+                if all(types.get(scope, {}).get(name) == value for _, _, types in snapshots[1:])
+            }
 
     def _enter_type_checking(self) -> None:
         self._type_checking_depth += 1

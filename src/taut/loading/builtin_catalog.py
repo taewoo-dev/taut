@@ -32,7 +32,21 @@ def builtin_catalog_entries() -> tuple[CatalogEntry, ...]:
         _direct("jwt.decode", Effect.SECURITY_TOKEN),
         _direct("jose.jwt.encode", Effect.SECURITY_TOKEN),
         _direct("jose.jwt.decode", Effect.SECURITY_TOKEN),
+        # Exact, reviewed local operations. Empty effects distinguish known
+        # local value handling from an unclassified potentially risky call.
+        _direct("subprocess.CompletedProcess"),
+        _direct("subprocess.CompletedProcess.check_returncode"),
+        _direct("httpx.Response.json"),
+        _direct("httpx.Response.raise_for_status"),
+        _direct("httpx.Cookies.get"),
+        _direct("requests.Response.json"),
+        _direct("requests.Response.raise_for_status"),
+        _direct("requests.cookies.RequestsCookieJar.get"),
     ]
+    for name in ("close", "read", "readline", "readlines", "write", "writelines", "flush"):
+        entries.append(_direct(f"io.IOBase.{name}", Effect.IO_BLOCKING))
+    for name in ("read", "close", "iter_bytes", "iter_text", "iter_lines", "iter_raw"):
+        entries.append(_direct(f"httpx.Response.{name}", Effect.IO_BLOCKING))
     for name in ("run", "call", "check_call", "check_output"):
         entries.append(_direct(f"subprocess.{name}", Effect.IO_BLOCKING))
     for owner in ("pathlib.Path", "pathlib.PosixPath", "pathlib.WindowsPath"):

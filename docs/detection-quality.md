@@ -1,6 +1,6 @@
 # Detection scope, measurement, and adoption
 
-This document describes the detection and adoption changes released in 0.10.0.
+This document describes the detection and adoption changes released in 0.10.0 and 0.10.1.
 Configuration and report schemas remain v5; new report keys are additive.
 
 ## What a successful check establishes
@@ -22,6 +22,15 @@ counts are visible even in compact output; verbose output explains scope and lis
 Assurance failures and indeterminate enforced checks no longer produce a green success summary.
 
 ## Supported improvements and remaining limits
+
+Receiver-value resolution models exact known constructors and selected HTTP/subprocess return
+contracts. An unknown function result no longer inherits the function's symbol as a fabricated
+type, and unawaited async HTTP calls are not treated as responses. Reassignment clears inferred
+types; control-flow joins retain a type only when all paths agree. Unmodeled factory results,
+arbitrary JSON values, and differently typed branches remain unresolved. These unresolved
+values must not be reported as proven safe. Known local catalog operations are distinguished
+from missing entries with `no_effects`; real request/process and blocking stream effects remain
+enforceable. Adapter identity 13 invalidates analysis cached with the old receiver inference.
 
 Selected synchronous operations on `pathlib.Path`, `PosixPath`, `WindowsPath`, Requests sessions,
 and `builtins.open` now participate in the effect catalog. Exact known constructor chains such as

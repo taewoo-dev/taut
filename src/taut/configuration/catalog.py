@@ -33,8 +33,8 @@ class CatalogEntry:
     access_path: AccessPath
 
     def __post_init__(self) -> None:
-        if not self.effects:
-            raise ValueError("catalog entry requires at least one effect")
+        if not self.effects and self.access_path is not AccessPath.DIRECT:
+            raise ValueError("an approved wrapper requires at least one effect")
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ class EffectCatalog:
 
 class EffectResolutionState(StrEnum):
     MATCHED = "matched"
+    NO_EFFECTS = "no_effects"
     NO_MATCH = "no_match"
     AMBIGUOUS = "ambiguous"
     SYMBOL_UNRESOLVED = "symbol_unresolved"
@@ -89,6 +90,13 @@ class EffectResolver:
         if entry is None:
             return EffectResolution(
                 EffectResolutionState.NO_MATCH,
+                frozenset(),
+                None,
+                None,
+            )
+        if not entry.effects:
+            return EffectResolution(
+                EffectResolutionState.NO_EFFECTS,
                 frozenset(),
                 None,
                 None,

@@ -604,12 +604,37 @@ def test_effect_resolver_distinguishes_match_no_match_and_unresolved() -> None:
     )
 
 
-def test_catalog_rejects_key_mismatch_and_empty_effects() -> None:
+def test_catalog_rejects_key_mismatch_and_empty_wrapper_effects() -> None:
     with pytest.raises(ValueError, match="at least one"):
-        CatalogEntry(SymbolId("app.clock.now"), frozenset(), AccessPath.DIRECT)
+        CatalogEntry(SymbolId("app.clock.now"), frozenset(), AccessPath.APPROVED_WRAPPER)
     entry = CatalogEntry(SymbolId("app.clock.now"), frozenset({Effect.TIME_NOW}), AccessPath.DIRECT)
     with pytest.raises(ValueError, match="key"):
         EffectCatalog(FrozenMap(((SymbolId("app.clock.other"), entry),)))
+
+
+def test_catalog_distinguishes_classified_no_effects_from_missing_entries() -> None:
+    snapshot = analyze(
+        make_source("app/value.py", "import subprocess\nsubprocess.CompletedProcess([], 0)")
+    )
+    call = snapshot.modules[ModuleId("app.value")].calls[0]
+    resolver = EffectResolver()
+    assert (
+        resolver.resolve(call, default_project_configuration().catalog).state
+        is EffectResolutionState.NO_EFFECTS
+    )
+    assert (
+        resolver.resolve(call, EffectCatalog(FrozenMap())).state is EffectResolutionState.NO_MATCH
+    )
+
+
+def test_explicit_no_effect_entry_is_supported_and_cannot_hide_builtin_io(tmp_path: Path) -> None:
+    _write(tmp_path, _VALID + '\n[[effects]]\nsymbol = "vendor.Value"\neffects = []\n')
+    config = load_project_configuration(tmp_path)
+    assert config.catalog.entries[SymbolId("vendor.Value")].effects == frozenset()
+    policy_file = tmp_path / ".policy" / "policy.toml"
+    policy_file.write_text(_VALID + '\n[[effects]]\nsymbol = "httpx.Client.get"\neffects = []\n')
+    with pytest.raises(PolicyConfigError, match="cannot override built-in effect"):
+        load_project_configuration(tmp_path)
 
 
 def test_default_configuration_is_stable() -> None:

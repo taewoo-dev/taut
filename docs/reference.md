@@ -7,10 +7,11 @@ determine reliably. The same source and configuration always produce the same re
 not hard-code the names or directory layout of any company or service.
 
 Version 0.10.0 adds English output, stronger callback and lambda analysis, incremental
-reuse, and advisory rule adoption. It supports Python 3.12 or newer:
+reuse, and advisory rule adoption. Version 0.10.1 corrects returned-value identities and
+explicitly classifies local response/result operations. It supports Python 3.12 or newer:
 
 ```bash
-uv add --dev pytaut==0.10.0
+uv add --dev pytaut==0.10.1
 ```
 
 For a reproducible source install, use a release tag or full commit SHA instead of the default Git
@@ -594,6 +595,34 @@ as separate rules when there is a precise, enforceable contract.
 A resolved, unregistered call under a configured risky-symbol prefix is reported as a `CAT001`
 warning. Other unknown calls are not universally flagged. After classifying a call, add it to the
 project effect catalog for precise enforcement.
+
+Library return values have identities separate from their factories. Known HTTP client
+methods return response objects; awaiting a known async HTTP method returns a response,
+while an unawaited coroutine does not. Known constructors and annotated receivers retain
+their type. Unknown factory results remain unresolved instead of becoming invented symbols
+such as `httpx.Client.get.json`. Receiver types are cleared on reassignment and retained
+after a branch only when every path agrees. This is bounded library modeling, not general
+Python type inference or a proof that unknown calls are safe.
+
+The effect catalog also distinguishes an explicitly classified local operation from a
+missing classification. For example, constructing `subprocess.CompletedProcess` does not
+execute a process, and parsing an already-loaded HTTP response is not another request.
+Reviewed local operations use an empty effect set and resolve as `no_effects`. Actual HTTP
+requests, subprocess execution/waiting, response streaming, and pipe I/O keep their effects.
+An exact no-effect entry takes precedence over a broad external logging prefix.
+
+Project-owned local operations may be declared explicitly:
+
+```toml
+[[tool.taut.effects]]
+symbols = ["project.values.Result"]
+effects = []
+access = "direct"
+```
+
+An empty set cannot be used as an `approved_wrapper`, and project configuration cannot
+override built-in effects (including reclassifying a real request as local). Keep such
+declarations limited to operations whose absence of catalog effects has been reviewed.
 
 ## Development
 

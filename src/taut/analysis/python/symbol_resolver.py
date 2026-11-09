@@ -8,9 +8,10 @@ from taut.analysis.contracts import SourceInput
 from taut.analysis.module_identity import absolute_import_base
 from taut.analysis.python.fact_ids import next_fact_id
 from taut.analysis.python.identity import PYTHON_AST_IDENTITY
-from taut.analysis.python.known_types import constructed_type
+from taut.analysis.python.known_types import context_item_type
 from taut.analysis.python.resolver_primitives import Scope, node_range, written_name
 from taut.analysis.python.scope_flow import BindingState, PythonScopeFlow
+from taut.analysis.python.value_types import PythonValueTypesMixin
 from taut.domain.facts import FactKind, ResolutionState, SymbolRef
 from taut.domain.ids import FactId, SymbolId
 from taut.domain.location import SourceRange
@@ -42,7 +43,7 @@ _BUILTINS = frozenset(
 )
 
 
-class PythonSymbolResolver(PythonScopeFlow):
+class PythonSymbolResolver(PythonValueTypesMixin, PythonScopeFlow):
     occurrences: dict[tuple[str, str, str], int]
 
     def __init__(self, source: SourceInput) -> None:
@@ -69,6 +70,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         self._resolutions: dict[ast.AST, SymbolRef] = {}
         self.node_scopes: dict[ast.AST, SymbolId] = {}
         self.variable_symbols: set[SymbolId] = set()
+        self.class_symbols: set[SymbolId] = set()
         self.context_manager_providers: dict[SymbolId, SymbolId] = {}
 
     def _symbol(self, value: str) -> SymbolId:
@@ -369,6 +371,7 @@ class PythonSymbolResolver(PythonScopeFlow):
             self.type_bindings[scope][name] = symbol
             return
         self._prepare_flow_write(scope)
+        self.types[scope].pop(name, None)
         self.bindings[scope][name] = symbol
         self.binding_states[scope][name] = BindingState(
             frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()
@@ -379,6 +382,7 @@ class PythonSymbolResolver(PythonScopeFlow):
         symbol = self._child_symbol(scope, name)
         self.variable_symbols.add(symbol)
         self._prepare_flow_write(scope)
+        self.types[scope].pop(name, None)
         self.bindings[scope][name] = symbol
         self.binding_states[scope][name] = BindingState(
             frozenset({symbol}), True, frozenset({binding_id}) if binding_id else frozenset()
@@ -439,34 +443,9 @@ class PythonSymbolResolver(PythonScopeFlow):
             state = ResolutionState.RESOLVED if symbol is not None else ResolutionState.UNRESOLVED
             return SymbolRef(name, state, symbol, (), provenance)
         if isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name):
-                typed = self._lookup(node.value.id, type_only=True)
-                if typed is not None:
-                    return SymbolRef(
-                        name,
-                        ResolutionState.RESOLVED,
-                        self._symbol(f"{typed.value}.{node.attr}"),
-                        (),
-                        provenance,
-                    )
-            base = self._resolve(node.value)
-            if base.state is ResolutionState.RESOLVED and base.symbol:
-                if base.symbol in self.variable_symbols:
-                    return SymbolRef(name, ResolutionState.UNRESOLVED, None, (), provenance)
-                return SymbolRef(
-                    name,
-                    ResolutionState.RESOLVED,
-                    self._symbol(f"{base.symbol.value}.{node.attr}"),
-                    (),
-                    provenance,
-                )
-            candidates = tuple(
-                self._symbol(f"{candidate.value}.{node.attr}") for candidate in base.candidates
-            )
-            return SymbolRef(name, base.state, None, candidates, provenance)
-        if isinstance(node, ast.Call):
-            constructor = self._resolve(node.func)
-            inferred = constructed_type(constructor.symbol)
+            return self._resolve_attribute(node)
+        if isinstance(node, (ast.Call, ast.Await)):
+            inferred = self._value_type(node)
             if inferred is not None:
                 return SymbolRef(name, ResolutionState.RESOLVED, inferred, (), provenance)
         if (
@@ -489,4 +468,6 @@ class PythonSymbolResolver(PythonScopeFlow):
         provider = self._resolve(expression.func)
         if provider.state is not ResolutionState.RESOLVED or provider.symbol is None:
             return None
-        return self.context_manager_providers.get(provider.symbol)
+        return self.context_manager_providers.get(provider.symbol) or context_item_type(
+            provider.symbol
+        )

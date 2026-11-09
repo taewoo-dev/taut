@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1
+
+- Separate receiver value types from callee identities. Model known HTTP responses, awaited
+  async HTTP calls, process results and pipe handles; stop inventing factory/member chains.
+  Clear inferred types on reassignment and conservatively join them across control flow.
+- Distinguish reviewed no-effect catalog entries from missing classifications. Keep real
+  HTTP/process/stream effects enforced and prevent project overrides of built-in effects.
+- Invalidate older Python analysis caches with adapter identity 13.
+
 ## 0.10.0
 
 - Standardize all built-in diagnostics, remediation, CLI help, onboarding questions, and
